@@ -114,6 +114,11 @@ class PedantixApp {
     return '';
   }
 
+  isHostedMode() {
+    const h = window.location.hostname;
+    return !(h === 'localhost' || h === '127.0.0.1' || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h));
+  }
+
   getApiUrl(endpoint) {
     const base = this.getBackendUrl();
     const clean = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
@@ -763,7 +768,7 @@ class PedantixApp {
 
   async fetchNetworkInfo() {
     try {
-      const resp = await fetch('/api/network-info');
+      const resp = await fetch(this.getApiUrl('/api/network-info'));
       this.networkInfo = await resp.json();
       this.updateNetworkDisplay();
     } catch (e) {
@@ -779,7 +784,9 @@ class PedantixApp {
     // 1. LAN invite URL: NEVER fallback to 127.0.0.1 if lan_ip exists
     const lanHost = (data.lan_ip && data.lan_ip !== '127.0.0.1') ? data.lan_ip : (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? window.location.hostname : data.lan_ip);
     const lanPort = window.location.port ? `:${window.location.port}` : (data.port ? `:${data.port}` : '');
-    const lanUrl = `${window.location.protocol}//${lanHost}${lanPort}/${roomParam}`;
+    const lanUrl = this.isHostedMode()
+      ? `${window.location.origin}/${roomParam}`
+      : `${window.location.protocol}//${lanHost}${lanPort}/${roomParam}`;
 
     if (this.dom.inviteUrlInput) {
       this.dom.inviteUrlInput.value = lanUrl;
@@ -842,7 +849,7 @@ class PedantixApp {
     }
     try {
       const endpoint = isActive ? '/api/tunnel/stop' : '/api/tunnel/start';
-      const resp = await fetch(endpoint, { method: 'POST' });
+      const resp = await fetch(this.getApiUrl(endpoint), { method: 'POST' });
       const info = await resp.json();
       this.networkInfo.tunnel_url = info.url;
       this.networkInfo.tunnel_status = info.status;
@@ -864,6 +871,8 @@ class PedantixApp {
 
     if (mode === 'tunnel' && this.networkInfo && this.networkInfo.tunnel_url) {
       urlToCopy = `${this.networkInfo.tunnel_url}/${roomParam}`;
+    } else if (this.isHostedMode()) {
+      urlToCopy = `${window.location.origin}/${roomParam}`;
     } else if (this.networkInfo && this.networkInfo.lan_ip && this.networkInfo.lan_ip !== '127.0.0.1') {
       const portStr = this.networkInfo.port ? `:${this.networkInfo.port}` : '';
       urlToCopy = `http://${this.networkInfo.lan_ip}${portStr}/${roomParam}`;
@@ -896,7 +905,7 @@ class PedantixApp {
     const roomId = (customCode && customCode.trim()) ? customCode.trim() : `salon-${Math.floor(Math.random() * 899 + 100)}`;
 
     try {
-      const resp = await fetch('/api/room/create', {
+      const resp = await fetch(this.getApiUrl('/api/room/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1030,7 +1039,7 @@ class PedantixApp {
     } else {
       // Fallback REST endpoint
       try {
-        await fetch('/api/room/chat', {
+        await fetch(this.getApiUrl('/api/room/chat'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(msgPayload)
@@ -1166,7 +1175,7 @@ class PedantixApp {
     }
 
     try {
-      const resp = await fetch('/api/room/join', {
+      const resp = await fetch(this.getApiUrl('/api/room/join'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1243,7 +1252,7 @@ class PedantixApp {
 
   async reloadGameSession() {
     try {
-      const resp = await fetch(`/api/room/${encodeURIComponent(this.roomId)}/state?player_id=${encodeURIComponent(this.playerId)}`);
+      const resp = await fetch(this.getApiUrl(`/api/room/${encodeURIComponent(this.roomId)}/state?player_id=${encodeURIComponent(this.playerId)}`));
       if (!resp.ok) return;
       const data = await resp.json();
       if (data.session) {
@@ -1293,8 +1302,7 @@ class PedantixApp {
       return;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/room/${encodeURIComponent(this.roomId)}?player_id=${encodeURIComponent(this.playerId)}`;
+    const wsUrl = this.getWsUrl(`/ws/room/${encodeURIComponent(this.roomId)}?player_id=${encodeURIComponent(this.playerId)}`);
 
     try {
       this.ws = new WebSocket(wsUrl);
@@ -1565,7 +1573,7 @@ class PedantixApp {
     const savedWindowScroll = window.scrollY;
 
     try {
-      const resp = await fetch('/api/room/ready', {
+      const resp = await fetch(this.getApiUrl('/api/room/ready'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1591,7 +1599,7 @@ class PedantixApp {
   async startGame() {
     this.playTone('click');
     try {
-      const resp = await fetch('/api/room/start', {
+      const resp = await fetch(this.getApiUrl('/api/room/start'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1612,7 +1620,7 @@ class PedantixApp {
   async startNextRound() {
     this.playTone('click');
     try {
-      const resp = await fetch('/api/room/next-round', {
+      const resp = await fetch(this.getApiUrl('/api/room/next-round'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1965,7 +1973,7 @@ class PedantixApp {
     }
     this.playTone('click');
     try {
-      const resp = await fetch('/api/room/mode', {
+      const resp = await fetch(this.getApiUrl('/api/room/mode'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1996,7 +2004,7 @@ class PedantixApp {
     if (this.myTeam === team) return;
     this.playTone('click');
     try {
-      const resp = await fetch('/api/room/team', {
+      const resp = await fetch(this.getApiUrl('/api/room/team'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2663,7 +2671,7 @@ class PedantixApp {
     this.prevInputIdx = -1;
 
     try {
-      const resp = await fetch('/api/room/guess', {
+      const resp = await fetch(this.getApiUrl('/api/room/guess'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2887,7 +2895,7 @@ class PedantixApp {
       // 1. Try room unmask endpoint
       if (this.roomId) {
         try {
-          const resp = await fetch('/api/room/unmask', {
+          const resp = await fetch(this.getApiUrl('/api/room/unmask'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2907,7 +2915,7 @@ class PedantixApp {
       // 2. Fallback to solo game unmask endpoint if needed
       if (Object.keys(tokensMap).length === 0 && this.sessionId) {
         try {
-          const resp = await fetch('/api/game/unmask', {
+          const resp = await fetch(this.getApiUrl('/api/game/unmask'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: this.sessionId })
