@@ -16,6 +16,8 @@ import queue
 import sqlite3
 import threading
 import datetime as _dt
+import hashlib
+import secrets
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("pedantix.database")
@@ -220,9 +222,20 @@ _SCHEMA_PG = [
     """CREATE TABLE IF NOT EXISTS player_scores (
         player_name TEXT PRIMARY KEY, score INTEGER DEFAULT 0, wins INTEGER DEFAULT 0,
         games_played INTEGER DEFAULT 0, last_played TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS users (
+        username TEXT PRIMARY KEY, password_hash TEXT NOT NULL,
+        score INTEGER DEFAULT 0, wins INTEGER DEFAULT 0,
+        games_played INTEGER DEFAULT 0, best_attempts INTEGER,
+        total_attempts INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        last_login TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS user_words (
+        username TEXT NOT NULL, word TEXT NOT NULL, count INTEGER DEFAULT 1,
+        PRIMARY KEY (username, word))""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_games_finished ON games(finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_article_category ON article_cache(category)",
+    "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
 ]
 
 _SCHEMA_SQLITE = [
@@ -240,7 +253,18 @@ _SCHEMA_SQLITE = [
     """CREATE TABLE IF NOT EXISTS player_scores (
         player_name TEXT PRIMARY KEY, score INTEGER DEFAULT 0, wins INTEGER DEFAULT 0,
         games_played INTEGER DEFAULT 0, last_played TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS users (
+        username TEXT PRIMARY KEY, password_hash TEXT NOT NULL,
+        score INTEGER DEFAULT 0, wins INTEGER DEFAULT 0,
+        games_played INTEGER DEFAULT 0, best_attempts INTEGER,
+        total_attempts INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS user_words (
+        username TEXT NOT NULL, word TEXT NOT NULL, count INTEGER DEFAULT 1,
+        PRIMARY KEY (username, word))""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
 ]
 
 
@@ -484,4 +508,235 @@ def get_db_status() -> Dict[str, Any]:
         "pg_disabled": _pg_disabled,
         "is_postgres": IS_POSTGRES,
     }
+
+
+# ---------------------------------------------------------------------------
+# Comptes Utilisateurs & Statistiques
+# ---------------------------------------------------------------------------
+def hash_password(password: str, salt: Optional[str] = None) -> str:
+    if not salt:
+        salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+    return f"{salt}:{key.hex()}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        salt, key = stored_hash.split(":", 1)
+        computed = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+        return secrets.compare_digest(computed.hex(), key)
+    except Exception:
+        return False
+
+
+def generate_user_token(username: str) -> str:
+    salt = secrets.token_hex(16)
+    sig = hashlib.sha256(f"{username}:{salt}:pedantix-auth".encode()).hexdigest()
+    return f"{username}.{salt}.{sig}"
+
+
+def verify_user_token(username: str, token: str) -> bool:
+    if not username or not token:
+        return False
+    try:
+        tok_user, salt, sig = token.split(".", 2)
+        if tok_user.lower() != username.strip().lower():
+            return False
+        expected = hashlib.sha256(f"{tok_user}:{salt}:pedantix-auth".encode()).hexdigest()
+        return secrets.compare_digest(expected, sig)
+    except Exception:
+        return False
+
+
+def user_exists(username: str) -> bool:
+    if not username:
+        return False
+    name = username.strip()
+    try:
+        with DatabaseContext() as db:
+            db.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(?)", (name,))
+            return db.fetchone() is not None
+    except Exception as e:
+        logger.warning(f"user_exists: {e}")
+        return False
+
+
+def create_user(username: str, password: str) -> Dict[str, Any]:
+    if not username or not password:
+        return {"error": "Nom d'utilisateur et mot de passe requis."}
+    name = username.strip()
+    if len(name) < 2 or len(name) > 30:
+        return {"error": "Le nom d'utilisateur doit contenir entre 2 et 30 caractères."}
+    if len(password) < 3:
+        return {"error": "Le mot de passe doit contenir au moins 3 caractères."}
+
+    if user_exists(name):
+        return {"error": "Ce nom d'utilisateur est déjà utilisé."}
+
+    pwd_hash = hash_password(password)
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                """INSERT INTO users (username, password_hash, score, wins, games_played)
+                   VALUES (?, ?, 0, 0, 0)""",
+                (name, pwd_hash),
+            )
+            try:
+                db.execute(
+                    """INSERT INTO player_scores (player_name, score, wins, games_played, last_played)
+                       VALUES (?, 0, 0, 0, CURRENT_TIMESTAMP)
+                       ON CONFLICT (player_name) DO NOTHING""",
+                    (name,),
+                )
+            except Exception:
+                pass
+
+        token = generate_user_token(name)
+        stats = get_user_stats(name)
+        return {"status": "ok", "username": name, "token": token, "stats": stats}
+    except Exception as e:
+        logger.error(f"create_user: {e}")
+        return {"error": "Erreur lors de la création du compte."}
+
+
+def authenticate_user(username: str, password: str) -> Dict[str, Any]:
+    if not username or not password:
+        return {"error": "Identifiants requis."}
+    name = username.strip()
+    try:
+        with DatabaseContext() as db:
+            db.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (name,))
+            row = db.fetchone()
+            if not row:
+                return {"error": "Compte introuvable."}
+            actual_username = row["username"]
+            stored_hash = row["password_hash"]
+            if not verify_password(password, stored_hash):
+                return {"error": "Mot de passe incorrect."}
+
+            try:
+                db.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE username = ?", (actual_username,))
+            except Exception:
+                pass
+
+        token = generate_user_token(actual_username)
+        stats = get_user_stats(actual_username)
+        return {"status": "ok", "username": actual_username, "token": token, "stats": stats}
+    except Exception as e:
+        logger.error(f"authenticate_user: {e}")
+        return {"error": "Erreur de connexion."}
+
+
+def _record_user_guess_word_sync(username: str, word: str):
+    if not username or not word:
+        return
+    clean_word = word.strip().lower()
+    if len(clean_word) < 2:
+        return
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                """INSERT INTO user_words (username, word, count) VALUES (?, ?, 1)
+                   ON CONFLICT (username, word) DO UPDATE SET count = user_words.count + 1""",
+                (username.strip(), clean_word),
+            )
+    except Exception as e:
+        logger.warning(f"_record_user_guess_word_sync: {e}")
+
+
+def record_user_guess_word(username: str, word: str):
+    if username and word:
+        _enqueue(_record_user_guess_word_sync, username, word)
+
+
+def _record_user_game_finish_sync(username: str, won: bool, attempts: int, points: int):
+    if not username:
+        return
+    name = username.strip()
+    try:
+        with DatabaseContext() as db:
+            db.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (name,))
+            row = db.fetchone()
+            if not row:
+                return
+            row_dict = dict(row)
+            actual_name = row_dict["username"]
+            cur_best = row_dict.get("best_attempts")
+            new_best = cur_best
+            if won and attempts > 0:
+                new_best = min(cur_best, attempts) if cur_best is not None else attempts
+
+            db.execute(
+                """UPDATE users SET
+                       games_played = games_played + 1,
+                       wins = wins + ?,
+                       best_attempts = ?,
+                       total_attempts = total_attempts + ?,
+                       score = score + ?,
+                       last_login = CURRENT_TIMESTAMP
+                   WHERE username = ?""",
+                (1 if won else 0, new_best, attempts, points, actual_name),
+            )
+    except Exception as e:
+        logger.warning(f"_record_user_game_finish_sync: {e}")
+
+
+def record_user_game_finish(username: str, won: bool, attempts: int, points: int = 0):
+    if username:
+        _enqueue(_record_user_game_finish_sync, username, won, attempts, points)
+
+
+def get_user_stats(username: str) -> Dict[str, Any]:
+    empty = {
+        "username": username or "",
+        "games_played": 0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "score": 0,
+        "best_attempts": None,
+        "avg_attempts": 0.0,
+        "favorite_words": [],
+        "created_at": None,
+    }
+    if not username:
+        return empty
+    name = username.strip()
+    try:
+        with DatabaseContext() as db:
+            db.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (name,))
+            user_row = db.fetchone()
+            if not user_row:
+                score = get_player_score(name)
+                empty["score"] = score
+                return empty
+
+            user_dict = _jsonable(user_row)
+            games_played = int(user_dict.get("games_played") or 0)
+            wins = int(user_dict.get("wins") or 0)
+            score = int(user_dict.get("score") or 0)
+            best_attempts = user_dict.get("best_attempts")
+            total_attempts = int(user_dict.get("total_attempts") or 0)
+            avg_attempts = round(total_attempts / max(1, games_played), 1) if games_played > 0 else 0.0
+            win_rate = round((wins / max(1, games_played)) * 100, 1) if games_played > 0 else 0.0
+
+            db.execute(
+                "SELECT word, count FROM user_words WHERE LOWER(username) = LOWER(?) ORDER BY count DESC, word ASC LIMIT 8",
+                (name,),
+            )
+            fav_words = [{"word": r["word"], "count": int(r["count"])} for r in db.fetchall()]
+
+            return {
+                "username": user_dict["username"],
+                "games_played": games_played,
+                "wins": wins,
+                "win_rate": win_rate,
+                "score": score,
+                "best_attempts": best_attempts,
+                "avg_attempts": avg_attempts,
+                "favorite_words": fav_words,
+                "created_at": user_dict.get("created_at"),
+            }
+    except Exception as e:
+        logger.warning(f"get_user_stats: {e}")
+        return empty
 

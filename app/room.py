@@ -11,7 +11,7 @@ from fastapi import WebSocket
 
 from app.game import GameSession, GameManager
 from app.wiki import ALL_CURATED_TITLES, WikipediaClient
-from app.database import get_player_score, increment_player_score
+from app.database import get_player_score, increment_player_score, record_user_game_finish, record_user_guess_word
 from app.nlp import normalize_letter, is_letter_revealed
 
 logger = logging.getLogger("pedantix.room")
@@ -536,6 +536,9 @@ class Room:
             player.last_count = matches_count
             player.last_score = score
 
+        # Record guessed word for player stats
+        record_user_guess_word(player.name, word)
+
         # Check win
         if guess_res["is_won"]:
             if self.game_mode == "team":
@@ -595,24 +598,31 @@ class Room:
                         self.winners.append(player.player_id)
 
                     rank = len(self.winners)
+                    connected_players = [p for p in self.players.values() if p.connected]
                     if rank == 1:
                         self.first_winner_id = player.player_id
                         self.first_winner_name = player.name
                         self.first_winner_attempts = player.attempts
                         self.status = "ending"
-                        self.timer_30s_end = time.time() + 30.0
-                        self.add_activity(f"🏆 {player.name} a découvert le titre en {player.attempts} coups ! 30s restantes pour les autres !", "win")
+
                         if self._letter_hint_task and not self._letter_hint_task.done():
                             self._letter_hint_task.cancel()
                         self.next_letter_hint_time = None
                         if self._timer_30s_task and not self._timer_30s_task.done():
                             self._timer_30s_task.cancel()
-                        self._timer_30s_task = asyncio.create_task(self._run_30s_timer())
+
+                        if len(connected_players) <= 1:
+                            # Solo or only 1 player in room: finish immediately
+                            self.add_activity(f"🏆 {player.name} a découvert le titre en {player.attempts} coups !", "win")
+                            self._timer_30s_task = asyncio.create_task(self._finish_round())
+                        else:
+                            self.timer_30s_end = time.time() + 30.0
+                            self.add_activity(f"🏆 {player.name} a découvert le titre en {player.attempts} coups ! 30s restantes pour les autres !", "win")
+                            self._timer_30s_task = asyncio.create_task(self._run_30s_timer())
                     else:
                         pts_bonus = "+2 pt" if rank == 2 else ("+1 pt" if rank == 3 else "0 pt")
                         self.add_activity(f"🎯 {player.name} a également découvert le titre ({rank}e place, {pts_bonus}) !", "win_also")
 
-                        connected_players = [p for p in self.players.values() if p.connected]
                         if len(self.winners) >= len(connected_players):
                             if self._timer_30s_task and not self._timer_30s_task.done():
                                 self._timer_30s_task.cancel()
@@ -717,8 +727,13 @@ class Room:
                         "attempts": p.attempts
                     })
 
-        # Refresh all player scores from DB and reset ready status for next round
+        # Refresh all player scores from DB, record game finish stats, and reset ready status
         for p in self.players.values():
+            if p.is_won:
+                pts = next((item["points"] for item in round_podium if item.get("player_id") == p.player_id), 0)
+                record_user_game_finish(p.name, won=True, attempts=p.attempts, points=pts)
+            else:
+                record_user_game_finish(p.name, won=False, attempts=p.attempts, points=0)
             p.refresh_score()
             p.is_ready = False
 

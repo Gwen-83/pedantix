@@ -19,6 +19,12 @@ from app.database import (
     increment_player_score,
     get_top_player_scores,
     get_db_status,
+    user_exists,
+    create_user,
+    authenticate_user,
+    record_user_guess_word,
+    record_user_game_finish,
+    get_user_stats,
 )
 from app.game import GameManager
 from app.room import room_manager
@@ -75,6 +81,18 @@ def detect_lan_ip() -> str:
 class GuessRequest(BaseModel):
     session_id: str
     word: str
+    player_name: Optional[str] = None
+
+class CheckUsernameRequest(BaseModel):
+    username: str
+
+class AuthRegisterRequest(BaseModel):
+    username: str
+    password: str
+
+class AuthLoginRequest(BaseModel):
+    username: str
+    password: str
 
 class HintRequest(BaseModel):
     session_id: str
@@ -381,6 +399,11 @@ async def room_guess(req: RoomGuessRequest):
     if "error" in res or res.get("is_repeat") or res.get("status") == "already_guessed":
         return res
 
+    if player and player.name:
+        record_user_guess_word(player.name, req.word)
+        if res.get("is_won"):
+            record_user_game_finish(player.name, won=True, attempts=res.get("attempt_number", player.attempts))
+
     # Broadcast updated progress to everyone
     await room.broadcast({
         "type": "progress_update",
@@ -575,12 +598,49 @@ async def submit_guess(req: GuessRequest):
         return {"status": "already_won", "message": "Partie déjà gagnée !"}
 
     result = session.submit_guess(req.word)
+    if req.player_name:
+        record_user_guess_word(req.player_name, req.word)
+        if result.get("is_won"):
+            increment_player_score(req.player_name, 1)
+            record_user_game_finish(req.player_name, won=True, attempts=result.get("attempt_number", 1), points=1)
     return result
 
 
 @app.post("/api/game/hint")
 async def give_hint(req: HintRequest):
     raise HTTPException(status_code=403, detail="Les indices sont désactivés.")
+
+
+# ============================================================================
+# COMPTES UTILISATEURS & AUTHENTIFICATION
+# ============================================================================
+
+@app.post("/api/auth/check-username")
+async def check_user_exists(req: CheckUsernameRequest):
+    uname = req.username.strip()
+    exists = user_exists(uname)
+    return {"exists": exists, "username": uname}
+
+
+@app.post("/api/auth/register")
+async def register_account(req: AuthRegisterRequest):
+    res = create_user(req.username, req.password)
+    if "error" in res:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return res
+
+
+@app.post("/api/auth/login")
+async def login_account(req: AuthLoginRequest):
+    res = authenticate_user(req.username, req.password)
+    if "error" in res:
+        raise HTTPException(status_code=401, detail=res["error"])
+    return res
+
+
+@app.get("/api/user/stats")
+async def get_stats_for_user(username: str = Query(...)):
+    return get_user_stats(username)
 
 
 @app.get("/api/stats")

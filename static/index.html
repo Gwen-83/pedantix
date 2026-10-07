@@ -26,12 +26,11 @@
         <!-- MODERN NAV BAR DOCK -->
         <nav class="nav-bar">
           <button class="nav-icon" id="rules-button" title="Règles du jeu" aria-label="Règles">ℹ️</button>
-          <button class="nav-icon" id="faq-button" title="FAQ & Astuces" aria-label="FAQ">❓</button>
+          <button class="nav-icon" id="faq-button" title="Inviter des amis" aria-label="Inviter des amis">❓</button>
           <button class="nav-icon" id="nav-rooms-button" title="Salons Multijoueur en ligne" aria-label="Salons">🌐</button>
           <button class="nav-icon" id="theme-button" title="Changer de thème / Couleurs" aria-label="Couleurs">🎨</button>
           <button class="nav-icon" id="history-button" title="Statistiques & Historique" aria-label="Historique">📊</button>
-          <button class="nav-icon" id="newgame-button" title="Nouvelle page aléatoire" aria-label="Nouvelle page">🎲</button>
-          <button class="nav-icon" id="nav-config-button" title="Serveur & En ligne" aria-label="Serveur">⚙️</button>
+          <button class="nav-icon" id="nav-config-button" title="Paramètres & Serveur" aria-label="Paramètres">⚙️</button>
           <button class="nav-icon" id="sound-button" title="Effets sonores" aria-label="Sons">🔊</button>
         </nav>
 
@@ -551,13 +550,30 @@
 
   <!-- MODAL: STATISTIQUES -->
   <div class="modal-overlay" id="stats-modal">
-    <div class="modal">
+    <div class="modal modal-wide stats-modal-content">
       <button class="modal-close" data-close="stats-modal" aria-label="Fermer">&times;</button>
       <div class="modal-header">
         <span class="modal-header-icon">📊</span>
-        <h3>Statistiques & Performances</h3>
+        <div class="modal-title-col">
+          <h3>Statistiques & Performances</h3>
+          <p class="modal-subtitle">Progression enregistrée sur votre compte</p>
+        </div>
       </div>
       <div class="modal-body">
+        <!-- User Profile Bar -->
+        <div class="stats-user-header" id="stats-user-header">
+          <div class="stats-user-info">
+            <span class="stats-user-avatar">👤</span>
+            <div class="stats-user-meta">
+              <h4 id="stats-user-name">Mon Compte</h4>
+              <span class="stats-user-score-tag">Score persistant : <b id="stats-user-score">0 pt</b></span>
+            </div>
+          </div>
+          <button type="button" id="btn-auth-logout" class="btn-logout-small" title="Changer de compte utilisateur">
+            🚪 Changer de compte
+          </button>
+        </div>
+
         <div class="stats-row">
           <div class="stat-box">
             <div class="stat-number" id="s-played">0</div>
@@ -568,12 +584,28 @@
             <div class="stat-desc">Victoires</div>
           </div>
           <div class="stat-box">
+            <div class="stat-number" id="s-winrate">0%</div>
+            <div class="stat-desc">Taux de victoire</div>
+          </div>
+          <div class="stat-box">
             <div class="stat-number" id="s-avg">0</div>
             <div class="stat-desc">Moyenne de coups</div>
           </div>
+          <div class="stat-box">
+            <div class="stat-number" id="s-best">-</div>
+            <div class="stat-desc">Meilleure partie</div>
+          </div>
         </div>
 
-        <h4 style="margin: 1.5rem 0 0.6rem; font-size: 1rem;">Dernières victoires :</h4>
+        <!-- Favorite words section -->
+        <div class="stats-fav-words-section">
+          <h4>🔤 Vos mots préférés (les plus joués) :</h4>
+          <div id="stats-fav-words-list" class="stats-fav-words-list">
+            <span class="empty-fav-hint">Jouez des mots pour découvrir vos mots fétiches !</span>
+          </div>
+        </div>
+
+        <h4 style="margin: 1.5rem 0 0.6rem; font-size: 0.95rem;">Dernières victoires :</h4>
         <div class="stats-table-wrapper">
           <table class="recent-table">
             <thead>
@@ -588,6 +620,89 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: COMPTE UTILISATEUR & AUTHENTIFICATION -->
+  <div class="modal-overlay" id="auth-modal">
+    <div class="modal auth-modal-content">
+      <div class="modal-header">
+        <span class="modal-header-icon">👤</span>
+        <div class="modal-title-col">
+          <h3 id="auth-modal-title">Compte Joueur & Statistiques</h3>
+          <p class="modal-subtitle">Enregistrez vos victoires, parties et mots préférés</p>
+        </div>
+      </div>
+      <div class="modal-body">
+        <!-- Step 1: Username input -->
+        <div id="auth-step-username" class="auth-step-block">
+          <p class="auth-prompt-desc">
+            Bienvenue sur <b>Pédantix</b> ! Entrez votre nom d'utilisateur pour commencer ou retrouver vos statistiques :
+          </p>
+          <form id="auth-username-form" class="auth-form-group">
+            <div class="auth-input-wrapper">
+              <span class="auth-input-icon">👤</span>
+              <input type="text" id="auth-username-input" class="auth-text-input" placeholder="Votre nom d'utilisateur..." maxlength="25" autocomplete="username" spellcheck="false" required autofocus />
+            </div>
+            <button type="submit" id="btn-auth-continue" class="btn-auth-primary">
+              Continuer ➔
+            </button>
+          </form>
+        </div>
+
+        <!-- Step 2A: Password for existing account -->
+        <div id="auth-step-login" class="auth-step-block" style="display: none;">
+          <div class="auth-user-badge-header">
+            <span>Compte existant :</span>
+            <b id="auth-login-username-display" class="auth-username-highlight">Pseudo</b>
+          </div>
+          <p class="auth-prompt-desc">
+            Ce compte existe déjà en base de données. Saisissez votre mot de passe pour vous connecter :
+          </p>
+          <form id="auth-login-form" class="auth-form-group">
+            <div class="auth-input-wrapper">
+              <span class="auth-input-icon">🔒</span>
+              <input type="password" id="auth-password-input" class="auth-text-input" placeholder="Votre mot de passe..." autocomplete="current-password" required />
+            </div>
+            <div class="auth-actions-row">
+              <button type="submit" id="btn-auth-login" class="btn-auth-primary">
+                Se connecter ✅
+              </button>
+              <button type="button" id="btn-auth-back-login" class="btn-auth-secondary">
+                ← Changer de pseudo
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Step 2B: Password for new account registration -->
+        <div id="auth-step-register" class="auth-step-block" style="display: none;">
+          <div class="auth-user-badge-header">
+            <span>Nouveau compte :</span>
+            <b id="auth-register-username-display" class="auth-username-highlight">Pseudo</b>
+          </div>
+          <p class="auth-prompt-desc">
+            Ce pseudo est disponible ! Choisissez un mot de passe pour protéger votre profil et sauvegarder vos statistiques :
+          </p>
+          <form id="auth-register-form" class="auth-form-group">
+            <div class="auth-input-wrapper">
+              <span class="auth-input-icon">🔑</span>
+              <input type="password" id="auth-new-password-input" class="auth-text-input" placeholder="Créer un mot de passe..." autocomplete="new-password" minlength="3" required />
+            </div>
+            <div class="auth-actions-row">
+              <button type="submit" id="btn-auth-register" class="btn-auth-primary">
+                Créer mon compte & Jouer 🚀
+              </button>
+              <button type="button" id="btn-auth-back-register" class="btn-auth-secondary">
+                ← Changer de pseudo
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Error message box -->
+        <div id="auth-error-box" class="auth-error-box" style="display: none;"></div>
       </div>
     </div>
   </div>

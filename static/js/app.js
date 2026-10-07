@@ -24,7 +24,9 @@ class PedantixApp {
       this.roomId = roomParam || localStorage.getItem('pedantix_last_room') || `salon-${Math.floor(Math.random() * 899 + 100)}`;
     }
 
-    this.playerName = localStorage.getItem('pedantix_player_name');
+    this.authUser = localStorage.getItem('pedantix_auth_user') || null;
+    this.authToken = localStorage.getItem('pedantix_auth_token') || null;
+    this.playerName = this.authUser || localStorage.getItem('pedantix_player_name');
     if (!this.playerName) {
       this.playerName = 'Joueur ' + Math.floor(Math.random() * 899 + 100);
       localStorage.setItem('pedantix_player_name', this.playerName);
@@ -113,6 +115,9 @@ class PedantixApp {
 
     // Connect to room & start game
     this.joinRoom();
+
+    // Check user authentication
+    this.checkAuthOnLoad();
   }
 
   getBackendUrl() {
@@ -330,11 +335,36 @@ class PedantixApp {
       faqModal: document.getElementById('faq-modal'),
       themesModal: document.getElementById('themes-modal'),
       statsModal: document.getElementById('stats-modal'),
+      statsUserName: document.getElementById('stats-user-name'),
+      statsUserScore: document.getElementById('stats-user-score'),
+      btnAuthLogout: document.getElementById('btn-auth-logout'),
       sPlayed: document.getElementById('s-played'),
       sWon: document.getElementById('s-won'),
+      sWinRate: document.getElementById('s-winrate'),
       sAvg: document.getElementById('s-avg'),
+      sBest: document.getElementById('s-best'),
+      statsFavWordsList: document.getElementById('stats-fav-words-list'),
       statsRecentList: document.getElementById('stats-recent-list'),
       toast: document.getElementById('toast'),
+
+      // User Authentication Modal
+      authModal: document.getElementById('auth-modal'),
+      authModalTitle: document.getElementById('auth-modal-title'),
+      authStepUsername: document.getElementById('auth-step-username'),
+      authUsernameForm: document.getElementById('auth-username-form'),
+      authUsernameInput: document.getElementById('auth-username-input'),
+      btnAuthContinue: document.getElementById('btn-auth-continue'),
+      authStepLogin: document.getElementById('auth-step-login'),
+      authLoginForm: document.getElementById('auth-login-form'),
+      authPasswordInput: document.getElementById('auth-password-input'),
+      authLoginUsernameDisplay: document.getElementById('auth-login-username-display'),
+      btnAuthBackLogin: document.getElementById('btn-auth-back-login'),
+      authStepRegister: document.getElementById('auth-step-register'),
+      authRegisterForm: document.getElementById('auth-register-form'),
+      authNewPasswordInput: document.getElementById('auth-new-password-input'),
+      authRegisterUsernameDisplay: document.getElementById('auth-register-username-display'),
+      btnAuthBackRegister: document.getElementById('btn-auth-back-register'),
+      authErrorBox: document.getElementById('auth-error-box'),
 
       // Competition Sidebar Tabs & Chat
       tabBtnContest: document.getElementById('tab-btn-contest'),
@@ -488,10 +518,11 @@ class PedantixApp {
 
   initEventListeners() {
     // Nav buttons
-    this.dom.rulesBtn.addEventListener('click', () => this.openModal(this.dom.rulesModal));
-    this.dom.faqBtn.addEventListener('click', () => this.openModal(this.dom.faqModal));
-    this.dom.themeBtn.addEventListener('click', () => this.openModal(this.dom.themesModal));
-    this.dom.historyBtn.addEventListener('click', () => {
+    if (this.dom.rulesBtn) this.dom.rulesBtn.addEventListener('click', () => this.openModal(this.dom.rulesModal));
+    if (this.dom.faqBtn) this.dom.faqBtn.addEventListener('click', () => this.copyInviteUrl());
+    if (this.dom.navConfigBtn) this.dom.navConfigBtn.addEventListener('click', () => this.openServerSettingsModal());
+    if (this.dom.themeBtn) this.dom.themeBtn.addEventListener('click', () => this.openModal(this.dom.themesModal));
+    if (this.dom.historyBtn) this.dom.historyBtn.addEventListener('click', () => {
       this.refreshStatsModal();
       this.openModal(this.dom.statsModal);
     });
@@ -593,10 +624,44 @@ class PedantixApp {
 
     // "Nouvelle page" triggers
     const handleNewRoundTrigger = () => this.requestNewRound();
-    this.dom.newGameBtn.addEventListener('click', handleNewRoundTrigger);
-    this.dom.btnSideNew.addEventListener('click', handleNewRoundTrigger);
-    this.dom.btnNewRoundComp.addEventListener('click', handleNewRoundTrigger);
-    this.dom.btnOpponentNewRound.addEventListener('click', handleNewRoundTrigger);
+    if (this.dom.newGameBtn) this.dom.newGameBtn.addEventListener('click', handleNewRoundTrigger);
+    if (this.dom.btnSideNew) this.dom.btnSideNew.addEventListener('click', handleNewRoundTrigger);
+    if (this.dom.btnNewRoundComp) this.dom.btnNewRoundComp.addEventListener('click', handleNewRoundTrigger);
+    if (this.dom.btnOpponentNewRound) this.dom.btnOpponentNewRound.addEventListener('click', handleNewRoundTrigger);
+
+    // Server settings save
+    if (this.dom.btnSaveBackendUrl) {
+      this.dom.btnSaveBackendUrl.addEventListener('click', () => this.saveServerSettings());
+    }
+
+    // User authentication form events
+    if (this.dom.authUsernameForm) {
+      this.dom.authUsernameForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.handleAuthUsernameSubmit();
+      });
+    }
+    if (this.dom.authLoginForm) {
+      this.dom.authLoginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.handleAuthLoginSubmit();
+      });
+    }
+    if (this.dom.authRegisterForm) {
+      this.dom.authRegisterForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.handleAuthRegisterSubmit();
+      });
+    }
+    if (this.dom.btnAuthBackLogin) {
+      this.dom.btnAuthBackLogin.addEventListener('click', () => this.showAuthStep('username'));
+    }
+    if (this.dom.btnAuthBackRegister) {
+      this.dom.btnAuthBackRegister.addEventListener('click', () => this.showAuthStep('username'));
+    }
+    if (this.dom.btnAuthLogout) {
+      this.dom.btnAuthLogout.addEventListener('click', () => this.handleAuthLogout());
+    }
 
     // Surrender buttons
     const handleSurrender = () => this.handleSurrenderClick();
@@ -768,6 +833,7 @@ class PedantixApp {
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
       overlay.addEventListener('click', (e) => {
         if (e.target === overlay) {
+          if (overlay === this.dom.authModal && !this.authUser) return;
           if (overlay === this.dom.lobbyModal) this.lobbyMinimized = true;
           this.closeModal(overlay);
         }
@@ -990,6 +1056,7 @@ class PedantixApp {
       copyBtns.forEach(btn => {
         if (btn) btn.innerHTML = '<span>✅</span> Copié !';
       });
+      if (this.dom.faqBtn) this.dom.faqBtn.textContent = '✅';
       const modeLabel = this.isHostedMode() ? 'du salon' : ((forcedMode || this.activeNetMode) === 'tunnel' ? 'Internet' : 'Réseau Wi-Fi');
       this.showToast(`Lien ${modeLabel} copié ! Partagez-le avec vos amis 📋`);
       setTimeout(() => {
@@ -998,6 +1065,7 @@ class PedantixApp {
         if (this.dom.btnCopyDrawer) this.dom.btnCopyDrawer.innerHTML = '<span>📋</span> Copier';
         if (this.dom.btnCopyTunnel) this.dom.btnCopyTunnel.innerHTML = '<span>📋</span> Copier';
         if (this.dom.btnLobbyCopyLink) this.dom.btnLobbyCopyLink.innerHTML = '<span>📋</span> Copier le lien';
+        if (this.dom.faqBtn) this.dom.faqBtn.textContent = '❓';
       }, 2500);
     }).catch(() => {
       prompt('Adresse à partager à vos amis :', urlToCopy);
@@ -3669,30 +3737,315 @@ class PedantixApp {
     localStorage.setItem('pedantix_user_stats', JSON.stringify(stats));
   }
 
-  refreshStatsModal() {
+  async refreshStatsModal() {
     const raw = localStorage.getItem('pedantix_user_stats');
-    let stats = raw ? JSON.parse(raw) : { played: 0, won: 0, total_attempts: 0, recent: [] };
+    let localStats = raw ? JSON.parse(raw) : { played: 0, won: 0, total_attempts: 0, recent: [] };
 
-    this.dom.sPlayed.textContent = stats.played;
-    this.dom.sWon.textContent = stats.won;
-    const avg = stats.won > 0 ? Math.round(stats.total_attempts / stats.won) : 0;
-    this.dom.sAvg.textContent = avg;
+    // Initial render from local cache
+    if (this.dom.statsUserName) this.dom.statsUserName.textContent = this.playerName || 'Mon Compte';
+    if (this.dom.statsUserScore) this.dom.statsUserScore.textContent = `${this.myScore} pt${this.myScore > 1 ? 's' : ''}`;
+    if (this.dom.sPlayed) this.dom.sPlayed.textContent = localStats.played;
+    if (this.dom.sWon) this.dom.sWon.textContent = localStats.won;
+    const localAvg = localStats.won > 0 ? Math.round(localStats.total_attempts / localStats.won) : 0;
+    if (this.dom.sAvg) this.dom.sAvg.textContent = localAvg;
+    if (this.dom.sWinRate) {
+      const wr = localStats.played > 0 ? Math.round((localStats.won / localStats.played) * 100) : 0;
+      this.dom.sWinRate.textContent = `${wr}%`;
+    }
+    if (this.dom.sBest) this.dom.sBest.textContent = '-';
 
     this.dom.statsRecentList.innerHTML = '';
-    if (stats.recent.length === 0) {
+    if (localStats.recent.length === 0) {
       this.dom.statsRecentList.innerHTML = '<tr><td colspan="3" style="text-align:center; opacity:0.6;">Aucune victoire enregistrée</td></tr>';
+    } else {
+      localStats.recent.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><b>${this.escapeHtml(r.title)}</b></td>
+          <td style="text-align: center;">${r.attempts}</td>
+          <td style="text-align: right;">${r.date}</td>
+        `;
+        this.dom.statsRecentList.appendChild(tr);
+      });
+    }
+
+    // Fetch persistent stats from database
+    try {
+      const resp = await fetch(this.getApiUrl(`/api/user/stats?username=${encodeURIComponent(this.playerName)}`));
+      if (resp.ok) {
+        const data = await resp.json();
+        if (this.dom.statsUserName) this.dom.statsUserName.textContent = data.username || this.playerName;
+        if (this.dom.statsUserScore) this.dom.statsUserScore.textContent = `${data.score} pt${data.score > 1 ? 's' : ''}`;
+        if (this.dom.sPlayed) this.dom.sPlayed.textContent = data.games_played;
+        if (this.dom.sWon) this.dom.sWon.textContent = data.wins;
+        if (this.dom.sWinRate) this.dom.sWinRate.textContent = `${data.win_rate}%`;
+        if (this.dom.sAvg) this.dom.sAvg.textContent = data.avg_attempts;
+        if (this.dom.sBest) this.dom.sBest.textContent = (data.best_attempts !== null && data.best_attempts !== undefined) ? data.best_attempts : '-';
+
+        // Favorite words
+        if (this.dom.statsFavWordsList) {
+          if (data.favorite_words && data.favorite_words.length > 0) {
+            this.dom.statsFavWordsList.innerHTML = data.favorite_words.map(fw => `
+              <span class="fav-word-badge" title="${fw.count} fois joué">
+                <span class="fav-word-text">${this.escapeHtml(fw.word)}</span>
+                <span class="fav-word-count">${fw.count}</span>
+              </span>
+            `).join('');
+          } else {
+            this.dom.statsFavWordsList.innerHTML = '<span class="empty-fav-hint">Jouez des mots pour découvrir vos mots fétiches !</span>';
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Erreur chargement statistiques utilisateur :', e);
+    }
+  }
+
+  // =========================================================================
+  // USER ACCOUNT & AUTHENTICATION
+  // =========================================================================
+
+  checkAuthOnLoad() {
+    this.authUser = localStorage.getItem('pedantix_auth_user') || null;
+    this.authToken = localStorage.getItem('pedantix_auth_token') || null;
+
+    if (!this.authUser) {
+      // First connection on this browser: prompt for username
+      this.openAuthModal();
+    } else {
+      this.playerName = this.authUser;
+      if (this.dom.playerPseudoInput) this.dom.playerPseudoInput.value = this.authUser;
+      if (this.dom.lobbyPseudoInput) this.dom.lobbyPseudoInput.value = this.authUser;
+    }
+  }
+
+  openAuthModal() {
+    this.pendingAuthUsername = '';
+    this.showAuthStep('username');
+    this.openModal(this.dom.authModal);
+  }
+
+  showAuthStep(step) {
+    if (this.dom.authErrorBox) {
+      this.dom.authErrorBox.style.display = 'none';
+      this.dom.authErrorBox.textContent = '';
+    }
+
+    if (this.dom.authStepUsername) this.dom.authStepUsername.style.display = (step === 'username') ? 'block' : 'none';
+    if (this.dom.authStepLogin) this.dom.authStepLogin.style.display = (step === 'login') ? 'block' : 'none';
+    if (this.dom.authStepRegister) this.dom.authStepRegister.style.display = (step === 'register') ? 'block' : 'none';
+
+    if (step === 'username') {
+      if (this.dom.authUsernameInput) {
+        this.dom.authUsernameInput.value = (this.playerName && !this.playerName.startsWith('Joueur ')) ? this.playerName : '';
+        setTimeout(() => this.dom.authUsernameInput.focus(), 150);
+      }
+    } else if (step === 'login') {
+      if (this.dom.authLoginUsernameDisplay) this.dom.authLoginUsernameDisplay.textContent = this.pendingAuthUsername;
+      if (this.dom.authPasswordInput) {
+        this.dom.authPasswordInput.value = '';
+        setTimeout(() => this.dom.authPasswordInput.focus(), 150);
+      }
+    } else if (step === 'register') {
+      if (this.dom.authRegisterUsernameDisplay) this.dom.authRegisterUsernameDisplay.textContent = this.pendingAuthUsername;
+      if (this.dom.authNewPasswordInput) {
+        this.dom.authNewPasswordInput.value = '';
+        setTimeout(() => this.dom.authNewPasswordInput.focus(), 150);
+      }
+    }
+  }
+
+  showAuthError(msg) {
+    if (this.dom.authErrorBox) {
+      this.dom.authErrorBox.textContent = `⚠️ ${msg}`;
+      this.dom.authErrorBox.style.display = 'flex';
+    }
+  }
+
+  async handleAuthUsernameSubmit() {
+    const raw = this.dom.authUsernameInput ? this.dom.authUsernameInput.value.trim() : '';
+    if (!raw) {
+      this.showAuthError("Veuillez saisir un nom d'utilisateur.");
+      return;
+    }
+    if (raw.length < 2) {
+      this.showAuthError("Le nom d'utilisateur doit contenir au moins 2 caractères.");
       return;
     }
 
-    stats.recent.forEach(r => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><b>${this.escapeHtml(r.title)}</b></td>
-        <td style="text-align: center;">${r.attempts}</td>
-        <td style="text-align: right;">${r.date}</td>
-      `;
-      this.dom.statsRecentList.appendChild(tr);
-    });
+    const btn = this.dom.btnAuthContinue;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Vérification...';
+    }
+
+    try {
+      const resp = await fetch(this.getApiUrl('/api/auth/check-username'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: raw })
+      });
+
+      if (!resp.ok) throw new Error('Erreur réseau');
+      const data = await resp.json();
+
+      this.pendingAuthUsername = data.username || raw;
+      if (data.exists) {
+        this.showAuthStep('login');
+      } else {
+        this.showAuthStep('register');
+      }
+    } catch (e) {
+      this.showAuthError("Impossible de joindre le serveur. Vérifiez votre connexion.");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Continuer ➔';
+      }
+    }
+  }
+
+  async handleAuthLoginSubmit() {
+    const pwd = this.dom.authPasswordInput ? this.dom.authPasswordInput.value : '';
+    if (!pwd) {
+      this.showAuthError("Veuillez saisir votre mot de passe.");
+      return;
+    }
+
+    const btn = document.getElementById('btn-auth-login');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Connexion...';
+    }
+
+    try {
+      const resp = await fetch(this.getApiUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: this.pendingAuthUsername, password: pwd })
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        this.showAuthError(data.detail || data.error || "Mot de passe incorrect.");
+        return;
+      }
+
+      this.completeAuth(data.username, data.token, data.stats);
+    } catch (e) {
+      this.showAuthError("Erreur de connexion. Vérifiez le serveur.");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Se connecter ✅';
+      }
+    }
+  }
+
+  async handleAuthRegisterSubmit() {
+    const pwd = this.dom.authNewPasswordInput ? this.dom.authNewPasswordInput.value : '';
+    if (!pwd || pwd.length < 3) {
+      this.showAuthError("Le mot de passe doit contenir au moins 3 caractères.");
+      return;
+    }
+
+    const btn = document.getElementById('btn-auth-register');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Création du compte...';
+    }
+
+    try {
+      const resp = await fetch(this.getApiUrl('/api/auth/register'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: this.pendingAuthUsername, password: pwd })
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        this.showAuthError(data.detail || data.error || "Erreur lors de la création du compte.");
+        return;
+      }
+
+      this.completeAuth(data.username, data.token, data.stats);
+    } catch (e) {
+      this.showAuthError("Erreur de communication avec le serveur.");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Créer mon compte & Jouer 🚀';
+      }
+    }
+  }
+
+  completeAuth(username, token, stats) {
+    this.authUser = username;
+    this.authToken = token;
+    this.playerName = username;
+
+    localStorage.setItem('pedantix_auth_user', username);
+    localStorage.setItem('pedantix_auth_token', token);
+    localStorage.setItem('pedantix_player_name', username);
+
+    if (this.dom.playerPseudoInput) this.dom.playerPseudoInput.value = username;
+    if (this.dom.lobbyPseudoInput) this.dom.lobbyPseudoInput.value = username;
+
+    this.closeModal(this.dom.authModal);
+    this.showToast(`Bienvenue, ${username} ! Profil connecté 🎮`);
+
+    // Synchronize room with the new player name
+    this.joinRoom();
+  }
+
+  handleAuthLogout() {
+    localStorage.removeItem('pedantix_auth_user');
+    localStorage.removeItem('pedantix_auth_token');
+    this.authUser = null;
+    this.authToken = null;
+
+    this.closeModal(this.dom.statsModal);
+    this.openAuthModal();
+    this.showToast("Déconnecté. Choisissez un compte pour continuer.");
+  }
+
+  // =========================================================================
+  // SERVER SETTINGS MODAL
+  // =========================================================================
+
+  openServerSettingsModal() {
+    if (this.dom.inputBackendUrl) {
+      this.dom.inputBackendUrl.value = this.getBackendUrl();
+    }
+    this.testServerConnectivity();
+    this.openModal(this.dom.serverSettingsModal);
+  }
+
+  async testServerConnectivity() {
+    if (!this.dom.serverModalStatusText || !this.dom.serverModalStatusIndicator) return;
+    this.dom.serverModalStatusText.textContent = "Test de la connexion au serveur...";
+    this.dom.serverModalStatusIndicator.className = "server-status-indicator checking";
+
+    try {
+      const resp = await fetch(this.getApiUrl('/api/network-info'), { signal: AbortSignal.timeout(6000) });
+      if (resp.ok) {
+        this.dom.serverModalStatusText.textContent = "Connecté au serveur API ✅";
+        this.dom.serverModalStatusIndicator.className = "server-status-indicator online";
+      } else {
+        this.dom.serverModalStatusText.textContent = `Erreur HTTP (${resp.status}) ⚠️`;
+        this.dom.serverModalStatusIndicator.className = "server-status-indicator offline";
+      }
+    } catch (e) {
+      this.dom.serverModalStatusText.textContent = "Serveur injoignable ou en cours de réveil ⚠️";
+      this.dom.serverModalStatusIndicator.className = "server-status-indicator offline";
+    }
+  }
+
+  async saveServerSettings() {
+    const raw = this.dom.inputBackendUrl ? this.dom.inputBackendUrl.value.trim() : '';
+    localStorage.setItem('pedantix_backend_url', raw);
+    this.showToast("Configuration du serveur enregistrée ! Test en cours...");
+    await this.testServerConnectivity();
   }
 }
 
