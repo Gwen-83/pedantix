@@ -312,6 +312,19 @@ class PedantixApp {
       btnRoundNextGame: document.getElementById('btn-round-next-game'),
       roundNextStatusHint: document.getElementById('round-next-status-hint'),
 
+      // Surrender controls & modal
+      btnSurrenderRoom: document.getElementById('btn-surrender-room'),
+      btnSideSurrender: document.getElementById('btn-side-surrender'),
+      surrenderModal: document.getElementById('surrender-modal'),
+      surrenderModalTitle: document.getElementById('surrender-modal-title'),
+      surrenderPromptText: document.getElementById('surrender-prompt-text'),
+      surrenderVoteCount: document.getElementById('surrender-vote-count'),
+      surrenderActionsVoting: document.getElementById('surrender-actions-voting'),
+      surrenderActionsWaiting: document.getElementById('surrender-actions-waiting'),
+      btnSurrenderAccept: document.getElementById('btn-surrender-accept'),
+      btnSurrenderRefuse: document.getElementById('btn-surrender-refuse'),
+      btnSurrenderCancel: document.getElementById('btn-surrender-cancel'),
+
       // Modals
       rulesModal: document.getElementById('rules-modal'),
       faqModal: document.getElementById('faq-modal'),
@@ -584,6 +597,14 @@ class PedantixApp {
     this.dom.btnSideNew.addEventListener('click', handleNewRoundTrigger);
     this.dom.btnNewRoundComp.addEventListener('click', handleNewRoundTrigger);
     this.dom.btnOpponentNewRound.addEventListener('click', handleNewRoundTrigger);
+
+    // Surrender buttons
+    const handleSurrender = () => this.handleSurrenderClick();
+    if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.addEventListener('click', handleSurrender);
+    if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.addEventListener('click', handleSurrender);
+    if (this.dom.btnSurrenderAccept) this.dom.btnSurrenderAccept.addEventListener('click', () => this.voteSurrender('yes'));
+    if (this.dom.btnSurrenderRefuse) this.dom.btnSurrenderRefuse.addEventListener('click', () => this.voteSurrender('no'));
+    if (this.dom.btnSurrenderCancel) this.dom.btnSurrenderCancel.addEventListener('click', () => this.voteSurrender('cancel'));
 
     // Theme choices
     document.querySelectorAll('.theme-choice-btn').forEach(btn => {
@@ -1844,6 +1865,24 @@ class PedantixApp {
       } else {
         this.stopHintTimer();
       }
+
+    } else if (msg.type === 'surrender_update') {
+      if (msg.activity) this.updateActivity(msg.activity);
+      this.showSurrenderModal(msg);
+
+    } else if (msg.type === 'surrender_rejected') {
+      this.closeModal(this.dom.surrenderModal);
+      if (msg.activity) this.updateActivity(msg.activity);
+      this.playTone('error');
+      this.showToast(`❌ L'abandon a été refusé par ${msg.refuser_name || 'un joueur'}. La partie continue !`);
+
+    } else if (msg.type === 'surrender_cancelled') {
+      this.closeModal(this.dom.surrenderModal);
+      if (msg.activity) this.updateActivity(msg.activity);
+      this.showToast(`↩️ ${msg.initiator_name || 'L\'initiateur'} a annulé la demande d'abandon.`);
+
+    } else if (msg.type === 'surrender_passed') {
+      this.handleSurrenderPassed(msg);
     }
   }
 
@@ -2043,7 +2082,11 @@ class PedantixApp {
   showRoundOverModal(msg) {
     this.playTone('win');
     if (this.dom.roundOverWinnerTitle) {
-      this.dom.roundOverWinnerTitle.textContent = `${msg.winner_name || 'Un joueur'} a remporté la manche !`;
+      if (msg.abandoned || (msg.last_round && msg.last_round.abandoned)) {
+        this.dom.roundOverWinnerTitle.textContent = "Partie abandonnée à l'unanimité (0 point)";
+      } else {
+        this.dom.roundOverWinnerTitle.textContent = `${msg.winner_name || 'Un joueur'} a remporté la manche !`;
+      }
     }
 
     const sol = msg.solution || {};
@@ -2116,10 +2159,19 @@ class PedantixApp {
       }
       if (this.dom.wiki) this.dom.wiki.style.opacity = '1';
       if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = 'inline-flex';
+      if (!this.isWon) {
+        if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'inline-flex';
+        if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'flex';
+      } else {
+        if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
+        if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
+      }
       return;
     }
 
     if (this.roomStatus === 'lobby') {
+      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
+      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
       if (!this.lobbyMinimized && !this.dom.lobbyModal.classList.contains('active')) {
         if (!this.dom.roundOverModal || !this.dom.roundOverModal.classList.contains('active')) {
           this.openModal(this.dom.lobbyModal);
@@ -2149,7 +2201,27 @@ class PedantixApp {
       if (this.dom.btnOpponentNewRound) this.dom.btnOpponentNewRound.style.display = 'none';
 
       // Update previous round recap in lobby modal if available
-      if (this.lastRound && this.lastRound.podium && this.lastRound.podium.length > 0) {
+      if (this.lastRound && this.lastRound.abandoned) {
+        if (this.dom.lobbyLastRoundBox) this.dom.lobbyLastRoundBox.style.display = 'block';
+        if (this.dom.lobbyLastSolutionTitle) this.dom.lobbyLastSolutionTitle.textContent = this.lastRound.title || '...';
+        if (this.dom.lobbyLastSolutionLink) {
+          this.dom.lobbyLastSolutionLink.href = this.lastRound.url || `https://fr.wikipedia.org/wiki/${encodeURIComponent(this.lastRound.title || '')}`;
+        }
+        if (this.dom.lobbyPodiumCards) {
+          this.dom.lobbyPodiumCards.innerHTML = `
+            <div style="grid-column: 1 / -1; padding: 12px; text-align: center; color: #f87171; font-weight: 700; background: rgba(239, 68, 68, 0.12); border-radius: 12px; border: 1px dashed rgba(239, 68, 68, 0.35);">
+              🏳️ Manche abandonnée à l'unanimité — Aucun point attribué.
+            </div>
+          `;
+        }
+        if (this.dom.lobbyMainTitle) this.dom.lobbyMainTitle.textContent = 'Partie abandonnée ! Prêt pour la suivante ?';
+        if (this.dom.lobbyInstructions) {
+          this.dom.lobbyInstructions.innerHTML = 'Indiquez que vous êtes <b>prêt</b> pour la manche suivante. L\'Host pourra relancer une partie dès que tout le monde est prêt.';
+        }
+        if (this.dom.btnLobbyStartGame) {
+          this.dom.btnLobbyStartGame.innerHTML = '<span>🎲</span> Relancer une partie';
+        }
+      } else if (this.lastRound && this.lastRound.podium && this.lastRound.podium.length > 0) {
         if (this.dom.lobbyLastRoundBox) this.dom.lobbyLastRoundBox.style.display = 'block';
         if (this.dom.lobbyLastSolutionTitle) this.dom.lobbyLastSolutionTitle.textContent = this.lastRound.title || '...';
         if (this.dom.lobbyLastSolutionLink) {
@@ -2211,6 +2283,8 @@ class PedantixApp {
     } else if (this.roomStatus === 'starting') {
       this.closeModal(this.dom.lobbyModal);
       this.closeModal(this.dom.roundOverModal);
+      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
+      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
       if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = 'none';
       if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = 'none';
       if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = 'none';
@@ -2226,6 +2300,8 @@ class PedantixApp {
     } else if (this.roomStatus === 'playing') {
       this.closeModal(this.dom.lobbyModal);
       this.closeModal(this.dom.roundOverModal);
+      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'inline-flex';
+      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'flex';
       if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = 'none';
       if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = 'none';
       if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = 'none';
@@ -2243,6 +2319,8 @@ class PedantixApp {
     } else if (this.roomStatus === 'ending') {
       this.closeModal(this.dom.lobbyModal);
       this.closeModal(this.dom.roundOverModal);
+      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'inline-flex';
+      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'flex';
       if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = 'none';
       if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = 'none';
       if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = 'none';
@@ -3367,6 +3445,182 @@ class PedantixApp {
       }
       this.showToast('Erreur lors du démasquage de l\'article.');
     }
+  }
+
+  applyUnmaskedTokens(tokensMap) {
+    if (!tokensMap || typeof tokensMap !== 'object') return;
+    Object.entries(tokensMap).forEach(([tid, text]) => {
+      const token = this.tokensById[tid];
+      if (token) {
+        token.revealed = true;
+        token.text = text;
+      }
+      const el = document.getElementById(`token-${tid}`);
+      if (el) {
+        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'has-hint', 'hint-pulse');
+        el.style.backgroundColor = '';
+        el.style.borderColor = '';
+        el.style.color = '';
+        el.title = '';
+        delete el.dataset.heat;
+        delete el.dataset.word;
+        el.classList.add('revealed');
+        el.textContent = text;
+      }
+    });
+
+    this.tokens.forEach(t => {
+      const el = document.getElementById(`token-${t.id}`);
+      if (el && (t.type === 'word' || t.is_word)) {
+        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'has-hint', 'hint-pulse');
+        el.style.backgroundColor = '';
+        el.style.borderColor = '';
+        el.style.color = '';
+        el.title = '';
+        delete el.dataset.heat;
+        delete el.dataset.word;
+        el.classList.add('revealed');
+        if (t.text) {
+          el.textContent = t.text;
+        }
+      }
+    });
+  }
+
+  async handleSurrenderClick() {
+    if (this.roomStatus !== 'playing' && this.roomStatus !== 'ending') {
+      this.showToast('Aucune partie en cours à abandonner.');
+      return;
+    }
+
+    const confirmMsg = this.isSoloMode
+      ? "Voulez-vous abandonner cette partie ?\nL'article sera entièrement dévoilé et aucun point ne sera attribué."
+      : "Voulez-vous proposer d'abandonner la partie à tous les joueurs ?\nSi tous les joueurs acceptent, l'article sera révélé et aucun point ne sera attribué.";
+
+    if (!confirm(confirmMsg)) return;
+
+    this.playTone('click');
+    try {
+      const resp = await fetch(this.getApiUrl('/api/room/surrender'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: this.roomId,
+          player_id: this.playerId,
+          vote: 'yes'
+        })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        this.showToast(err.detail || 'Erreur lors de la demande d\'abandon.');
+      }
+    } catch (err) {
+      console.error('Erreur demande abandon:', err);
+      this.showToast('Erreur de connexion lors de la demande d\'abandon.');
+    }
+  }
+
+  async voteSurrender(vote) {
+    this.playTone('click');
+    try {
+      const resp = await fetch(this.getApiUrl('/api/room/surrender'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: this.roomId,
+          player_id: this.playerId,
+          vote: vote
+        })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        this.showToast(err.detail || 'Erreur lors du vote.');
+      } else {
+        if (vote === 'cancel') {
+          this.closeModal(this.dom.surrenderModal);
+          this.showToast('Demande d\'abandon annulée.');
+        } else if (vote === 'no') {
+          this.closeModal(this.dom.surrenderModal);
+        }
+      }
+    } catch (err) {
+      console.error('Erreur vote abandon:', err);
+    }
+  }
+
+  showSurrenderModal(data) {
+    if (!this.dom.surrenderModal) return;
+    const initiatorName = data.initiator_name || 'Un joueur';
+    const votesCount = data.votes_count || 1;
+    const totalRequired = data.total_required || 1;
+    const votedIds = data.voted_player_ids || [];
+    const hasVoted = votedIds.includes(this.playerId);
+    const isInitiator = data.initiator_id === this.playerId;
+
+    if (this.dom.surrenderVoteCount) {
+      this.dom.surrenderVoteCount.textContent = `${votesCount} / ${totalRequired} joueur${totalRequired > 1 ? 's' : ''}`;
+    }
+
+    if (this.dom.surrenderPromptText) {
+      if (isInitiator) {
+        this.dom.surrenderPromptText.innerHTML = `Vous avez proposé d'abandonner la partie.<br>En attente de la validation de <b>tous les joueurs</b> (${votesCount}/${totalRequired})...`;
+      } else if (hasVoted) {
+        this.dom.surrenderPromptText.innerHTML = `Vous avez accepté l'abandon.<br>En attente des autres joueurs (${votesCount}/${totalRequired})...`;
+      } else {
+        this.dom.surrenderPromptText.innerHTML = `<b>${this.escapeHtml(initiatorName)}</b> propose d'abandonner la partie en cours. Acceptez-vous d'abandonner ?`;
+      }
+    }
+
+    if (hasVoted) {
+      if (this.dom.surrenderActionsVoting) this.dom.surrenderActionsVoting.style.display = 'none';
+      if (this.dom.surrenderActionsWaiting) {
+        this.dom.surrenderActionsWaiting.style.display = isInitiator ? 'flex' : 'none';
+      }
+    } else {
+      if (this.dom.surrenderActionsVoting) this.dom.surrenderActionsVoting.style.display = 'flex';
+      if (this.dom.surrenderActionsWaiting) this.dom.surrenderActionsWaiting.style.display = 'none';
+    }
+
+    this.openModal(this.dom.surrenderModal);
+  }
+
+  handleSurrenderPassed(msg) {
+    this.closeModal(this.dom.surrenderModal);
+    this.stopHintTimer();
+    if (this.sprintInterval) clearInterval(this.sprintInterval);
+    if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
+    this.hideOpponentWin();
+
+    this.roomStatus = 'lobby';
+    this.isReady = false;
+    this.lastRound = msg.last_round || null;
+    if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
+    if (msg.teams) this.teamsData = msg.teams;
+    if (msg.activity) this.updateActivity(msg.activity);
+
+    if (msg.solution) {
+      this.solution = msg.solution;
+    }
+
+    if (msg.tokens && Object.keys(msg.tokens).length > 0) {
+      this.applyUnmaskedTokens(msg.tokens);
+    } else {
+      this.unmaskAllWords();
+    }
+
+    this.playTone('hint');
+    this.showToast('🏳️ Partie abandonnée à l\'unanimité ! L\'article a été entièrement démasqué. Aucun point attribué.');
+
+    const title = msg.title || (msg.solution && msg.solution.title) || '';
+    if (this.dom.solutionDisplay) {
+      this.dom.solutionDisplay.textContent = title;
+    }
+    if (this.dom.solutionLink && (msg.url || (msg.solution && msg.solution.url))) {
+      this.dom.solutionLink.href = msg.url || msg.solution.url;
+    }
+
+    this.updateModeUI();
+    this.syncRoomUI();
   }
 
   copyShareScore() {

@@ -110,6 +110,7 @@
               <button type="button" id="btn-browse-rooms" class="btn-browse-rooms" title="Voir les salons multijoueur disponibles">🔍 Trouver une partie</button>
               <button type="button" id="btn-create-room" class="btn-create-room" title="Créer un nouveau salon">➕ Créer</button>
               <button type="button" id="btn-header-invite" class="btn-header-invite" title="Copier le lien d'invitation pour vos amis">🔗 Inviter</button>
+              <button type="button" id="btn-surrender-room" class="btn-surrender-room" style="display: none;" title="Proposer d'abandonner la partie en cours">🏳️ Abandonner</button>
               <span class="hint-timer-badge" id="hint-timer-badge" style="display: none;" title="Un indice lettre est révélé toutes les 5 minutes si personne n'a trouvé !">💡 Lettre dans <b id="hint-timer-val">5:00</b></span>
               <span class="host-pill" id="host-pill" style="display: none;">👑 Host</span>
             </div>
@@ -279,6 +280,10 @@
 
               <button type="button" id="btn-open-lobby" class="btn-open-lobby" style="display: none;" title="Ouvrir le salon d'attente">
                 <span>🎮</span> Salon d'attente
+              </button>
+
+              <button type="button" id="btn-side-surrender" class="btn-side-surrender" style="display: none;" title="Proposer d'abandonner la partie en cours">
+                <span>🏳️</span> Abandonner la partie
               </button>
             </div>
 
@@ -797,6 +802,50 @@
       <div class="chat-toast-text" id="chat-toast-text">Message</div>
     </div>
     <button type="button" class="chat-toast-close" id="btn-chat-toast-close" title="Fermer">✕</button>
+  </div>
+
+  <!-- MODAL: ABANDON DE PARTIE (SURRENDER VOTE) -->
+  <div class="modal-overlay" id="surrender-modal">
+    <div class="modal surrender-modal-content">
+      <div class="modal-header">
+        <span class="modal-header-icon">🏳️</span>
+        <div class="modal-title-col">
+          <h3 id="surrender-modal-title">Demande d'abandon de la partie</h3>
+          <p class="modal-subtitle">Vote d'abandon à l'unanimité</p>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="surrender-info-box">
+          <p id="surrender-prompt-text" class="surrender-prompt-text">
+            <b>Un joueur</b> propose d'abandonner la partie en cours.
+          </p>
+          <div class="surrender-consequences">
+            <span class="consequence-item">📖 L'article Wikipédia sera entièrement révélé à tous</span>
+            <span class="consequence-item">0️⃣ Aucun point ne sera attribué pour cette manche</span>
+            <span class="consequence-item">⚠️ L'abandon n'est validé que si <b>tous les joueurs</b> l'acceptent</span>
+          </div>
+          <div class="surrender-status-tracker">
+            <span class="tracker-label">Accord des joueurs :</span>
+            <b id="surrender-vote-count" class="surrender-count-pill">1 / 2</b>
+          </div>
+        </div>
+
+        <div class="surrender-btn-group" id="surrender-actions-voting">
+          <button type="button" id="btn-surrender-accept" class="btn-surrender-yes">
+            <span>✅</span> Accepter l'abandon
+          </button>
+          <button type="button" id="btn-surrender-refuse" class="btn-surrender-no">
+            <span>❌</span> Refuser et continuer
+          </button>
+        </div>
+
+        <div class="surrender-btn-group" id="surrender-actions-waiting" style="display: none;">
+          <button type="button" id="btn-surrender-cancel" class="btn-surrender-cancel">
+            <span>↩️</span> Annuler ma demande
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL: SALONS MULTIJOUEUR (ROOM BROWSER & DISCOVERY) -->

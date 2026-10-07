@@ -99,6 +99,10 @@ class Room:
         self._letter_hint_task: Optional[asyncio.Task] = None
         self.letter_hint_interval: float = 300.0  # 5 minutes = 300 seconds
         self.next_letter_hint_time: Optional[float] = None
+        self.surrender_in_progress: bool = False
+        self.surrender_initiator_id: Optional[str] = None
+        self.surrender_initiator_name: Optional[str] = None
+        self.surrender_votes: Set[str] = set()
 
     def _pick_next_hint_letter(self) -> Optional[str]:
         """
@@ -423,6 +427,10 @@ class Room:
         self.first_winner_id = None
         self.first_winner_name = None
         self.first_winner_attempts = None
+        self.surrender_in_progress = False
+        self.surrender_initiator_id = None
+        self.surrender_initiator_name = None
+        self.surrender_votes = set()
         self.status = "starting"
         self.countdown_end = time.time() + 5.0
         self.add_activity("⏳ Compte à rebours de 5 secondes lancé !", "countdown")
@@ -782,6 +790,10 @@ class Room:
         self.first_winner_attempts = None
         self.winners = []
         self.winning_team = None
+        self.surrender_in_progress = False
+        self.surrender_initiator_id = None
+        self.surrender_initiator_name = None
+        self.surrender_votes = set()
         self.created_at = time.time()
 
         # Re-initialize sessions with the new article
@@ -868,6 +880,147 @@ class Room:
             session = player.session
         return session.unmask_all()
 
+    async def propose_or_vote_surrender(self, player_id: str, vote: str = "yes") -> Dict[str, Any]:
+        """Gère la proposition ou le vote d'abandon unanime de la partie."""
+        if player_id not in self.players:
+            return {"error": "Joueur non trouvé dans la salle."}
+        if self.status not in ("playing", "ending", "starting"):
+            return {"error": "Aucune partie en cours à abandonner."}
+
+        player = self.players[player_id]
+
+        if vote == "cancel":
+            if self.surrender_in_progress and self.surrender_initiator_id == player_id:
+                self.surrender_in_progress = False
+                self.surrender_initiator_id = None
+                self.surrender_initiator_name = None
+                self.surrender_votes.clear()
+                self.add_activity(f"↩️ {player.name} a annulé sa demande d'abandon.", "surrender")
+                await self.broadcast({
+                    "type": "surrender_cancelled",
+                    "initiator_name": player.name,
+                    "activity": self.recent_activity
+                })
+                return {"status": "cancelled"}
+            return {"error": "Impossible d'annuler cette demande."}
+
+        if vote == "no":
+            self.surrender_in_progress = False
+            self.surrender_initiator_id = None
+            self.surrender_initiator_name = None
+            self.surrender_votes.clear()
+            self.add_activity(f"❌ L'abandon a été refusé par {player.name}. La partie continue !", "surrender")
+            await self.broadcast({
+                "type": "surrender_rejected",
+                "refuser_name": player.name,
+                "activity": self.recent_activity
+            })
+            return {"status": "rejected", "refuser_name": player.name}
+
+        # vote == "yes"
+        if not self.surrender_in_progress:
+            self.surrender_in_progress = True
+            self.surrender_initiator_id = player_id
+            self.surrender_initiator_name = player.name
+            self.surrender_votes = {player_id}
+            self.add_activity(f"🏳️ {player.name} propose d'abandonner la partie.", "surrender")
+        else:
+            self.surrender_votes.add(player_id)
+
+        connected_pids = {p.player_id for p in self.players.values() if p.connected}
+        if not connected_pids:
+            connected_pids = {player_id}
+
+        # Check if 100% of connected players agreed
+        if self.surrender_votes >= connected_pids:
+            await self.execute_surrender()
+            return {"status": "passed"}
+        else:
+            await self.broadcast({
+                "type": "surrender_update",
+                "in_progress": True,
+                "initiator_id": self.surrender_initiator_id,
+                "initiator_name": self.surrender_initiator_name,
+                "votes_count": len(self.surrender_votes & connected_pids),
+                "total_required": len(connected_pids),
+                "voted_player_ids": list(self.surrender_votes & connected_pids),
+                "activity": self.recent_activity
+            })
+            return {
+                "status": "voting",
+                "votes_count": len(self.surrender_votes & connected_pids),
+                "total_required": len(connected_pids)
+            }
+
+    async def execute_surrender(self):
+        """Valide l'abandon unanime : révèle tout l'article, termine la partie, aucun point attribué."""
+        self.surrender_in_progress = False
+        self.surrender_initiator_id = None
+        self.surrender_initiator_name = None
+        self.surrender_votes.clear()
+
+        self.status = "lobby"
+        self.rounds_played += 1
+        self.timer_30s_end = None
+        self.countdown_end = None
+
+        if self._countdown_task and not self._countdown_task.done():
+            self._countdown_task.cancel()
+        if self._timer_30s_task and not self._timer_30s_task.done():
+            self._timer_30s_task.cancel()
+        if self._letter_hint_task and not self._letter_hint_task.done():
+            self._letter_hint_task.cancel()
+        self.revealed_letters = []
+        self.next_letter_hint_time = None
+
+        # Reset ready status for everyone and ensure NO points are awarded
+        for p in self.players.values():
+            p.refresh_score()
+            p.is_ready = False
+
+        # Unmask all tokens across sessions
+        unmasked_tokens: Dict[str, str] = {}
+        if self.game_mode == "team" and self.team_sessions:
+            for s in self.team_sessions.values():
+                res = s.unmask_all()
+                unmasked_tokens.update(res.get("tokens", {}))
+        else:
+            for p in self.players.values():
+                res = p.session.unmask_all()
+                unmasked_tokens.update(res.get("tokens", {}))
+
+        self.last_round_results = {
+            "title": self.article_data["title"],
+            "url": self.article_data.get("url", ""),
+            "image": self.article_data.get("image", ""),
+            "podium": [],
+            "abandoned": True,
+            "winners_count": 0,
+            "game_mode": self.game_mode,
+            "winning_team": None
+        }
+
+        self.add_activity("🏳️ La partie a été abandonnée à l'unanimité. L'article est révélé ! (0 point)", "surrender")
+
+        await self.broadcast({
+            "type": "surrender_passed",
+            "status": "lobby",
+            "title": self.article_data["title"],
+            "url": self.article_data.get("url", ""),
+            "image": self.article_data.get("image", ""),
+            "solution": {
+                "title": self.article_data["title"],
+                "url": self.article_data.get("url", ""),
+                "image": self.article_data.get("image", "")
+            },
+            "tokens": unmasked_tokens,
+            "last_round": self.last_round_results,
+            "leaderboard": self.get_leaderboard(),
+            "teams": self.get_teams_data(),
+            "activity": self.recent_activity,
+            "can_start": self.can_start()
+        })
+
     start_next_round = start_new_round
 
     def cleanup(self):
@@ -878,6 +1031,10 @@ class Room:
             self._timer_30s_task.cancel()
         if self._letter_hint_task and not self._letter_hint_task.done():
             self._letter_hint_task.cancel()
+        self.surrender_in_progress = False
+        self.surrender_initiator_id = None
+        self.surrender_initiator_name = None
+        self.surrender_votes.clear()
         self.websockets.clear()
         self.ws_player_map.clear()
 
@@ -908,6 +1065,12 @@ class Room:
                         room_manager.delete_room(self.room_id)
                         return
 
+                    if self.surrender_in_progress:
+                        connected_pids = {p.player_id for p in self.players.values() if p.connected}
+                        if connected_pids and self.surrender_votes >= connected_pids:
+                            await self.execute_surrender()
+                            return
+
                     await self.broadcast({
                         "type": "player_disconnected",
                         "player_id": pid,
@@ -934,6 +1097,35 @@ class Room:
             if self.room_id != "default":
                 room_manager.delete_room(self.room_id)
             return True
+
+        if self.surrender_in_progress:
+            self.surrender_votes.discard(player_id)
+            if self.surrender_initiator_id == player_id:
+                if self.surrender_votes:
+                    first_voter = next(iter(self.surrender_votes))
+                    self.surrender_initiator_id = first_voter
+                    if first_voter in self.players:
+                        self.surrender_initiator_name = self.players[first_voter].name
+                else:
+                    self.surrender_in_progress = False
+                    self.surrender_initiator_id = None
+                    self.surrender_initiator_name = None
+
+            connected_pids = {p.player_id for p in self.players.values() if p.connected}
+            if connected_pids and self.surrender_votes >= connected_pids:
+                await self.execute_surrender()
+                return True
+            elif self.surrender_in_progress:
+                await self.broadcast({
+                    "type": "surrender_update",
+                    "in_progress": True,
+                    "initiator_id": self.surrender_initiator_id,
+                    "initiator_name": self.surrender_initiator_name,
+                    "votes_count": len(self.surrender_votes & connected_pids),
+                    "total_required": len(connected_pids),
+                    "voted_player_ids": list(self.surrender_votes & connected_pids),
+                    "activity": self.recent_activity
+                })
 
         new_host_name = None
         if self.host_player_id == player_id:

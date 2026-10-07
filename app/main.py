@@ -137,6 +137,11 @@ class RoomLeaveRequest(BaseModel):
     room_id: str
     player_id: str
 
+class RoomSurrenderRequest(BaseModel):
+    room_id: str = "default"
+    player_id: str
+    vote: str = "yes"
+
 
 
 @app.get("/")
@@ -248,7 +253,11 @@ async def join_room(req: RoomJoinRequest):
         "last_round": room.last_round_results,
         "rounds_played": room.rounds_played,
         "revealed_letters": room.revealed_letters,
-        "next_letter_hint_time": room.next_letter_hint_time
+        "next_letter_hint_time": room.next_letter_hint_time,
+        "surrender_in_progress": room.surrender_in_progress,
+        "surrender_initiator_id": room.surrender_initiator_id,
+        "surrender_initiator_name": room.surrender_initiator_name,
+        "surrender_votes_count": len(room.surrender_votes)
     }
 
 
@@ -412,6 +421,15 @@ async def unmask_room(req: RoomUnmaskRequest):
     return res
 
 
+@app.post("/api/room/surrender")
+async def surrender_room(req: RoomSurrenderRequest):
+    room = room_manager.get_or_create_room(req.room_id)
+    res = await room.propose_or_vote_surrender(req.player_id, req.vote)
+    if "error" in res:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return res
+
+
 @app.post("/api/room/chat")
 async def room_chat(req: RoomChatRequest):
     room = room_manager.get_or_create_room(req.room_id)
@@ -459,7 +477,11 @@ async def get_room_state(room_id: str, player_id: Optional[str] = None):
         "last_round": room.last_round_results,
         "rounds_played": room.rounds_played,
         "revealed_letters": room.revealed_letters,
-        "next_letter_hint_time": room.next_letter_hint_time
+        "next_letter_hint_time": room.next_letter_hint_time,
+        "surrender_in_progress": room.surrender_in_progress,
+        "surrender_initiator_id": room.surrender_initiator_id,
+        "surrender_initiator_name": room.surrender_initiator_name,
+        "surrender_votes_count": len(room.surrender_votes)
     }
 
 
