@@ -12,7 +12,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import random
 
-from app.database import init_db, get_stats, get_player_score, increment_player_score, get_top_player_scores
+from app.database import (
+    init_db,
+    get_stats,
+    get_player_score,
+    increment_player_score,
+    get_top_player_scores,
+    get_db_status,
+)
 from app.game import GameManager
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
@@ -23,13 +30,24 @@ app = FastAPI(title="Pédantix Local - Concours Multijoueur", version="2.0.0")
 # Enable CORS (support PEDANTIX_ALLOWED_ORIGINS or default to allow all)
 allowed_origins_env = os.environ.get("PEDANTIX_ALLOWED_ORIGINS", "*")
 if allowed_origins_env and allowed_origins_env.strip() != "*":
-    allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+    allowed_origins = []
+    for o in allowed_origins_env.split(","):
+        cleaned = o.strip()
+        if cleaned:
+            # Browsers send Origin headers without a trailing slash (RFC 6454).
+            # Always ensure the slash-stripped version is allowed to prevent CORS failures.
+            no_slash = cleaned.rstrip("/")
+            if no_slash and no_slash not in allowed_origins:
+                allowed_origins.append(no_slash)
+            if cleaned not in allowed_origins:
+                allowed_origins.append(cleaned)
 else:
     allowed_origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.netlify\.app|http://localhost(:\d+)?|http://127\.0\.0\.1(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -126,10 +144,12 @@ async def root():
 
 @app.get("/health")
 async def health_check():
+    db_status = get_db_status()
     return {
         "status": "ok",
         "timestamp": time.time(),
-        "database": "postgresql" if os.environ.get("DATABASE_URL") else "sqlite"
+        "database": db_status["active_type"],
+        "database_details": db_status,
     }
 
 

@@ -99,6 +99,12 @@ class PedantixApp {
     // Solo mode UI initialization
     if (this.isSoloMode) {
       document.body.classList.add('solo-mode');
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add('active');
+      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
+    } else {
+      document.body.classList.remove('solo-mode');
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
+      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
     }
 
     // Connect to room & start game
@@ -481,6 +487,14 @@ class PedantixApp {
       this.showToast(this.soundEnabled ? 'Sons activés' : 'Sons désactivés');
       if (this.soundEnabled) this.playTone('click');
     });
+
+    // Solo vs Multiplayer toggle buttons
+    if (this.dom.btnTypeSolo) {
+      this.dom.btnTypeSolo.addEventListener('click', () => this.switchPlayMode('solo'));
+    }
+    if (this.dom.btnTypeMulti) {
+      this.dom.btnTypeMulti.addEventListener('click', () => this.switchPlayMode('multi'));
+    }
 
     // Create new party / room button
     if (this.dom.btnCreateRoom) {
@@ -1640,7 +1654,7 @@ class PedantixApp {
 
   async requestNewRound() {
     // If in multiplayer and host, start next round directly; else join/request
-    if (this.isHost) {
+    if (this.isHost || this.isSoloMode) {
       return this.startNextRound();
     }
     this.showToast('Seul l\'Host peut lancer une nouvelle manche.');
@@ -1820,6 +1834,19 @@ class PedantixApp {
     }
 
     // 3. Phase-specific view toggling
+    if (this.isSoloMode) {
+      this.closeModal(this.dom.lobbyModal);
+      if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
+      if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
+      if (this.dom.form) {
+        this.dom.form.style.opacity = '1';
+        this.dom.form.style.pointerEvents = 'auto';
+      }
+      if (this.dom.wiki) this.dom.wiki.style.opacity = '1';
+      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = 'inline-flex';
+      return;
+    }
+
     if (this.roomStatus === 'lobby') {
       if (!this.lobbyMinimized && !this.dom.lobbyModal.classList.contains('active')) {
         if (!this.dom.roundOverModal || !this.dom.roundOverModal.classList.contains('active')) {
@@ -1960,6 +1987,41 @@ class PedantixApp {
     }
 
     this.updateModeUI();
+  }
+
+  switchPlayMode(mode) {
+    const isSolo = mode === 'solo';
+    if (isSolo === this.isSoloMode) return;
+    this.playTone('click');
+    this.isSoloMode = isSolo;
+    localStorage.setItem('pedantix_play_mode', mode);
+
+    const url = new URL(window.location.href);
+    if (this.isSoloMode) {
+      url.searchParams.set('mode', 'solo');
+      url.searchParams.delete('room');
+      document.body.classList.add('solo-mode');
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add('active');
+      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
+      this.roomId = `solo-${this.playerId}`;
+      this.closeModal(this.dom.lobbyModal);
+      this.showToast('🎯 Mode Solo activé');
+    } else {
+      url.searchParams.delete('mode');
+      url.searchParams.delete('room');
+      document.body.classList.remove('solo-mode');
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
+      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
+      this.roomId = 'default';
+      this.showToast('🌐 Mode Multijoueur activé');
+    }
+    window.history.replaceState({}, '', url.toString());
+
+    if (this.ws) {
+      try { this.ws.close(); } catch (e) {}
+      this.ws = null;
+    }
+    this.joinRoom();
   }
 
   async switchGameMode(mode) {
@@ -2501,9 +2563,15 @@ class PedantixApp {
   }
 
   updateBadges() {
-    this.dom.puzzleNum.textContent = this.seed.replace('P-', '').replace('D-', '');
-    this.dom.puzzleLabel.textContent = 'Partie';
-    this.dom.modeBadge.textContent = 'Concours Réseau';
+    if (this.dom.puzzleNum && this.seed) {
+      this.dom.puzzleNum.textContent = this.seed.replace('P-', '').replace('D-', '');
+    }
+    if (this.dom.puzzleLabel) {
+      this.dom.puzzleLabel.textContent = this.isSoloMode ? 'Solo' : 'Partie';
+    }
+    if (this.dom.modeBadge) {
+      this.dom.modeBadge.textContent = this.isSoloMode ? 'Mode Solo' : 'Concours Réseau';
+    }
   }
 
   // =========================================================================

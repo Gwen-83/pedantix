@@ -475,3 +475,13 @@ def get_top_player_scores(limit: int = 20) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.warning(f"get_top_player_scores: {e}")
         return []
+
+
+def get_db_status() -> Dict[str, Any]:
+    return {
+        "configured_type": "postgresql" if IS_POSTGRES else "sqlite",
+        "active_type": "postgresql" if _use_pg() else "sqlite",
+        "pg_disabled": _pg_disabled,
+        "is_postgres": IS_POSTGRES,
+    }
+

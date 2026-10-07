@@ -71,7 +71,7 @@ class Room:
         self.websockets: Set[WebSocket] = set()
         self.ws_player_map: Dict[WebSocket, str] = {}
         self.host_player_id: Optional[str] = None
-        self.status: str = "lobby"  # "lobby", "starting", "playing", "ending"
+        self.status: str = "playing" if room_id.startswith("solo-") else "lobby"  # "lobby", "starting", "playing", "ending"
         self.countdown_end: Optional[float] = None
         self.timer_30s_end: Optional[float] = None
         self.first_winner_id: Optional[str] = None
@@ -384,6 +384,10 @@ class Room:
             )
 
         player = RoomPlayer(player_id=player_id, name=player_name, session=session, is_host=is_first, team=default_team)
+        if self.room_id.startswith("solo-"):
+            player.is_ready = True
+            player.is_host = True
+            self.status = "playing"
         self.players[player_id] = player
         team_tag = f" ({'🔴 Rouge' if default_team == 'red' else '🔵 Bleu'})" if self.game_mode == "team" else ""
         self.add_activity(f"👋 {player_name} a rejoint la salle{' (Host 👑)' if is_first else ''}{team_tag}", "join")
@@ -819,6 +823,23 @@ class Room:
                 p.last_status = None
                 p.last_count = 0
                 p.refresh_score()
+
+        if self.room_id.startswith("solo-"):
+            self.status = "playing"
+            self.countdown_end = None
+            for p in self.players.values():
+                p.is_ready = True
+            self.add_activity("🎲 Nouvelle partie solo lancée !", "new_round")
+            await self.broadcast({
+                "type": "new_round",
+                "status": "playing",
+                "seed": self.seed,
+                "game_mode": self.game_mode,
+                "teams": self.get_teams_data(),
+                "leaderboard": self.get_leaderboard(),
+                "activity": self.recent_activity
+            })
+            return {"status": "playing", "seed": self.seed}
 
         self.add_activity("🎲 Nouvelle partie lancée ! Compte à rebours de 5 secondes...", "new_round")
 

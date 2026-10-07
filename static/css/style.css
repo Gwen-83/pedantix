@@ -5045,6 +5045,14 @@ body.solo-mode .game-container {
   grid-template-columns: minmax(280px, 320px) 1fr !important;
 }
 
+body.solo-mode #room-badge,
+body.solo-mode #btn-browse-rooms,
+body.solo-mode #btn-create-room,
+body.solo-mode #btn-header-invite,
+body.solo-mode #host-pill {
+  display: none !important;
+}
+
 @media (max-width: 1024px) {
   body.solo-mode .game-container {
     grid-template-columns: 1fr !important;
