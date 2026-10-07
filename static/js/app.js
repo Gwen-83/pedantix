@@ -83,8 +83,9 @@ class PedantixApp {
 
     // Game Mode & Teams State
     this.gameMode = 'individual'; // 'individual' or 'team'
-    this.myTeam = 'red';          // 'red' or 'blue'
+    this.myTeam = 'blue';         // 'blue', 'red', 'green', 'yellow'
     this.teamsData = null;
+    this.wsRoomId = null;
 
     this.initElements();
     this.initAudio();
@@ -996,8 +997,12 @@ class PedantixApp {
     if (!roomId) return;
     try {
       if (this.ws) {
-        try { this.ws.close(); } catch (e) {}
+        try {
+          this.ws.onclose = null;
+          this.ws.close();
+        } catch (e) {}
         this.ws = null;
+        this.wsRoomId = null;
       }
       await fetch(this.getApiUrl('/api/room/leave'), {
         method: 'POST',
@@ -1016,8 +1021,17 @@ class PedantixApp {
     const cleanId = (newRoomId || '').trim();
     if (!cleanId) return;
 
-    if (this.roomId && this.roomId !== cleanId && !this.roomId.startsWith('solo-')) {
-      await this.leaveRoom(this.roomId);
+    if (this.roomId && this.roomId !== cleanId) {
+      if (!this.roomId.startsWith('solo-')) {
+        await this.leaveRoom(this.roomId);
+      } else if (this.ws) {
+        try {
+          this.ws.onclose = null;
+          this.ws.close();
+        } catch (e) {}
+        this.ws = null;
+        this.wsRoomId = null;
+      }
     }
 
     this.isSoloMode = false;
@@ -1125,8 +1139,17 @@ class PedantixApp {
     const roomId = (customCode && customCode.trim()) ? customCode.trim() : `salon-${Math.floor(Math.random() * 899 + 100)}`;
 
     try {
-      if (this.roomId && !this.roomId.startsWith('solo-') && this.roomId !== roomId) {
-        await this.leaveRoom(this.roomId);
+      if (this.roomId && this.roomId !== roomId) {
+        if (!this.roomId.startsWith('solo-')) {
+          await this.leaveRoom(this.roomId);
+        } else if (this.ws) {
+          try {
+            this.ws.onclose = null;
+            this.ws.close();
+          } catch (e) {}
+          this.ws = null;
+          this.wsRoomId = null;
+        }
       }
 
       const resp = await fetch(this.getApiUrl('/api/room/create'), {
@@ -1326,8 +1349,14 @@ class PedantixApp {
     const playerObj = (this.leaderboard || []).find(p => p.player_id === msg.player_id);
     const pTeam = playerObj ? playerObj.team : (msg.team || null);
     if (this.gameMode === 'team' && pTeam) {
-      const isRed = pTeam === 'red';
-      teamTagHtml = `<span class="chat-team-tag ${isRed ? 'red' : 'blue'}">${isRed ? '🔴 Rouge' : '🔵 Bleu'}</span>`;
+      const teamTags = {
+        blue: { label: '🔵 Bleu', class: 'blue' },
+        red: { label: '🔴 Rouge', class: 'red' },
+        green: { label: '🟢 Vert', class: 'green' },
+        yellow: { label: '🟡 Jaune', class: 'yellow' }
+      };
+      const tt = teamTags[pTeam] || teamTags.blue;
+      teamTagHtml = `<span class="chat-team-tag ${tt.class}">${tt.label}</span>`;
     }
 
     const authorLine = document.createElement('div');
@@ -1532,10 +1561,20 @@ class PedantixApp {
   }
 
   initWebSocket() {
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    // Si la socket est déjà connectée au même salon, on la conserve
+    if (this.ws && this.wsRoomId === this.roomId && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
+    if (this.ws) {
+      try {
+        this.ws.onclose = null;
+        this.ws.close();
+      } catch (e) {}
+      this.ws = null;
+    }
+
+    this.wsRoomId = this.roomId;
     const wsUrl = this.getWsUrl(`/ws/room/${encodeURIComponent(this.roomId)}?player_id=${encodeURIComponent(this.playerId)}`);
 
     try {
@@ -1562,11 +1601,13 @@ class PedantixApp {
 
       this.ws.onclose = () => {
         if (this.pingInterval) clearInterval(this.pingInterval);
-        setTimeout(() => {
-          if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-            this.initWebSocket();
-          }
-        }, 3000);
+        if (this.wsRoomId === this.roomId) {
+          setTimeout(() => {
+            if (this.wsRoomId === this.roomId && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
+              this.initWebSocket();
+            }
+          }, 3000);
+        }
       };
     } catch (e) {
       console.warn("WebSocket non disponible", e);
@@ -1604,7 +1645,7 @@ class PedantixApp {
       if (msg.can_start !== undefined) this.canStart = msg.can_start;
       this.updateModeUI();
       this.syncRoomUI();
-      const modeLabel = this.gameMode === 'team' ? 'Par Équipes (Rouge vs Bleu)' : 'Chacun pour soi';
+      const modeLabel = this.gameMode === 'team' ? 'Par Équipes (Bleu, Rouge, Vert, Jaune)' : 'Chacun pour soi';
       this.showToast(`🎮 Mode : ${modeLabel}`);
 
     } else if (msg.type === 'team_changed') {
@@ -1634,6 +1675,7 @@ class PedantixApp {
       const savedOverlayScroll = this.dom.lobbyModal ? this.dom.lobbyModal.scrollTop : 0;
       const savedWindowScroll = window.scrollY;
 
+      const wasHost = this.isHost;
       if (msg.game_mode) this.gameMode = msg.game_mode;
       if (msg.teams) this.teamsData = msg.teams;
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
@@ -1646,7 +1688,11 @@ class PedantixApp {
         this.isReady = msg.is_ready;
       }
       if (msg.type === 'player_left' && msg.player_name) {
-        this.showToast(`👋 ${msg.player_name} a quitté le salon.`);
+        if (this.isHost && !wasHost) {
+          this.showToast(`👑 ${msg.player_name} a quitté le salon. Vous êtes maintenant l'Host !`);
+        } else {
+          this.showToast(`👋 ${msg.player_name} a quitté le salon.`);
+        }
       }
       if (this.gameMode === 'team') {
         this.renderTeamsRoster();
@@ -2323,7 +2369,13 @@ class PedantixApp {
       this.renderTeamsRoster();
       this.renderTeamConfrontation();
       this.syncRoomUI();
-      const teamName = team === 'red' ? 'Rouge 🔴' : 'Bleue 🔵';
+      const teamNameMap = {
+        blue: 'Bleue 🔵',
+        red: 'Rouge 🔴',
+        green: 'Verte 🟢',
+        yellow: 'Jaune 🟡'
+      };
+      const teamName = teamNameMap[team] || team;
       this.showToast(`👕 Vous avez rejoint l'Équipe ${teamName}`);
     } catch (e) {
       console.error(e);
@@ -2369,9 +2421,18 @@ class PedantixApp {
     this.dom.lobbyTeamsGrid.innerHTML = '';
 
     const teams = [
+      { key: 'blue', name: 'Équipe Bleue', icon: '🔵', colorClass: 'blue', data: this.teamsData.blue || {} },
       { key: 'red', name: 'Équipe Rouge', icon: '🔴', colorClass: 'red', data: this.teamsData.red || {} },
-      { key: 'blue', name: 'Équipe Bleue', icon: '🔵', colorClass: 'blue', data: this.teamsData.blue || {} }
+      { key: 'green', name: 'Équipe Verte', icon: '🟢', colorClass: 'green', data: this.teamsData.green || {} },
+      { key: 'yellow', name: 'Équipe Jaune', icon: '🟡', colorClass: 'yellow', data: this.teamsData.yellow || {} }
     ];
+
+    const teamLabelMap = {
+      blue: 'Bleus 🔵',
+      red: 'Rouges 🔴',
+      green: 'Verts 🟢',
+      yellow: 'Jaunes 🟡'
+    };
 
     teams.forEach(t => {
       const players = t.data.players || [];
@@ -2402,7 +2463,7 @@ class PedantixApp {
         });
       }
 
-      const btnJoinText = isMyTeam ? `Votre équipe ✓` : `Rejoindre les ${t.key === 'red' ? 'Rouges 🔴' : 'Bleus 🔵'}`;
+      const btnJoinText = isMyTeam ? `Votre équipe ✓` : `Rejoindre les ${teamLabelMap[t.key] || t.name}`;
       const btnDisabled = isMyTeam ? 'disabled' : '';
 
       card.innerHTML = `
@@ -2432,58 +2493,76 @@ class PedantixApp {
 
   renderTeamConfrontation() {
     if (!this.dom.compTeamsConfrontation || !this.teamsData) return;
-    const red = this.teamsData.red || {};
-    const blue = this.teamsData.blue || {};
 
-    const redPct = red.pct || 0;
-    const bluePct = blue.pct || 0;
-    const isMeRed = this.myTeam === 'red';
+    const teamList = [
+      { key: 'blue', name: 'Équipe Bleue', short: 'Bleu', icon: '🔵', color: '#60a5fa', fillClass: 'team-bar-fill-blue', data: this.teamsData.blue || {} },
+      { key: 'red', name: 'Équipe Rouge', short: 'Rouge', icon: '🔴', color: '#f87171', fillClass: 'team-bar-fill-red', data: this.teamsData.red || {} },
+      { key: 'green', name: 'Équipe Verte', short: 'Vert', icon: '🟢', color: '#34d399', fillClass: 'team-bar-fill-green', data: this.teamsData.green || {} },
+      { key: 'yellow', name: 'Équipe Jaune', short: 'Jaune', icon: '🟡', color: '#facc15', fillClass: 'team-bar-fill-yellow', data: this.teamsData.yellow || {} }
+    ];
 
+    const myTeamMeta = teamList.find(t => t.key === this.myTeam) || teamList[0];
     if (this.dom.sideMyTeamBadge) {
-      this.dom.sideMyTeamBadge.className = `team-my-indicator ${isMeRed ? 'red' : 'blue'}`;
-      this.dom.sideMyTeamBadge.textContent = isMeRed ? '🔴 Équipe Rouge' : '🔵 Équipe Bleue';
+      this.dom.sideMyTeamBadge.className = `team-my-indicator ${this.myTeam}`;
+      this.dom.sideMyTeamBadge.textContent = `${myTeamMeta.icon} ${myTeamMeta.name}`;
     }
+
+    // Determine active teams (teams with players or at least 2 teams by default)
+    let activeTeams = teamList.filter(t => (t.data.players && t.data.players.length > 0));
+    if (activeTeams.length === 0) {
+      activeTeams = teamList.slice(0, 2);
+    }
+
+    const vsLabelsHtml = activeTeams.map(t => {
+      const pct = t.data.pct || 0;
+      return `<span style="color: ${t.color}; font-weight: 800;">${t.icon} ${t.short} (${pct}%)</span>`;
+    }).join('<span class="team-vs-divider">VS</span>');
+
+    const barsHtml = activeTeams.map(t => {
+      const pct = Math.max(2, t.data.pct || 0);
+      return `
+        <div style="flex: 1; height: 8px; background: rgba(0, 0, 0, 0.5); border-radius: 9999px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08);">
+          <div class="${t.fillClass}" style="width: ${pct}%; height: 100%;"></div>
+        </div>
+      `;
+    }).join('<div style="width: 4px;"></div>');
+
+    const cardsHtml = activeTeams.map(t => {
+      const isMyTeam = this.myTeam === t.key;
+      const pct = t.data.pct || 0;
+      const players = t.data.players || [];
+      const playersText = players.map(p => this.escapeHtml(p.name)).join(', ') || 'Aucun';
+      return `
+        <div class="team-side-card ${t.key} ${isMyTeam ? 'is-my-team' : ''}">
+          <div class="team-side-top">
+            <span class="team-side-title ${t.key}">${t.icon} ${t.short} ${isMyTeam ? '★' : ''}</span>
+            <span class="team-side-pct" style="color: ${t.color};">${pct}%</span>
+          </div>
+          <div style="height: 4px; background: rgba(0, 0, 0, 0.3); border-radius: 9999px; overflow: hidden; margin: 3px 0 5px 0;">
+            <div class="${t.fillClass}" style="width: ${Math.max(2, pct)}%; height: 100%;"></div>
+          </div>
+          <div class="team-side-stats">
+            <span><b>${t.data.attempts || 0}</b> coups</span>
+            <span><b>${t.data.revealed_words_count || 0}</b> mots</span>
+          </div>
+          <div class="team-side-members" title="${players.map(p => p.name).join(', ')}">
+            👥 ${playersText}
+          </div>
+        </div>
+      `;
+    }).join('');
 
     this.dom.compTeamsConfrontation.innerHTML = `
       <div class="teams-versus-bar-wrap">
         <div class="teams-vs-labels">
-          <span class="team-vs-lbl-red">🔴 Rouge (${redPct}%)</span>
-          <span class="team-vs-divider">VS</span>
-          <span class="team-vs-lbl-blue">Bleu (${bluePct}%) 🔵</span>
+          ${vsLabelsHtml}
         </div>
-        <div class="teams-dual-bar">
-          <div class="team-bar-fill-red" style="width: ${redPct}%;"></div>
-          <div style="flex: 1;"></div>
-          <div class="team-bar-fill-blue" style="width: ${bluePct}%;"></div>
+        <div style="display: flex; gap: 4px; align-items: center; width: 100%; margin-top: 4px;">
+          ${barsHtml}
         </div>
       </div>
       <div class="teams-cards-split">
-        <div class="team-side-card red ${isMeRed ? 'is-my-team' : ''}">
-          <div class="team-side-top">
-            <span class="team-side-title red">🔴 Rouge ${isMeRed ? '★' : ''}</span>
-            <span class="team-side-pct" style="color: #f87171;">${redPct}%</span>
-          </div>
-          <div class="team-side-stats">
-            <span><b>${red.attempts || 0}</b> coups</span>
-            <span><b>${red.revealed_words_count || 0}</b> mots</span>
-          </div>
-          <div class="team-side-members" title="${(red.players || []).map(p => p.name).join(', ')}">
-            👥 ${(red.players || []).map(p => this.escapeHtml(p.name)).join(', ') || 'Aucun'}
-          </div>
-        </div>
-        <div class="team-side-card blue ${!isMeRed ? 'is-my-team' : ''}">
-          <div class="team-side-top">
-            <span class="team-side-title blue">🔵 Bleu ${!isMeRed ? '★' : ''}</span>
-            <span class="team-side-pct" style="color: #60a5fa;">${bluePct}%</span>
-          </div>
-          <div class="team-side-stats">
-            <span><b>${blue.attempts || 0}</b> coups</span>
-            <span><b>${blue.revealed_words_count || 0}</b> mots</span>
-          </div>
-          <div class="team-side-members" title="${(blue.players || []).map(p => p.name).join(', ')}">
-            👥 ${(blue.players || []).map(p => this.escapeHtml(p.name)).join(', ') || 'Aucun'}
-          </div>
-        </div>
+        ${cardsHtml}
       </div>
     `;
   }

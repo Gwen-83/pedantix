@@ -16,13 +16,21 @@ from app.nlp import normalize_letter, is_letter_revealed
 
 logger = logging.getLogger("pedantix.room")
 
+TEAM_METADATA = {
+    "blue": {"name": "Équipe Bleue", "short": "Bleue", "icon": "🔵", "color": "#3b82f6"},
+    "red": {"name": "Équipe Rouge", "short": "Rouge", "icon": "🔴", "color": "#ef4444"},
+    "green": {"name": "Équipe Verte", "short": "Verte", "icon": "🟢", "color": "#10b981"},
+    "yellow": {"name": "Équipe Jaune", "short": "Jaune", "icon": "🟡", "color": "#eab308"},
+}
+ALL_TEAMS = ["blue", "red", "green", "yellow"]
+
 class RoomPlayer:
-    def __init__(self, player_id: str, name: str, session: GameSession, is_host: bool = False, team: str = "red"):
+    def __init__(self, player_id: str, name: str, session: GameSession, is_host: bool = False, team: str = "blue"):
         self.player_id = player_id
         self.name = name
         self.session = session
         self.is_host = is_host
-        self.team = team  # "red" or "blue"
+        self.team = team  # "blue", "red", "green", or "yellow"
         self.is_ready = False
         self.score = get_player_score(name)
         self.attempts = 0
@@ -188,8 +196,8 @@ class Room:
             pass
 
     def _init_team_sessions(self):
-        """Initializes separate shared sessions for red and blue teams."""
-        for team in ["red", "blue"]:
+        """Initializes separate shared sessions for blue, red, green, and yellow teams."""
+        for team in ALL_TEAMS:
             session_id = str(uuid.uuid4())
             self.team_sessions[team] = GameSession(
                 session_id=session_id,
@@ -203,52 +211,35 @@ class Room:
             )
 
     def get_teams_data(self) -> Dict[str, Any]:
-        """Returns stats and rosters for both teams."""
-        red_players = [p.to_dict() for p in self.players.values() if p.team == "red"]
-        blue_players = [p.to_dict() for p in self.players.values() if p.team == "blue"]
-
-        red_sess = self.team_sessions.get("red")
-        blue_sess = self.team_sessions.get("blue")
-
+        """Returns stats and rosters for all 4 teams (blue, red, green, yellow)."""
         first_p = next(iter(self.players.values()), None)
         default_tot = first_p.total_words if first_p else 1
 
-        red_revealed = len(red_sess.revealed_word_ids) if red_sess else 0
-        red_total = red_sess.total_words if red_sess else default_tot
-        red_pct = round((red_revealed / max(1, red_total)) * 100)
-        red_attempts = red_sess.attempts if red_sess else 0
-        red_won = red_sess.is_won if red_sess else False
+        teams_dict = {}
+        for team_key in ALL_TEAMS:
+            team_meta = TEAM_METADATA[team_key]
+            team_players = [p.to_dict() for p in self.players.values() if p.team == team_key]
+            sess = self.team_sessions.get(team_key)
 
-        blue_revealed = len(blue_sess.revealed_word_ids) if blue_sess else 0
-        blue_total = blue_sess.total_words if blue_sess else default_tot
-        blue_pct = round((blue_revealed / max(1, blue_total)) * 100)
-        blue_attempts = blue_sess.attempts if blue_sess else 0
-        blue_won = blue_sess.is_won if blue_sess else False
+            revealed = len(sess.revealed_word_ids) if sess else 0
+            total = sess.total_words if sess else default_tot
+            pct = round((revealed / max(1, total)) * 100)
+            attempts = sess.attempts if sess else 0
+            won = sess.is_won if sess else False
 
-        return {
-            "red": {
-                "name": "Équipe Rouge",
-                "color": "#ef4444",
-                "players": red_players,
-                "players_count": len(red_players),
-                "attempts": red_attempts,
-                "revealed_words_count": red_revealed,
-                "total_words": red_total,
-                "pct": red_pct,
-                "is_won": red_won
-            },
-            "blue": {
-                "name": "Équipe Bleue",
-                "color": "#3b82f6",
-                "players": blue_players,
-                "players_count": len(blue_players),
-                "attempts": blue_attempts,
-                "revealed_words_count": blue_revealed,
-                "total_words": blue_total,
-                "pct": blue_pct,
-                "is_won": blue_won
+            teams_dict[team_key] = {
+                "name": team_meta["name"],
+                "color": team_meta["color"],
+                "icon": team_meta["icon"],
+                "players": team_players,
+                "players_count": len(team_players),
+                "attempts": attempts,
+                "revealed_words_count": revealed,
+                "total_words": total,
+                "pct": pct,
+                "is_won": won
             }
-        }
+        return teams_dict
 
     def set_game_mode(self, mode: str) -> bool:
         if mode not in ("individual", "team"):
@@ -262,14 +253,14 @@ class Room:
             for p in self.players.values():
                 if p.team in self.team_sessions:
                     p.session = self.team_sessions[p.team]
-        mode_str = "Par Équipes (Rouge vs Bleu) 👥" if mode == "team" else "Chacun pour soi (Individuel) 👤"
+        mode_str = "Par Équipes (Bleu, Rouge, Vert, Jaune) 👥" if mode == "team" else "Chacun pour soi (Individuel) 👤"
         self.add_activity(f"🎮 Mode de jeu configuré : {mode_str}", "mode_change")
         return True
 
     def set_player_team(self, player_id: str, team: str) -> bool:
         if player_id not in self.players:
             return False
-        if team not in ("red", "blue"):
+        if team not in ALL_TEAMS:
             return False
         player = self.players[player_id]
         if player.team == team:
@@ -279,8 +270,9 @@ class Room:
         player.team = team
         if self.game_mode == "team" and team in self.team_sessions:
             player.session = self.team_sessions[team]
-        team_name = "Rouge 🔴" if team == "red" else "Bleue 🔵"
-        self.add_activity(f"👕 {player.name} a rejoint l'Équipe {team_name}", "team_change")
+        meta = TEAM_METADATA.get(team, {})
+        team_name = f"{meta.get('name', team)} {meta.get('icon', '')}"
+        self.add_activity(f"👕 {player.name} a rejoint l'{team_name}", "team_change")
         return True
 
     def get_leaderboard(self) -> List[Dict[str, Any]]:
@@ -304,9 +296,8 @@ class Room:
         if not all(p.is_ready for p in self.players.values()):
             return False
         if self.game_mode == "team" and len(self.players) >= 2:
-            red_count = sum(1 for p in self.players.values() if p.team == "red")
-            blue_count = sum(1 for p in self.players.values() if p.team == "blue")
-            if red_count == 0 or blue_count == 0:
+            occupied_teams = set(p.team for p in self.players.values())
+            if len(occupied_teams) < 2:
                 return False
         return True
 
@@ -361,10 +352,9 @@ class Room:
         if is_first:
             self.host_player_id = player_id
 
-        # Balance teams
-        red_count = sum(1 for p in self.players.values() if p.team == "red")
-        blue_count = sum(1 for p in self.players.values() if p.team == "blue")
-        default_team = "red" if red_count <= blue_count else "blue"
+        # Balance teams across blue, red, green, yellow
+        team_counts = {t: sum(1 for p in self.players.values() if p.team == t) for t in ALL_TEAMS}
+        default_team = min(ALL_TEAMS, key=lambda t: team_counts[t])
 
         if self.game_mode == "team":
             if not self.team_sessions:
@@ -389,7 +379,8 @@ class Room:
             player.is_host = True
             self.status = "playing"
         self.players[player_id] = player
-        team_tag = f" ({'🔴 Rouge' if default_team == 'red' else '🔵 Bleu'})" if self.game_mode == "team" else ""
+        team_meta = TEAM_METADATA.get(default_team, {})
+        team_tag = f" ({team_meta.get('icon', '')} {team_meta.get('short', '')})" if self.game_mode == "team" else ""
         self.add_activity(f"👋 {player_name} a rejoint la salle{' (Host 👑)' if is_first else ''}{team_tag}", "join")
         return player
 
@@ -542,7 +533,8 @@ class Room:
             if self.game_mode == "team":
                 if not self.winning_team:
                     self.winning_team = player.team
-                    team_name = "Équipe Rouge 🔴" if player.team == "red" else "Équipe Bleue 🔵"
+                    team_meta = TEAM_METADATA.get(player.team, {})
+                    team_name = f"{team_meta.get('name', player.team)} {team_meta.get('icon', '')}"
                     self.first_winner_id = player.player_id
                     self.first_winner_name = f"{team_name} (menée par {player.name})"
                     self.first_winner_attempts = attempts
@@ -556,7 +548,7 @@ class Room:
                             if p.player_id not in self.winners:
                                 self.winners.append(p.player_id)
 
-                    self.add_activity(f"🏆 {team_name} a découvert le titre en {attempts} coups ! 30s pour l'autre équipe !", "win")
+                    self.add_activity(f"🏆 {team_name} a découvert le titre en {attempts} coups ! 30s pour les autres équipes !", "win")
 
                     if self._letter_hint_task and not self._letter_hint_task.done():
                         self._letter_hint_task.cancel()
@@ -566,20 +558,24 @@ class Room:
                         self._timer_30s_task.cancel()
                     self._timer_30s_task = asyncio.create_task(self._run_30s_timer())
                 else:
-                    # Second team also found it during 30s sprint!
-                    other_team_name = "Équipe Rouge 🔴" if player.team == "red" else "Équipe Bleue 🔵"
+                    # Another team also found it during 30s sprint!
+                    team_meta = TEAM_METADATA.get(player.team, {})
+                    team_name = f"{team_meta.get('name', player.team)} {team_meta.get('icon', '')}"
                     for p in self.players.values():
                         if p.team == player.team:
                             p.is_won = True
                             p.won_at = time.time()
                             if p.player_id not in self.winners:
                                 self.winners.append(p.player_id)
-                    self.add_activity(f"🎯 {other_team_name} a également découvert le titre !", "win_also")
+                    self.add_activity(f"🎯 {team_name} a également découvert le titre !", "win_also")
 
-                    # Both teams have won, finish round immediately
-                    if self._timer_30s_task and not self._timer_30s_task.done():
-                        self._timer_30s_task.cancel()
-                    self._timer_30s_task = asyncio.create_task(self._finish_round())
+                    # Check if all active teams have won
+                    active_teams = set(p.team for p in self.players.values() if p.connected)
+                    won_teams = set(p.team for p in self.players.values() if p.is_won)
+                    if won_teams >= active_teams:
+                        if self._timer_30s_task and not self._timer_30s_task.done():
+                            self._timer_30s_task.cancel()
+                        self._timer_30s_task = asyncio.create_task(self._finish_round())
 
             else:
                 # Individual mode win check
@@ -614,7 +610,8 @@ class Room:
                                 self._timer_30s_task.cancel()
                             self._timer_30s_task = asyncio.create_task(self._finish_round())
         else:
-            team_prefix = f"[{'🔴 Rouge' if player.team == 'red' else '🔵 Bleu'}] " if self.game_mode == "team" else ""
+            team_meta = TEAM_METADATA.get(player.team, {})
+            team_prefix = f"[{team_meta.get('icon', '')} {team_meta.get('short', '')}] " if self.game_mode == "team" else ""
             if status == "match":
                 self.add_activity(f"{team_prefix}🟩 Mot trouvé par {player.name} ({matches_count} occurrence{'s' if matches_count > 1 else ''})", "match")
             elif status == "close":
@@ -656,7 +653,8 @@ class Room:
         round_podium = []
         if self.game_mode == "team":
             if self.winning_team:
-                win_team_name = "Équipe Rouge 🔴" if self.winning_team == "red" else "Équipe Bleue 🔵"
+                win_meta = TEAM_METADATA.get(self.winning_team, {})
+                win_team_name = f"{win_meta.get('name', self.winning_team)} {win_meta.get('icon', '')}"
                 self.add_activity(f"🏆 Victoire de l'{win_team_name} ! (+3 pts pour tous les équipiers)", "score")
                 for p in self.players.values():
                     if p.team == self.winning_team:
@@ -672,23 +670,24 @@ class Room:
                             "attempts": p.attempts
                         })
 
-                # Check if other team also found it during 30s
-                other_team = "blue" if self.winning_team == "red" else "red"
-                other_sess = self.team_sessions.get(other_team)
-                if other_sess and other_sess.is_won:
-                    for p in self.players.values():
-                        if p.team == other_team:
-                            new_score = increment_player_score(p.name, 1)
-                            p.refresh_score()
-                            round_podium.append({
-                                "rank": 2,
-                                "player_id": p.player_id,
-                                "name": p.name,
-                                "team": p.team,
-                                "points": 1,
-                                "score": p.score,
-                                "attempts": p.attempts
-                            })
+                # Check if other teams also found it during 30s (+1 pt)
+                for other_team in ALL_TEAMS:
+                    if other_team != self.winning_team:
+                        other_sess = self.team_sessions.get(other_team)
+                        if other_sess and other_sess.is_won:
+                            for p in self.players.values():
+                                if p.team == other_team:
+                                    new_score = increment_player_score(p.name, 1)
+                                    p.refresh_score()
+                                    round_podium.append({
+                                        "rank": 2,
+                                        "player_id": p.player_id,
+                                        "name": p.name,
+                                        "team": p.team,
+                                        "points": 1,
+                                        "score": p.score,
+                                        "attempts": p.attempts
+                                    })
         else:
             # Individual mode: 3 pt for 1st, 2 pt for 2nd, 1 pt for 3rd
             pts_map = [3, 2, 1]
@@ -871,6 +870,17 @@ class Room:
 
     start_next_round = start_new_round
 
+    def cleanup(self):
+        """Cancels all background tasks and clears websockets."""
+        if self._countdown_task and not self._countdown_task.done():
+            self._countdown_task.cancel()
+        if self._timer_30s_task and not self._timer_30s_task.done():
+            self._timer_30s_task.cancel()
+        if self._letter_hint_task and not self._letter_hint_task.done():
+            self._letter_hint_task.cancel()
+        self.websockets.clear()
+        self.ws_player_map.clear()
+
     def add_websocket(self, ws: WebSocket, player_id: Optional[str] = None):
         self.websockets.add(ws)
         if player_id:
@@ -892,6 +902,12 @@ class Room:
                 if self.status == "lobby":
                     await self.remove_player(pid, reason="disconnect")
                 else:
+                    # In game: check if ALL players are disconnected
+                    any_connected = any(p.connected for p in self.players.values())
+                    if not any_connected and self.room_id != "default":
+                        room_manager.delete_room(self.room_id)
+                        return
+
                     await self.broadcast({
                         "type": "player_disconnected",
                         "player_id": pid,
@@ -913,19 +929,31 @@ class Room:
                 self.ws_player_map.pop(ws, None)
                 self.websockets.discard(ws)
 
+        # Si le salon n'a plus aucun membre, le salon est immédiatement supprimé
+        if len(self.players) == 0:
+            if self.room_id != "default":
+                room_manager.delete_room(self.room_id)
+            return True
+
+        new_host_name = None
         if self.host_player_id == player_id:
             self.host_player_id = None
             for p in self.players.values():
                 if p.connected:
                     self.host_player_id = p.player_id
                     p.is_host = True
+                    new_host_name = p.name
                     break
             if not self.host_player_id and self.players:
                 first_pid = next(iter(self.players))
                 self.host_player_id = first_pid
                 self.players[first_pid].is_host = True
+                new_host_name = self.players[first_pid].name
 
-        self.add_activity(f"👋 {player_name} a quitté le salon", "leave")
+        leave_msg = f"👋 {player_name} a quitté le salon"
+        if new_host_name:
+            leave_msg += f" (👑 {new_host_name} est le nouvel Host)"
+        self.add_activity(leave_msg, "leave")
 
         await self.broadcast({
             "type": "player_left",
@@ -1104,23 +1132,32 @@ class RoomManager:
         clean_id = (room_id or "").strip()
         return self.rooms.get(clean_id)
 
+    def delete_room(self, room_id: str):
+        """Immediately cleans up and deletes a room."""
+        clean_id = (room_id or "").strip()
+        room = self.rooms.pop(clean_id, None)
+        if room:
+            room.cleanup()
+            logger.info(f"Room « {clean_id} » supprimée car vide.")
+
     def list_active_rooms(self) -> List[Dict[str, Any]]:
         """Returns a list of all active public rooms with player counts and statuses."""
-        now = time.time()
-        # Clean up empty stale rooms older than 2 hours (keep 'default')
-        stale_ids = [
-            rid for rid, r in self.rooms.items()
-            if rid != "default" and not r.websockets and (now - r.created_at > 7200)
+        # Clean up any empty rooms
+        empty_ids = [
+            rid for rid, r in list(self.rooms.items())
+            if rid != "default" and (len(r.players) == 0 or not any(p.connected for p in r.players.values()))
         ]
-        for rid in stale_ids:
-            self.rooms.pop(rid, None)
+        for rid in empty_ids:
+            self.delete_room(rid)
 
         active = []
-        for r in self.rooms.values():
+        for r in list(self.rooms.values()):
             if r.room_id.startswith("solo-"):
                 continue  # Never expose private solo rooms
             connected_names = [p.name for p in r.players.values() if p.connected]
-            active_count = len(connected_names) or len(r.websockets)
+            active_count = len(connected_names)
+            if active_count == 0 and r.room_id != "default":
+                continue
             active.append({
                 "room_id": r.room_id,
                 "players_count": active_count,

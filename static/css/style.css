@@ -4673,6 +4673,26 @@ footer a {
   box-shadow: 0 6px 20px rgba(59, 130, 246, 0.25);
 }
 
+.lobby-team-card.team-green {
+  border: 1.5px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.15);
+}
+
+.lobby-team-card.team-green:hover {
+  border-color: rgba(16, 185, 129, 0.7);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.25);
+}
+
+.lobby-team-card.team-yellow {
+  border: 1.5px solid rgba(234, 179, 8, 0.4);
+  box-shadow: 0 4px 14px rgba(234, 179, 8, 0.15);
+}
+
+.lobby-team-card.team-yellow:hover {
+  border-color: rgba(234, 179, 8, 0.7);
+  box-shadow: 0 6px 20px rgba(234, 179, 8, 0.25);
+}
+
 .team-card-header {
   display: flex;
   align-items: center;
@@ -4691,6 +4711,8 @@ footer a {
 
 .team-badge-title.red { color: #f87171; }
 .team-badge-title.blue { color: #60a5fa; }
+.team-badge-title.green { color: #34d399; }
+.team-badge-title.yellow { color: #facc15; }
 
 .team-count-pill {
   font-size: 0.72rem;
@@ -4785,6 +4807,19 @@ footer a {
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
 }
 
+.btn-join-team.green {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+}
+
+.btn-join-team.yellow {
+  background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
+  color: #1e293b;
+  font-weight: 900;
+  box-shadow: 0 2px 8px rgba(234, 179, 8, 0.35);
+}
+
 .btn-join-team.current-team {
   background: rgba(255, 255, 255, 0.08);
   color: #cbd5e1;
@@ -4819,6 +4854,18 @@ footer a {
   background: rgba(59, 130, 246, 0.2);
   color: #60a5fa;
   border-color: rgba(59, 130, 246, 0.4);
+}
+
+.team-my-indicator.green {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.team-my-indicator.yellow {
+  background: rgba(234, 179, 8, 0.2);
+  color: #facc15;
+  border-color: rgba(234, 179, 8, 0.4);
 }
 
 .comp-teams-confrontation {
@@ -4874,10 +4921,24 @@ footer a {
   box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
 }
 
-/* Cartes individuelles des deux équipes en jeu */
+.team-bar-fill-green {
+  height: 100%;
+  background: linear-gradient(90deg, #34d399 0%, #10b981 100%);
+  transition: width 0.35s ease;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+.team-bar-fill-yellow {
+  height: 100%;
+  background: linear-gradient(90deg, #facc15 0%, #eab308 100%);
+  transition: width 0.35s ease;
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.5);
+}
+
+/* Cartes individuelles des équipes en jeu */
 .teams-cards-split {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 0.6rem;
 }
 
@@ -4900,6 +4961,14 @@ footer a {
   border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
+.team-side-card.green {
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.team-side-card.yellow {
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
 .team-side-card.is-my-team {
   background: rgba(255, 255, 255, 0.065);
   box-shadow: 0 0 14px rgba(0, 0, 0, 0.4);
@@ -4907,6 +4976,8 @@ footer a {
 
 .team-side-card.is-my-team.red { border-color: #ef4444; }
 .team-side-card.is-my-team.blue { border-color: #3b82f6; }
+.team-side-card.is-my-team.green { border-color: #10b981; }
+.team-side-card.is-my-team.yellow { border-color: #eab308; }
 
 .team-side-top {
   display: flex;
@@ -4924,6 +4995,8 @@ footer a {
 
 .team-side-title.red { color: #f87171; }
 .team-side-title.blue { color: #60a5fa; }
+.team-side-title.green { color: #34d399; }
+.team-side-title.yellow { color: #facc15; }
 
 .team-side-pct {
   font-family: 'JetBrains Mono', monospace;
@@ -4968,6 +5041,18 @@ footer a {
   background: rgba(59, 130, 246, 0.2);
   color: #60a5fa;
   border: 1px solid rgba(59, 130, 246, 0.35);
+}
+
+.chat-team-tag.green {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.chat-team-tag.yellow {
+  background: rgba(234, 179, 8, 0.2);
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.35);
 }
 
 /* --------------------------------------------------------------------------
