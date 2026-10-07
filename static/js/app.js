@@ -7,7 +7,10 @@ class PedantixApp {
     // Room & Player configuration
     const urlParams = new URLSearchParams(window.location.search);
     const modeParam = urlParams.get('mode');
-    this.isSoloMode = modeParam === 'solo' || (!urlParams.get('room') && localStorage.getItem('pedantix_play_mode') === 'solo');
+    const roomParam = urlParams.get('room');
+
+    // Default mode is Solo unless explicitly invited to a room with ?room or requested
+    this.isSoloMode = modeParam === 'solo' || (!roomParam && localStorage.getItem('pedantix_play_mode') !== 'multi');
 
     this.playerId = localStorage.getItem('pedantix_player_id');
     if (!this.playerId) {
@@ -18,7 +21,7 @@ class PedantixApp {
     if (this.isSoloMode) {
       this.roomId = `solo-${this.playerId}`;
     } else {
-      this.roomId = urlParams.get('room') || 'default';
+      this.roomId = roomParam || localStorage.getItem('pedantix_last_room') || `salon-${Math.floor(Math.random() * 899 + 100)}`;
     }
 
     this.playerName = localStorage.getItem('pedantix_player_name');
@@ -501,6 +504,42 @@ class PedantixApp {
       this.dom.btnCreateRoom.addEventListener('click', () => this.createNewRoom());
     }
 
+    // Room browser & discovery buttons
+    if (this.dom.btnBrowseRooms) {
+      this.dom.btnBrowseRooms.addEventListener('click', () => this.openRoomsBrowser());
+    }
+    if (this.dom.navRoomsBtn) {
+      this.dom.navRoomsBtn.addEventListener('click', () => this.openRoomsBrowser());
+    }
+    const roomBadgeEl = document.getElementById('room-badge');
+    if (roomBadgeEl) {
+      roomBadgeEl.addEventListener('click', () => this.openRoomsBrowser());
+    }
+    if (this.dom.btnModalCreateRoom) {
+      this.dom.btnModalCreateRoom.addEventListener('click', () => this.createNewRoom());
+    }
+    if (this.dom.btnRefreshRooms) {
+      this.dom.btnRefreshRooms.addEventListener('click', () => this.fetchRoomsList());
+    }
+    if (this.dom.btnCopyCurrentLink) {
+      this.dom.btnCopyCurrentLink.addEventListener('click', () => this.copyInviteUrl());
+    }
+    if (this.dom.btnModalJoinCode) {
+      this.dom.btnModalJoinCode.addEventListener('click', () => {
+        const val = this.dom.inputJoinCode ? this.dom.inputJoinCode.value.trim() : '';
+        if (val) this.switchRoom(val);
+      });
+    }
+    if (this.dom.inputJoinCode) {
+      this.dom.inputJoinCode.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const val = this.dom.inputJoinCode.value.trim();
+          if (val) this.switchRoom(val);
+        }
+      });
+    }
+
     // Game mode toggle buttons
     if (this.dom.btnModeIndividual) {
       this.dom.btnModeIndividual.addEventListener('click', () => this.switchGameMode('individual'));
@@ -943,11 +982,153 @@ class PedantixApp {
     });
   }
 
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  async leaveRoom(roomId) {
+    if (!roomId) return;
+    try {
+      if (this.ws) {
+        try { this.ws.close(); } catch (e) {}
+        this.ws = null;
+      }
+      await fetch(this.getApiUrl('/api/room/leave'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: roomId,
+          player_id: this.playerId
+        })
+      });
+    } catch (e) {
+      console.warn('Erreur leaveRoom:', e);
+    }
+  }
+
+  async switchRoom(newRoomId) {
+    const cleanId = (newRoomId || '').trim();
+    if (!cleanId) return;
+
+    if (this.roomId && this.roomId !== cleanId && !this.roomId.startsWith('solo-')) {
+      await this.leaveRoom(this.roomId);
+    }
+
+    this.isSoloMode = false;
+    localStorage.setItem('pedantix_play_mode', 'multi');
+    localStorage.setItem('pedantix_last_room', cleanId);
+    this.roomId = cleanId;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('mode');
+    url.searchParams.set('room', cleanId);
+    window.history.replaceState({}, '', url.toString());
+
+    document.body.classList.remove('solo-mode');
+    if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
+    if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
+
+    this.closeModal(this.dom.roomsModal);
+    this.showToast(`Salon « ${cleanId} » rejoint 🌐`);
+    this.fetchNetworkInfo();
+    this.joinRoom();
+  }
+
+  async openRoomsBrowser() {
+    this.playTone('click');
+    if (this.dom.currentRoomNameText) {
+      this.dom.currentRoomNameText.textContent = this.isSoloMode ? '(Mode Solo)' : this.roomId;
+    }
+    this.openModal(this.dom.roomsModal);
+    await this.fetchRoomsList();
+  }
+
+  async fetchRoomsList() {
+    if (!this.dom.roomsList) return;
+    this.dom.roomsList.innerHTML = '<div class="rooms-loading-placeholder">Chargement des salons en ligne...</div>';
+
+    try {
+      const resp = await fetch(this.getApiUrl('/api/rooms'));
+      const data = await resp.json();
+      const rooms = (data.rooms || []).filter(r => !r.room_id.startsWith('solo-'));
+
+      if (this.dom.roomsCountBadge) {
+        this.dom.roomsCountBadge.textContent = `${rooms.length} salon${rooms.length > 1 ? 's' : ''} actif${rooms.length > 1 ? 's' : ''}`;
+      }
+
+      if (rooms.length === 0) {
+        this.dom.roomsList.innerHTML = `
+          <div class="rooms-empty-state" style="grid-column: 1 / -1; text-align: center; padding: 2rem; opacity: 0.85;">
+            <p style="font-size: 1rem; font-weight: 600;">Aucun salon public disponible pour l'instant.</p>
+            <p style="font-size: 0.85rem; margin-top: 0.5rem; opacity: 0.8;">Créez le vôtre avec le bouton <b>« ➕ Créer un nouveau salon »</b> ci-dessus pour jouer avec vos amis !</p>
+          </div>
+        `;
+        return;
+      }
+
+      this.dom.roomsList.innerHTML = '';
+      rooms.forEach(r => {
+        const isCurrent = (!this.isSoloMode && r.room_id === this.roomId);
+        const card = document.createElement('div');
+        card.className = `room-card ${isCurrent ? 'current-active-card' : ''}`;
+
+        const statusLabel = r.status === 'playing' ? 'En jeu' : 'Salon d\'attente';
+        const statusClass = r.status === 'playing' ? 'playing' : 'lobby';
+        const modeLabel = r.game_mode === 'team' ? 'Par équipes' : 'Chacun pour soi';
+        const playersText = (r.players && r.players.length > 0) ? r.players.join(', ') : 'Aucun joueur';
+
+        card.innerHTML = `
+          <div class="room-card-header">
+            <span class="room-card-title">${this.escapeHtml(r.room_id)}</span>
+            <span class="room-card-status-badge ${statusClass}">${statusLabel}</span>
+          </div>
+          <div class="room-card-meta">
+            <span>👥 <b>${r.players_count}</b> joueur${r.players_count > 1 ? 's' : ''} • Host : <b>${this.escapeHtml(r.host_name || 'Anonyme')}</b></span>
+            <span>🎮 Mode : ${modeLabel}</span>
+            <span class="room-card-players-list" title="${this.escapeHtml(playersText)}">Joueurs : ${this.escapeHtml(playersText)}</span>
+          </div>
+          <div class="room-card-footer">
+            ${isCurrent
+              ? '<span style="font-size: 0.82rem; font-weight: 700; color: #10b981;">✓ Vous êtes dans ce salon</span>'
+              : `<button type="button" class="btn-join-room-card btn-join-code" data-room-id="${this.escapeHtml(r.room_id)}">Rejoindre</button>`
+            }
+          </div>
+        `;
+
+        if (!isCurrent) {
+          const btn = card.querySelector('.btn-join-room-card');
+          if (btn) {
+            btn.addEventListener('click', () => this.switchRoom(r.room_id));
+          }
+        }
+
+        this.dom.roomsList.appendChild(card);
+      });
+    } catch (e) {
+      console.warn('Erreur fetchRoomsList:', e);
+      if (this.dom.roomsList) {
+        this.dom.roomsList.innerHTML = '<div class="rooms-loading-placeholder" style="color: #ef4444;">Erreur de connexion au serveur.</div>';
+      }
+    }
+  }
+
   async createNewRoom() {
+    this.playTone('click');
     const customCode = prompt('Nom ou code du nouveau salon (laissez vide pour générer un code aléatoire) :');
+    if (customCode === null) return;
     const roomId = (customCode && customCode.trim()) ? customCode.trim() : `salon-${Math.floor(Math.random() * 899 + 100)}`;
 
     try {
+      if (this.roomId && !this.roomId.startsWith('solo-') && this.roomId !== roomId) {
+        await this.leaveRoom(this.roomId);
+      }
+
       const resp = await fetch(this.getApiUrl('/api/room/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -958,11 +1139,21 @@ class PedantixApp {
       });
       const data = await resp.json();
 
-      this.roomId = data.room_id;
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.set('room', this.roomId);
-      window.history.pushState({}, '', newUrl);
+      this.roomId = data.room_id || roomId;
+      this.isSoloMode = false;
+      localStorage.setItem('pedantix_play_mode', 'multi');
+      localStorage.setItem('pedantix_last_room', this.roomId);
 
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('mode');
+      newUrl.searchParams.set('room', this.roomId);
+      window.history.replaceState({}, '', newUrl.toString());
+
+      document.body.classList.remove('solo-mode');
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
+      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
+
+      this.closeModal(this.dom.roomsModal);
       this.showToast(`Salon « ${this.roomId} » créé ! Vous êtes l'Host 👑`);
       this.fetchNetworkInfo();
       this.joinRoom();
@@ -1437,7 +1628,7 @@ class PedantixApp {
       if (this.dom.lobbyModal && savedOverlayScroll) this.dom.lobbyModal.scrollTop = savedOverlayScroll;
       if (savedWindowScroll) window.scrollTo(0, savedWindowScroll);
 
-    } else if (msg.type === 'player_joined' || msg.type === 'player_ready_changed') {
+    } else if (msg.type === 'player_joined' || msg.type === 'player_ready_changed' || msg.type === 'player_left' || msg.type === 'player_disconnected') {
       const lobbyInner = this.dom.lobbyModal ? this.dom.lobbyModal.querySelector('.modal') : null;
       const savedLobbyScroll = lobbyInner ? lobbyInner.scrollTop : 0;
       const savedOverlayScroll = this.dom.lobbyModal ? this.dom.lobbyModal.scrollTop : 0;
@@ -1448,8 +1639,14 @@ class PedantixApp {
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
       if (msg.activity) this.updateActivity(msg.activity);
       if (msg.can_start !== undefined) this.canStart = msg.can_start;
+      if (msg.host_player_id) {
+        this.isHost = (msg.host_player_id === this.playerId);
+      }
       if (msg.player_id === this.playerId && msg.is_ready !== undefined) {
         this.isReady = msg.is_ready;
+      }
+      if (msg.type === 'player_left' && msg.player_name) {
+        this.showToast(`👋 ${msg.player_name} a quitté le salon.`);
       }
       if (this.gameMode === 'team') {
         this.renderTeamsRoster();
@@ -2018,15 +2215,21 @@ class PedantixApp {
     this.updateModeUI();
   }
 
-  switchPlayMode(mode) {
+  async switchPlayMode(mode) {
     const isSolo = mode === 'solo';
     if (isSolo === this.isSoloMode) return;
     this.playTone('click');
+
+    const previousRoomId = this.roomId;
     this.isSoloMode = isSolo;
     localStorage.setItem('pedantix_play_mode', mode);
 
     const url = new URL(window.location.href);
     if (this.isSoloMode) {
+      // Leave previous multiplayer room cleanly
+      if (previousRoomId && !previousRoomId.startsWith('solo-')) {
+        await this.leaveRoom(previousRoomId);
+      }
       url.searchParams.set('mode', 'solo');
       url.searchParams.delete('room');
       document.body.classList.add('solo-mode');
@@ -2034,23 +2237,28 @@ class PedantixApp {
       if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
       this.roomId = `solo-${this.playerId}`;
       this.closeModal(this.dom.lobbyModal);
+      this.closeModal(this.dom.roomsModal);
       this.showToast('🎯 Mode Solo activé');
+      window.history.replaceState({}, '', url.toString());
+      this.joinRoom();
     } else {
-      url.searchParams.delete('mode');
-      url.searchParams.delete('room');
+      // Switching to multiplayer:
+      // If no room is specified in URL, open the Rooms Browser modal so player can choose or create one!
+      const currentParam = url.searchParams.get('room');
       document.body.classList.remove('solo-mode');
       if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
       if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
-      this.roomId = 'default';
-      this.showToast('🌐 Mode Multijoueur activé');
-    }
-    window.history.replaceState({}, '', url.toString());
 
-    if (this.ws) {
-      try { this.ws.close(); } catch (e) {}
-      this.ws = null;
+      if (!currentParam) {
+        this.openRoomsBrowser();
+        return;
+      }
+
+      this.roomId = currentParam;
+      this.showToast('🌐 Mode Multijoueur activé');
+      window.history.replaceState({}, '', url.toString());
+      this.joinRoom();
     }
-    this.joinRoom();
   }
 
   async switchGameMode(mode) {

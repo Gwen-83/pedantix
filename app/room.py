@@ -880,6 +880,65 @@ class Room:
         self.websockets.discard(ws)
         self.ws_player_map.pop(ws, None)
 
+    async def handle_websocket_disconnect(self, ws: WebSocket):
+        pid = self.ws_player_map.pop(ws, None)
+        self.websockets.discard(ws)
+
+        if pid and pid in self.players:
+            has_other_ws = any(p_id == pid for p_id in self.ws_player_map.values())
+            if not has_other_ws:
+                player = self.players[pid]
+                player.connected = False
+                if self.status == "lobby":
+                    await self.remove_player(pid, reason="disconnect")
+                else:
+                    await self.broadcast({
+                        "type": "player_disconnected",
+                        "player_id": pid,
+                        "player_name": player.name,
+                        "leaderboard": self.get_leaderboard(),
+                        "teams": self.get_teams_data(),
+                        "can_start": self.can_start()
+                    })
+
+    async def remove_player(self, player_id: str, reason: str = "leave") -> bool:
+        if player_id not in self.players:
+            return False
+
+        player = self.players.pop(player_id)
+        player_name = player.name
+
+        for ws, pid in list(self.ws_player_map.items()):
+            if pid == player_id:
+                self.ws_player_map.pop(ws, None)
+                self.websockets.discard(ws)
+
+        if self.host_player_id == player_id:
+            self.host_player_id = None
+            for p in self.players.values():
+                if p.connected:
+                    self.host_player_id = p.player_id
+                    p.is_host = True
+                    break
+            if not self.host_player_id and self.players:
+                first_pid = next(iter(self.players))
+                self.host_player_id = first_pid
+                self.players[first_pid].is_host = True
+
+        self.add_activity(f"👋 {player_name} a quitté le salon", "leave")
+
+        await self.broadcast({
+            "type": "player_left",
+            "player_id": player_id,
+            "player_name": player_name,
+            "host_player_id": self.host_player_id,
+            "leaderboard": self.get_leaderboard(),
+            "teams": self.get_teams_data(),
+            "can_start": self.can_start(),
+            "activity": self.recent_activity
+        })
+        return True
+
     def identify_websocket(self, ws: WebSocket, player_id: str):
         if player_id:
             self.ws_player_map[ws] = player_id
@@ -1041,6 +1100,10 @@ class RoomManager:
         self.rooms[room_id] = room
         return room
 
+    def get_room(self, room_id: str) -> Optional[Room]:
+        clean_id = (room_id or "").strip()
+        return self.rooms.get(clean_id)
+
     def list_active_rooms(self) -> List[Dict[str, Any]]:
         """Returns a list of all active public rooms with player counts and statuses."""
         now = time.time()
@@ -1054,6 +1117,8 @@ class RoomManager:
 
         active = []
         for r in self.rooms.values():
+            if r.room_id.startswith("solo-"):
+                continue  # Never expose private solo rooms
             connected_names = [p.name for p in r.players.values() if p.connected]
             active_count = len(connected_names) or len(r.websockets)
             active.append({

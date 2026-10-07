@@ -133,6 +133,11 @@ class RoomTeamRequest(BaseModel):
     player_id: str
     team: str
 
+class RoomLeaveRequest(BaseModel):
+    room_id: str
+    player_id: str
+
+
 
 @app.get("/")
 async def root():
@@ -245,6 +250,14 @@ async def join_room(req: RoomJoinRequest):
         "revealed_letters": room.revealed_letters,
         "next_letter_hint_time": room.next_letter_hint_time
     }
+
+
+@app.post("/api/room/leave")
+async def leave_room(req: RoomLeaveRequest):
+    room = room_manager.get_room(req.room_id)
+    if room:
+        await room.remove_player(req.player_id)
+    return {"status": "ok"}
 
 
 @app.post("/api/room/ready")
@@ -504,9 +517,9 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
                 pass
 
     except WebSocketDisconnect:
-        room.remove_websocket(websocket)
+        await room.handle_websocket_disconnect(websocket)
     except Exception:
-        room.remove_websocket(websocket)
+        await room.handle_websocket_disconnect(websocket)
 
 
 # ============================================================================
