@@ -1,0 +1,16 @@
+The generated verb_lemmas.json.gz index was produced by analyzing the
+project's existing french_words.txt.gz word list with the Grammalecte French
+Hunspell dictionary (version 7.0).
+
+The source French dictionary is copyright its contributors and is distributed
+under the Mozilla Public License 2.0. Source and license information:
+https://grammalecte.net/
+https://www.mozilla.org/en-US/MPL/2.0/
+
+The index contains 143,573 normalized forms and stores word-to-lemma
+relationships for forms already present in the project's word list.
+Regenerate it with:
+    python scripts/generate_verb_lemmas.py
+
+When using a different Hunspell dictionary to regenerate the index, update
+this notice to identify that dictionary and its applicable license.
