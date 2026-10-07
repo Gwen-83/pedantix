@@ -602,6 +602,9 @@ class PedantixApp {
     });
 
     // Copy invite IP address
+    if (this.dom.btnHeaderInvite) {
+      this.dom.btnHeaderInvite.addEventListener('click', () => this.copyInviteUrl());
+    }
     if (this.dom.btnCopyInvite) {
       this.dom.btnCopyInvite.addEventListener('click', () => this.copyInviteUrl());
     }
@@ -795,12 +798,28 @@ class PedantixApp {
     const data = this.networkInfo;
     const roomParam = this.roomId !== 'default' ? `?room=${encodeURIComponent(this.roomId)}` : '';
 
+    if (this.isHostedMode()) {
+      // 1. En ligne (Netlify) : Le site est déjà public et accessible sur Internet pour tous !
+      const hostedUrl = `${window.location.origin}/${roomParam}`;
+      if (this.dom.inviteUrlInput) {
+        this.dom.inviteUrlInput.value = hostedUrl;
+      }
+      const pills = document.querySelector('.network-mode-pills');
+      if (pills) pills.style.display = 'none';
+      if (this.dom.netLanView) this.dom.netLanView.style.display = 'flex';
+      if (this.dom.netTunnelView) this.dom.netTunnelView.style.display = 'none';
+      const helper = document.querySelector('#net-lan-view .network-helper-text');
+      if (helper) {
+        helper.innerHTML = '<span class="helper-badge-tunnel">🌍 En ligne</span> Partagez ce lien avec vos amis, ils peuvent rejoindre depuis n\'importe où !';
+      }
+      if (this.dom.localIpWarning) this.dom.localIpWarning.style.display = 'none';
+      return;
+    }
+
     // 1. LAN invite URL: NEVER fallback to 127.0.0.1 if lan_ip exists
     const lanHost = (data.lan_ip && data.lan_ip !== '127.0.0.1') ? data.lan_ip : (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? window.location.hostname : data.lan_ip);
     const lanPort = window.location.port ? `:${window.location.port}` : (data.port ? `:${data.port}` : '');
-    const lanUrl = this.isHostedMode()
-      ? `${window.location.origin}/${roomParam}`
-      : `${window.location.protocol}//${lanHost}${lanPort}/${roomParam}`;
+    const lanUrl = `${window.location.protocol}//${lanHost}${lanPort}/${roomParam}`;
 
     if (this.dom.inviteUrlInput) {
       this.dom.inviteUrlInput.value = lanUrl;
@@ -879,32 +898,42 @@ class PedantixApp {
   }
 
   copyInviteUrl(forcedMode = null) {
-    const mode = forcedMode || this.activeNetMode || 'lan';
-    let urlToCopy = '';
     const roomParam = this.roomId !== 'default' ? `?room=${encodeURIComponent(this.roomId)}` : '';
+    let urlToCopy = '';
 
-    if (mode === 'tunnel' && this.networkInfo && this.networkInfo.tunnel_url) {
-      urlToCopy = `${this.networkInfo.tunnel_url}/${roomParam}`;
-    } else if (this.isHostedMode()) {
+    // En mode hébergé (Netlify), on copie toujours l'URL publique de la page
+    if (this.isHostedMode()) {
       urlToCopy = `${window.location.origin}/${roomParam}`;
-    } else if (this.networkInfo && this.networkInfo.lan_ip && this.networkInfo.lan_ip !== '127.0.0.1') {
-      const portStr = this.networkInfo.port ? `:${this.networkInfo.port}` : '';
-      urlToCopy = `http://${this.networkInfo.lan_ip}${portStr}/${roomParam}`;
-    } else if (this.dom.inviteUrlInput && this.dom.inviteUrlInput.value && !this.dom.inviteUrlInput.value.includes('127.0.0.1')) {
-      urlToCopy = this.dom.inviteUrlInput.value;
     } else {
-      urlToCopy = window.location.href;
+      const mode = forcedMode || this.activeNetMode || 'lan';
+      if (mode === 'tunnel' && this.networkInfo && this.networkInfo.tunnel_url) {
+        urlToCopy = `${this.networkInfo.tunnel_url}/${roomParam}`;
+      } else if (this.networkInfo && this.networkInfo.lan_ip && this.networkInfo.lan_ip !== '127.0.0.1') {
+        const portStr = this.networkInfo.port ? `:${this.networkInfo.port}` : '';
+        urlToCopy = `http://${this.networkInfo.lan_ip}${portStr}/${roomParam}`;
+      } else if (this.dom.inviteUrlInput && this.dom.inviteUrlInput.value && !this.dom.inviteUrlInput.value.includes('127.0.0.1')) {
+        urlToCopy = this.dom.inviteUrlInput.value;
+      } else {
+        urlToCopy = window.location.href;
+      }
     }
 
     navigator.clipboard.writeText(urlToCopy).then(() => {
-      const copyBtns = [this.dom.btnCopyInvite, this.dom.btnCopyDrawer, this.dom.btnLobbyCopyLink, this.dom.btnCopyTunnel];
+      const copyBtns = [
+        this.dom.btnCopyInvite,
+        this.dom.btnHeaderInvite,
+        this.dom.btnCopyDrawer,
+        this.dom.btnLobbyCopyLink,
+        this.dom.btnCopyTunnel
+      ];
       copyBtns.forEach(btn => {
         if (btn) btn.innerHTML = '<span>✅</span> Copié !';
       });
-      const modeLabel = (mode === 'tunnel') ? 'Internet (amis à distance)' : 'Réseau Wi-Fi (amis sur la même box)';
+      const modeLabel = this.isHostedMode() ? 'du salon' : ((forcedMode || this.activeNetMode) === 'tunnel' ? 'Internet' : 'Réseau Wi-Fi');
       this.showToast(`Lien ${modeLabel} copié ! Partagez-le avec vos amis 📋`);
       setTimeout(() => {
         if (this.dom.btnCopyInvite) this.dom.btnCopyInvite.innerHTML = '<span>🔗</span> Inviter';
+        if (this.dom.btnHeaderInvite) this.dom.btnHeaderInvite.innerHTML = '<span>🔗</span> Inviter';
         if (this.dom.btnCopyDrawer) this.dom.btnCopyDrawer.innerHTML = '<span>📋</span> Copier';
         if (this.dom.btnCopyTunnel) this.dom.btnCopyTunnel.innerHTML = '<span>📋</span> Copier';
         if (this.dom.btnLobbyCopyLink) this.dom.btnLobbyCopyLink.innerHTML = '<span>📋</span> Copier le lien';
