@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+pedantix.db*
+app/data/api_synonyms_cache.json
+.env.example

@@ -1,0 +1,33 @@
+[build]
+  publish = "static"
+
+# index.html référence /static/css/... et /static/js/... alors que Netlify
+# publie le contenu de "static" à la racine : on réécrit ces chemins.
+# (Cette règle DOIT précéder la règle "catch-all" ci-dessous.)
+[[redirects]]
+  from = "/static/*"
+  to = "/:splat"
+  status = 200
+
+# Navigation SPA / paramètres d'URL (ex: ?room=...). Non forcée : les vrais fichiers priment.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"

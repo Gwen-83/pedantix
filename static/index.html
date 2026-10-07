@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark-colorful">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pédantix - Concours Wikipédia Multijoueur !</title>
+  
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Newsreader:ital,opsz,wght@0,6..72,600;0,6..72,700;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📖</text></svg>">
+</head>
+<body>
+
+  <!-- CANVAS FOR CONFETTI -->
+  <canvas id="confetti-canvas"></canvas>
+
+  <section>
+    <article class="game-container">
+
+      <!-- ASIDE (LEFT COLUMN: SUMMARY & MY STATS) -->
+      <aside class="sidebar-aside">
+        <!-- MODERN NAV BAR DOCK -->
+        <nav class="nav-bar">
+          <button class="nav-icon" id="rules-button" title="Règles du jeu" aria-label="Règles">ℹ️</button>
+          <button class="nav-icon" id="faq-button" title="FAQ & Astuces" aria-label="FAQ">❓</button>
+          <button class="nav-icon" id="nav-rooms-button" title="Salons Multijoueur en ligne" aria-label="Salons">🌐</button>
+          <button class="nav-icon" id="theme-button" title="Changer de thème / Couleurs" aria-label="Couleurs">🎨</button>
+          <button class="nav-icon" id="history-button" title="Statistiques & Historique" aria-label="Historique">📊</button>
+          <button class="nav-icon" id="newgame-button" title="Nouvelle page aléatoire" aria-label="Nouvelle page">🎲</button>
+          <button class="nav-icon" id="nav-config-button" title="Serveur & En ligne" aria-label="Serveur">⚙️</button>
+          <button class="nav-icon" id="sound-button" title="Effets sonores" aria-label="Sons">🔊</button>
+        </nav>
+
+        <!-- SUMMARY CARD -->
+        <div class="summary">
+          <div class="summary-top-banner">
+            <span class="summary-icon">📖</span>
+            <h3><span id="puzzle-label">Jour</span> nº <b id="puzzle-num">1607</b></h3>
+          </div>
+          
+          <div id="day-meter" title="Progression de l'article">🟥🟥🟥🟥🟥🟥🟥🟥🟥🟥</div>
+
+          <!-- Animated modern progress bar -->
+          <div class="progress-bar-wrap" title="Progression en pourcentage">
+            <div class="progress-bar-fill" id="progress-bar-fill"></div>
+          </div>
+
+          <div id="summary-meta">
+            <span class="meta-pill"><span id="revealed-stat">0</span>/<span id="total-stat">0</span> mots (<b id="pct-stat">0%</b>)</span>
+            <span class="meta-pill attempts-pill"><b id="attempts-stat">0 coup</b></span>
+          </div>
+
+          <div class="history-filter-wrapper">
+            <div class="filter-input-box">
+              <span class="filter-icon">🔍</span>
+              <input type="text" id="history-filter" placeholder="Filtrer mes mots testés..." autocomplete="off">
+            </div>
+          </div>
+
+          <div class="table-scroll-wrap">
+            <table id="guessable" class="guessable">
+              <thead>
+                <tr>
+                  <th class="number order" id="chronoOrder" title="Trier par ordre chronologique">Nº ↕</th>
+                  <th class="word order" id="alphaOrder" title="Trier par ordre alphabétique">Mot ↕</th>
+                  <th class="stat order" style="text-align: right;"><button id="collapse" title="Minimiser/Développer" class="collapse-btn">🔻</button></th>
+                </tr>
+              </thead>
+              <tbody id="guesses" class="guesses">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="sidebar-action-btns">
+            <button class="side-btn" id="btn-side-new"><span>🎲</span> Nouvelle page</button>
+          </div>
+
+          <div class="yesterday" id="yesterday-box">
+            <div class="yesterday-label">Page précédente :</div>
+            <a id="yesterday-link" href="#" target="_blank"><b><u>...</u></b></a>
+          </div>
+        </div>
+      </aside>
+
+      <!-- MAIN AREA (CENTER COLUMN: ARTICLE & GUESS FORM) -->
+      <div class="main">
+
+        <!-- HEADER TABS -->
+        <div id="tabs">
+          <div class="brand-tab">
+            <div class="brand-title-wrap">
+              <span class="brand-logo-badge">W</span>
+              <h1 id="pedantix-title">pédantix</h1>
+            </div>
+            <span id="title" class="caption">Concours : Trouvez le titre en premier !</span>
+            <div class="header-room-badges">
+              <!-- Solo / Multijoueur toggle -->
+              <div class="game-type-toggle" id="game-type-toggle">
+                <button type="button" id="btn-type-solo" class="btn-type-toggle" title="Jouer seul à son propre rythme">🎯 Solo</button>
+                <button type="button" id="btn-type-multi" class="btn-type-toggle active" title="Jouer en ligne avec d'autres joueurs">🌐 Multijoueur</button>
+              </div>
+
+              <span class="room-badge" id="room-badge" title="Cliquez pour voir les salons disponibles">Salon : <b id="room-code-display">default</b></span>
+              <button type="button" id="btn-browse-rooms" class="btn-browse-rooms" title="Voir les salons multijoueur disponibles">🔍 Trouver une partie</button>
+              <button type="button" id="btn-create-room" class="btn-create-room" title="Créer un nouveau salon">➕ Créer</button>
+              <button type="button" id="btn-header-invite" class="btn-header-invite" title="Copier le lien d'invitation pour vos amis">🔗 Inviter</button>
+              <span class="hint-timer-badge" id="hint-timer-badge" style="display: none;" title="Un indice lettre est révélé toutes les 5 minutes si personne n'a trouvé !">💡 Lettre dans <b id="hint-timer-val">5:00</b></span>
+              <span class="host-pill" id="host-pill" style="display: none;">👑 Host</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONTENT -->
+        <div id="content">
+
+          <!-- 30-SECOND SPRINT BANNER (Triggered when 1st user discovers title) -->
+          <div id="sprint-timer-banner" class="sprint-timer-banner" style="display: none;">
+            <div class="sprint-banner-inner">
+              <div class="sprint-trophy-pulse">⏱️</div>
+              <div class="sprint-info-col">
+                <div class="sprint-headline">
+                  <b id="sprint-winner-name">Un joueur</b> a découvert le titre en premier !
+                </div>
+                <div class="sprint-subtext">
+                  Il vous reste <span id="sprint-countdown-num" class="sprint-time-glow">30</span> secondes pour trouver aussi ! <b>(+2 pt au 2ème, +1 pt au 3ème)</b>
+                </div>
+                <div class="sprint-bar-track">
+                  <div id="sprint-bar-fill" class="sprint-bar-fill" style="width: 100%;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5-SECOND COUNTDOWN OVERLAY -->
+          <div id="countdown-overlay" class="countdown-overlay" style="display: none;">
+            <div class="countdown-box">
+              <div class="countdown-label">🚀 Lancement du concours !</div>
+              <div id="countdown-number" class="countdown-number">5</div>
+              <div class="countdown-sub">Préparez-vous à chercher le titre Wikipédia...</div>
+            </div>
+          </div>
+
+
+
+          <!-- OPPONENT WON BANNER (Appears when another player in room finds title) -->
+          <div id="opponent-win-banner" class="opponent-win-banner" style="display: none;">
+            <div class="opponent-win-content">
+              <span class="opponent-win-trophy">🏁</span>
+              <div class="opponent-win-info">
+                <h3>Manche remportée !</h3>
+                <p><b id="opponent-win-name">Un joueur</b> a découvert le titre secret : <b id="opponent-win-title" class="opponent-win-title">...</b> en <span id="opponent-win-tries">0</span> coups !</p>
+              </div>
+              <button id="btn-opponent-new-round" class="opponent-win-btn">Nouvelle manche 🎲</button>
+            </div>
+          </div>
+
+          <!-- SUCCESS PANEL (Appears when local player wins) -->
+          <div id="success" class="success">
+            <div class="success-content">
+              <div class="success-trophy-badge">🏆</div>
+              <h2>Félicitations ! Vous avez découvert le titre !</h2>
+              <div class="solution-display" id="solution-display">...</div>
+              <p class="success-summary-text">Vous avez découvert le titre en <b><span id="tries">0</span></b> coups !</p>
+              <div class="meter-wrapper">
+                <p id="meter">🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩</p>
+              </div>
+              <div class="success-links">
+                <button id="share" class="success-btn share-action-btn"><span>📋</span> Copier mon résumé (partager)</button>
+                <a id="solution" target="_blank" class="success-btn wiki-action-btn"><span>↗</span> Lire sur Wikipédia</a>
+                <button id="see-full-page" class="success-btn"><span>👁️</span> Voir tout démasqué</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- GUESS FORM (FLOATING COMMAND BAR) -->
+          <form id="form" class="form">
+            <button type="button" id="pin" title="Épingler la barre de saisie lors du défilement" class="pin-button" aria-label="Épingler">📍</button>
+            <div class="guessbox">
+              <input
+                size="16"
+                placeholder="Entrez un mot..."
+                autocorrect="off"
+                autocapitalize="none"
+                autocomplete="off"
+                spellcheck="false"
+                type="text"
+                name="searchTerm"
+                id="guess"
+                class="guess"
+              >
+              <span id="guess-len-badge" class="guess-len-badge" style="display: none;"></span>
+              <button type="button" id="previous" class="previous" title="Rappeler le mot précédent (Alt+↑)" aria-label="Précédent">&#10554;</button>
+            </div>
+            <button type="submit" id="guess-btn" class="guess-btn">
+              <span>Envoyer</span>
+              <span class="kbd-pill">↵</span>
+            </button>
+            <div id="error-container" class="error-container">
+              <label id="error" class="error"></label>
+            </div>
+          </form>
+
+          <!-- WIKIPEDIA ARTICLE VIEW -->
+          <div id="wiki" class="game">
+            <div class="wiki-header-container">
+              <div class="wiki-banner-tag">
+                <span class="wiki-w-logo">W</span>
+                <span>Encyclopédie libre Wikipédia</span>
+              </div>
+              <div class="wiki-heading-row">
+                <h2 id="wiki-heading">
+                  <!-- Title word boxes will be injected here -->
+                </h2>
+                <img id="wiki-img" alt="Illustration de l'article" style="display: none;">
+              </div>
+            </div>
+            <div id="article">
+              <!-- Paragraphs with .w word boxes will be injected here -->
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ASIDE (RIGHT COLUMN: MULTIPLAYER COMPETITION PANEL) -->
+      <aside class="competition-panel" id="competition-panel">
+        <div class="comp-card">
+
+          <!-- 1. En-tête : Titre & Statut de connexion -->
+          <div class="comp-header">
+            <div class="comp-brand">
+              <span class="comp-live-dot"></span>
+              <h4>Direct Concours</h4>
+            </div>
+            <div class="comp-header-actions">
+              <span class="comp-status-badge" id="comp-status-badge">🟢 1 joueur</span>
+              <button type="button" id="btn-copy-invite" class="btn-copy-invite-compact" title="Copier le lien d'invitation">
+                <span>🔗</span> Inviter
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Mon Profil & Contrôles Rapides -->
+          <div class="comp-user-card">
+            <div class="comp-user-top">
+              <div class="comp-user-avatar">👤</div>
+              <div class="comp-user-info">
+                <div class="pseudo-field-container">
+                  <span class="pseudo-field-icon">✏️</span>
+                  <input type="text" id="player-pseudo-input" class="pseudo-field-input" maxlength="20" placeholder="Votre pseudo..." title="Cliquez pour changer votre pseudo" autocomplete="off" spellcheck="false">
+                  <button type="button" id="btn-save-pseudo" class="btn-save-pseudo" title="Valider le pseudo">✓</button>
+                </div>
+                <div class="comp-user-badges">
+                  <span class="player-db-score-pill" title="Score persistant en base de données">
+                    🏆 <b id="my-player-score-badge">0 pt</b>
+                  </span>
+                  <span class="host-pill" id="side-host-pill" style="display: none;">👑 Host</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ready toggle / Start controls -->
+            <div class="comp-actions-box">
+              <button type="button" id="btn-side-ready" class="btn-side-ready">
+                <span id="side-ready-icon">⏳</span>
+                <span id="side-ready-text">Je suis prêt !</span>
+              </button>
+
+              <button type="button" id="btn-side-start" class="btn-side-start" style="display: none;">
+                <span>🚀</span> Démarrer la partie
+              </button>
+
+              <button type="button" id="btn-open-lobby" class="btn-open-lobby" style="display: none;" title="Ouvrir le salon d'attente">
+                <span>🎮</span> Salon d'attente
+              </button>
+            </div>
+
+          <!-- Tab Navigation : Concours / Chat -->
+          <div class="comp-tabs-nav">
+            <button type="button" class="comp-tab-btn active" id="tab-btn-contest" data-tab="contest">
+              <span>📊</span> Concours
+            </button>
+            <button type="button" class="comp-tab-btn" id="tab-btn-chat" data-tab="chat">
+              <span>💬</span> Chat en direct
+              <span class="chat-unread-badge" id="chat-unread-badge" style="display: none;">0</span>
+            </button>
+          </div>
+
+          <!-- TAB 1 : CONCOURS (CLASSEMENT & ACTIVITE) -->
+          <div id="comp-tab-contest" class="comp-tab-panel active">
+            <!-- 3a. Duel des Équipes (affiché en mode Équipes) -->
+            <div class="comp-section comp-teams-section" id="comp-teams-section" style="display: none;">
+              <div class="comp-section-header">
+                <span class="comp-section-title">⚔️ Duel des Équipes</span>
+                <span class="team-my-indicator" id="side-my-team-badge">🔴 Équipe Rouge</span>
+              </div>
+              <div class="comp-teams-confrontation" id="comp-teams-confrontation">
+                <!-- Dynamically filled with Red vs Blue cards & dual progress bar -->
+              </div>
+            </div>
+
+            <!-- 3b. Classement Individuel (affiché en mode Individuel) -->
+            <div class="comp-section comp-leaderboard-section" id="comp-individual-section">
+              <div class="comp-section-header">
+                <span class="comp-section-title">📊 Classement des joueurs</span>
+              </div>
+              <div class="players-list" id="players-list">
+                <!-- Dynamically populated player cards with real-time progress -->
+              </div>
+            </div>
+
+            <!-- 4. Flux d'activité en direct -->
+            <div class="comp-section comp-activity-section">
+              <div class="comp-section-header">
+                <span class="comp-section-title">⚡ Événements récents</span>
+              </div>
+              <div class="activity-feed" id="activity-feed">
+                <div class="activity-item">Prêt pour le concours ! Trouvez le titre en premier.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2 : CHAT EN DIRECT -->
+          <div id="comp-tab-chat" class="comp-tab-panel" style="display: none;">
+            <div class="sidebar-chat-wrapper">
+              <div class="chat-messages-container" id="chat-messages-sidebar">
+                <div class="chat-empty-hint">💬 Aucun message pour l'instant.<br>Discutez en direct avec vos amis !</div>
+              </div>
+              <div class="chat-quick-reactions" id="chat-quick-reactions-sidebar">
+                <button type="button" class="btn-chat-reaction" data-emoji="👍">👍</button>
+                <button type="button" class="btn-chat-reaction" data-emoji="🔥">🔥</button>
+                <button type="button" class="btn-chat-reaction" data-emoji="😂">😂</button>
+                <button type="button" class="btn-chat-reaction" data-emoji="👏">👏</button>
+                <button type="button" class="btn-chat-reaction" data-emoji="🧠">🧠</button>
+                <button type="button" class="btn-chat-reaction" data-emoji="🤫">🤫</button>
+                <button type="button" class="btn-chat-reaction" data-emoji="😱">😱</button>
+              </div>
+              <form class="chat-input-form sidebar-chat-form" id="chat-form-sidebar">
+                <input type="text" id="chat-input-sidebar" class="chat-input" placeholder="Message en direct..." maxlength="300" autocomplete="off" />
+                <button type="submit" id="btn-chat-send-sidebar" class="btn-chat-send" title="Envoyer le message">
+                  <span>Envoyer</span>
+                  <span class="kbd-pill">↵</span>
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- 5. Pied de panneau : Relance et Partage réseau -->
+          <div class="comp-footer">
+            <button type="button" class="btn-new-round-comp" id="btn-new-round-comp">
+              <span>🎲</span> Nouvelle manche pour tous
+            </button>
+            <div class="network-invite-drawer">
+              <div class="network-drawer-header">
+                <span class="network-drawer-icon">🌐</span>
+                <span class="network-drawer-label">Inviter des amis :</span>
+                <div class="network-mode-pills">
+                  <button type="button" class="network-mode-pill active" id="btn-net-mode-lan" title="Même réseau Wi-Fi">🏠 Wi-Fi</button>
+                  <button type="button" class="network-mode-pill" id="btn-net-mode-tunnel" title="Via Internet (amis à distance)">🌍 Internet</button>
+                </div>
+              </div>
+
+              <!-- Vue Réseau Wi-Fi Local -->
+              <div id="net-lan-view" class="network-mode-view">
+                <div class="network-drawer-input-wrap">
+                  <input type="text" id="invite-url-input" class="invite-url-input" readonly value="Chargement..." title="Cliquez pour copier l'adresse" />
+                  <button type="button" id="btn-copy-drawer" class="btn-copy-drawer" title="Copier le lien d'invitation">
+                    <span>📋</span> Copier
+                  </button>
+                </div>
+                <div class="network-helper-text">
+                  <span class="helper-badge-lan">🏠 Wi-Fi</span> Pour les joueurs sur la <b>même box Wi-Fi</b>.
+                </div>
+              </div>
+
+              <!-- Vue Internet Public (Tunnel) -->
+              <div id="net-tunnel-view" class="network-mode-view" style="display: none;">
+                <div class="network-drawer-input-wrap">
+                  <input type="text" id="tunnel-url-input" class="invite-url-input" readonly value="Non activé" title="Adresse Internet publique" />
+                  <button type="button" id="btn-copy-tunnel" class="btn-copy-drawer" title="Copier le lien Internet" disabled>
+                    <span>📋</span> Copier
+                  </button>
+                </div>
+                <div class="network-tunnel-actions">
+                  <button type="button" id="btn-toggle-tunnel" class="btn-toggle-tunnel">
+                    <span>🚀</span> <span id="tunnel-btn-label">Activer le lien Internet (amis distants)</span>
+                  </button>
+                </div>
+                <div class="network-helper-text">
+                  <span class="helper-badge-tunnel">🌍 Internet</span> Permet à des amis de jouer <b>depuis chez eux</b> sans être sur votre Wi-Fi.
+                </div>
+              </div>
+
+              <!-- Avertissement si 127.0.0.1 est utilisé -->
+              <div id="local-ip-warning" class="local-ip-warning" style="display: none;">
+                ⚠️ <b>Attention :</b> Ne donnez pas <code>http://127.0.0.1</code> à vos amis ! Utilisez le lien Wi-Fi ou Internet ci-dessus.
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+
+    </article>
+
+    <footer>
+      <div class="footer-content">
+        Pédantix Concours Multijoueur • Données de <a href="https://fr.wikipedia.org" target="_blank" rel="noopener">Wikipédia France</a>.
+      </div>
+    </footer>
+  </section>
+
+  <!-- MODAL: RÈGLES -->
+  <div class="modal-overlay" id="rules-modal">
+    <div class="modal">
+      <button class="modal-close" data-close="rules-modal" aria-label="Fermer">&times;</button>
+      <div class="modal-header">
+        <span class="modal-header-icon">ℹ️</span>
+        <h3>Règles du Concours Pédantix</h3>
+      </div>
+      <div class="modal-body">
+        <div class="rule-card">
+          <b>🎯 Le but :</b> Trouver le titre de la page Wikipédia secrète <b>avant les autres joueurs</b> ! Le premier qui découvre le titre gagne immédiatement la manche.
+        </div>
+        <div class="rule-card">
+          <b>👥 Concours en réseau :</b> Tous les joueurs connectés sur la même adresse IP jouent sur la même page secrète. Vous pouvez suivre l'avancement (% de découverte) de chaque joueur en direct dans le panneau de droite.
+        </div>
+        <div class="rule-card tip-card">
+          <b>💡 Astuce Pédantix :</b> Cliquez sur n'importe quel bloc masqué dans l'article pour afficher son nombre exact de lettres en cyan lumineux pendant 2 secondes !
+        </div>
+        <div class="rule-card hint-card">
+          <b>⏱️ Indice automatique des 5 min :</b> Toutes les 5 minutes, si aucun joueur ni équipe n'a trouvé, une lettre est révélée partout où elle se trouve dans l'article (sans afficher le reste du mot) pour vous débloquer !
+        </div>
+        
+        <h4 style="margin: 1.2rem 0 0.5rem; font-size: 1.05rem;">Code couleur des propositions :</h4>
+        <div class="color-explanations">
+          <div class="color-item match-item">
+            <span class="color-badge">🟩 Vert</span>
+            <div><b>Présent dans le texte !</b> Toutes ses occurrences sont immédiatement démasquées dans votre article.</div>
+          </div>
+          <div class="color-item close-item">
+            <span class="color-badge">🟧 Proximité</span>
+            <div><b>Mots proches (Gris sur fond noir) :</b> Le mot testé apparaît sur les blocs correspondants en nuances de gris sur fond noir. Plus le texte est <b>gris clair</b>, plus vous brûlez ; plus il est <b>foncé</b>, plus vous êtes loin !</div>
+          </div>
+          <div class="color-item miss-item">
+            <span class="color-badge">🟥 Rouge</span>
+            <div><b>Absent</b> : Le mot ne figure pas dans l'article.</div>
+          </div>
+        </div>
+        <p class="rule-footnote"><b>Précision :</b> L'abandon est désactivé : seule la découverte du titre mène à la victoire !</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: FAQ & ASTUCES -->
+  <div class="modal-overlay" id="faq-modal">
+    <div class="modal">
+      <button class="modal-close" data-close="faq-modal" aria-label="Fermer">&times;</button>
+      <div class="modal-header">
+        <span class="modal-header-icon">❓</span>
+        <h3>FAQ & Astuces de recherche</h3>
+      </div>
+      <div class="modal-body">
+        <div class="faq-item">
+          <div class="faq-q">Comment inviter des amis à la partie ?</div>
+          <div class="faq-a">Dans le panneau de droite, copiez l'adresse réseau affichée (ex : <code>http://192.168.1.XX:8088</code>). Toute personne connectée à la même box Wi-Fi ou réseau local colle cette adresse dans son navigateur et rejoint instantanément votre concours !</div>
+        </div>
+        
+        <div class="faq-item">
+          <div class="faq-q">Comment fonctionne le mode par équipe ?</div>
+          <div class="faq-a">En mode par équipe (Rouge vs Bleu), les coéquipiers partagent le même article Wikipédia et jouent ensemble. Dès qu'un coéquipier découvre un mot ou un mot proche grisé, celui-ci s'affiche en temps réel sur l'écran de ses partenaires !</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Comment fonctionne le sprint des 30 secondes ?</div>
+          <div class="faq-a">Dès qu'un joueur ou une équipe trouve le titre secret, un compte à rebours de 30 secondes est lancé. Les autres joueurs ont alors 30 secondes pour trouver le titre par eux-mêmes afin d'empocher des points de podium (+2 pt au 2ème, +1 pt au 3ème) !</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: THÈMES / COULEURS -->
+  <div class="modal-overlay" id="themes-modal">
+    <div class="modal">
+      <button class="modal-close" data-close="themes-modal" aria-label="Fermer">&times;</button>
+      <div class="modal-header">
+        <span class="modal-header-icon">🎨</span>
+        <h3>Thèmes & Ambiances visuelles</h3>
+      </div>
+      <div class="modal-body">
+        <p style="margin-top: 0; opacity: 0.85;">Personnalisez l'apparence selon vos goûts :</p>
+        <div class="themes-picker">
+          <button class="theme-choice-btn" data-theme="dark-colorful">
+            <span class="theme-preview color-dark-colorful"></span>
+            <div class="theme-choice-text">
+              <b>Coloré sombre</b>
+              <span>Pédantix classique modernisé (Mauve, Bleu pétrole & Or)</span>
+            </div>
+          </button>
+          <button class="theme-choice-btn" data-theme="midnight">
+            <span class="theme-preview color-midnight"></span>
+            <div class="theme-choice-text">
+              <b>Nuit Étoilée</b>
+              <span>Bleu nuit profond & accents néons ultra-modernes</span>
+            </div>
+          </button>
+          <button class="theme-choice-btn" data-theme="light-colorful">
+            <span class="theme-preview color-light-colorful"></span>
+            <div class="theme-choice-text">
+              <b>Coloré clair</b>
+              <span>Lumineux, solaire et contrasté</span>
+            </div>
+          </button>
+          <button class="theme-choice-btn" data-theme="light-grey">
+            <span class="theme-preview color-light-grey"></span>
+            <div class="theme-choice-text">
+              <b>Wikipédia Clair</b>
+              <span>Épuré, sobre et minimaliste (Papier blanc & ardoise)</span>
+            </div>
+          </button>
+          <button class="theme-choice-btn" data-theme="dark-grey">
+            <span class="theme-preview color-dark-grey"></span>
+            <div class="theme-choice-text">
+              <b>Charbon Sombre</b>
+              <span>Noir mat & nuances de gris feutrées</span>
+            </div>
+          </button>
+          <button class="theme-choice-btn" data-theme="parchment">
+            <span class="theme-preview color-parchment"></span>
+            <div class="theme-choice-text">
+              <b>Parchemin & Bibliothèque</b>
+              <span>Tons chauds sépia et esprit encyclopédique rétro</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: STATISTIQUES -->
+  <div class="modal-overlay" id="stats-modal">
+    <div class="modal">
+      <button class="modal-close" data-close="stats-modal" aria-label="Fermer">&times;</button>
+      <div class="modal-header">
+        <span class="modal-header-icon">📊</span>
+        <h3>Statistiques & Performances</h3>
+      </div>
+      <div class="modal-body">
+        <div class="stats-row">
+          <div class="stat-box">
+            <div class="stat-number" id="s-played">0</div>
+            <div class="stat-desc">Parties jouées</div>
+          </div>
+          <div class="stat-box victory-stat-box">
+            <div class="stat-number" id="s-won">0</div>
+            <div class="stat-desc">Victoires</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number" id="s-avg">0</div>
+            <div class="stat-desc">Moyenne de coups</div>
+          </div>
+        </div>
+
+        <h4 style="margin: 1.5rem 0 0.6rem; font-size: 1rem;">Dernières victoires :</h4>
+        <div class="stats-table-wrapper">
+          <table class="recent-table">
+            <thead>
+              <tr>
+                <th>Page secrète</th>
+                <th style="text-align: center;">Coups</th>
+                <th style="text-align: right;">Date</th>
+              </tr>
+            </thead>
+            <tbody id="stats-recent-list">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SALON D'ATTENTE (LOBBY MULTIJOUEUR) -->
+  <div class="modal-overlay" id="lobby-modal">
+    <div class="modal lobby-modal-content">
+      <button class="modal-close" data-close="lobby-modal" aria-label="Fermer" title="Fermer pour voir la page">&times;</button>
+      
+      <div class="lobby-header-box">
+        <div class="lobby-top-badge" id="lobby-top-badge">🎮 Salon d'attente Multijoueur</div>
+        <h2 class="lobby-main-title" id="lobby-main-title">Préparez-vous pour le Concours !</h2>
+        <p class="lobby-instructions" id="lobby-instructions">
+          Chaque joueur doit cliquer sur <b>« Je suis prêt »</b>. L'Host pourra lancer la partie dès que tout le monde est prêt.
+        </p>
+      </div>
+
+      <!-- Last Round Results & Podium (Shown when returning from a finished round) -->
+      <div id="lobby-last-round-box" class="lobby-last-round-box" style="display: none;">
+        <div class="lobby-recap-header">
+          <span class="recap-trophy">🏆</span>
+          <div class="recap-header-info">
+            <h3 class="recap-title">Manche terminée !</h3>
+            <div class="recap-solution">
+              Titre secret : <b id="lobby-last-solution-title">...</b>
+              <a id="lobby-last-solution-link" href="#" target="_blank" rel="noopener" class="solution-link-pill">↗ Consulter sur Wikipédia</a>
+            </div>
+          </div>
+        </div>
+        <div class="lobby-podium-section">
+          <div class="lobby-podium-title">Podium & Points attribués (+3 pt au 1er, +2 pt au 2e, +1 pt au 3e) :</div>
+          <div id="lobby-podium-cards" class="lobby-podium-cards">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Room Code & Quick Invite Row -->
+      <div class="lobby-meta-bar">
+        <div class="lobby-meta-pseudo-col">
+          <span class="meta-label">Mon pseudo :</span>
+          <div class="lobby-pseudo-field-wrap">
+            <span class="pseudo-field-icon">👤</span>
+            <input type="text" id="lobby-pseudo-input" class="lobby-pseudo-input" maxlength="20" placeholder="Votre pseudo..." title="Changer votre pseudo pour le salon" autocomplete="off" spellcheck="false">
+            <button type="button" id="btn-lobby-save-pseudo" class="btn-lobby-save-pseudo" title="Valider le pseudo">✓</button>
+          </div>
+        </div>
+        <div class="lobby-meta-room-col">
+          <div class="lobby-meta-item">
+            <span class="meta-label">Salon :</span>
+            <b id="lobby-room-name-display" class="lobby-code-pill">default</b>
+          </div>
+          <button type="button" id="btn-lobby-copy-link" class="btn-lobby-invite-copy">
+            <span>📋</span> Copier le lien
+          </button>
+        </div>
+      </div>
+
+      <!-- Game Mode Selection Box -->
+      <div class="lobby-mode-switch-box">
+        <div class="mode-switch-header">
+          <span class="mode-switch-label">🎮 Mode de jeu :</span>
+          <span class="mode-host-hint" id="lobby-mode-hint">(Configurable par l'Host 👑)</span>
+        </div>
+        <div class="mode-switch-options">
+          <button type="button" class="btn-mode-toggle active" id="btn-mode-individual" data-mode="individual">
+            <span class="mode-opt-icon">👤</span>
+            <div class="mode-opt-text">
+              <b>Chacun pour soi</b>
+              <span>Grille individuelle, le 1er à trouver gagne</span>
+            </div>
+          </button>
+          <button type="button" class="btn-mode-toggle" id="btn-mode-team" data-mode="team">
+            <span class="mode-opt-icon">👥</span>
+            <div class="mode-opt-text">
+              <b>Par Équipes (2 camps)</b>
+              <span>Rouge 🔴 vs Bleue 🔵 : Coopérez en direct sur la même page !</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Teams Roster Grid (Shown in team mode) -->
+      <div class="lobby-teams-box" id="lobby-teams-box" style="display: none;">
+        <div class="lobby-teams-header">
+          <span class="roster-title">Répartition des Équipes :</span>
+          <span class="team-rule-pill">🤝 Mots partagés entre équipiers</span>
+        </div>
+        <div class="lobby-teams-grid" id="lobby-teams-grid">
+          <!-- Dynamically populated with Red and Blue team cards + join buttons -->
+        </div>
+      </div>
+
+      <!-- Players Grid (Shown in individual mode) -->
+      <div class="lobby-roster-box" id="lobby-roster-box">
+        <div class="lobby-roster-header">
+          <span class="roster-title">Joueurs dans le salon :</span>
+          <span id="lobby-ready-ratio" class="roster-ready-badge">0/0 prêt</span>
+        </div>
+        <div id="lobby-players-grid" class="lobby-players-grid">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Lobby Live Chat Section -->
+      <div class="lobby-chat-section">
+        <div class="lobby-chat-header">
+          <span class="lobby-chat-title">💬 Chat du salon en direct</span>
+          <span class="lobby-chat-badge">Live</span>
+        </div>
+        <div class="lobby-chat-messages" id="chat-messages-lobby">
+          <div class="chat-empty-hint">Dites un mot ou réagissez avec un emoji ci-dessous ! 👋</div>
+        </div>
+        <div class="chat-quick-reactions" id="chat-quick-reactions-lobby">
+          <button type="button" class="btn-chat-reaction" data-emoji="👍">👍</button>
+          <button type="button" class="btn-chat-reaction" data-emoji="🔥">🔥</button>
+          <button type="button" class="btn-chat-reaction" data-emoji="😂">😂</button>
+          <button type="button" class="btn-chat-reaction" data-emoji="👏">👏</button>
+          <button type="button" class="btn-chat-reaction" data-emoji="🧠">🧠</button>
+          <button type="button" class="btn-chat-reaction" data-emoji="🤫">🤫</button>
+          <button type="button" class="btn-chat-reaction" data-emoji="😱">😱</button>
+        </div>
+        <form class="chat-input-form lobby-chat-form" id="chat-form-lobby">
+          <input type="text" id="chat-input-lobby" class="chat-input" placeholder="Message au salon..." maxlength="300" autocomplete="off" />
+          <button type="submit" id="btn-chat-send-lobby" class="btn-chat-send">
+            <span>Envoyer</span>
+            <span class="kbd-pill">↵</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Ready & Start Buttons -->
+      <div class="lobby-control-buttons">
+        <button type="button" id="btn-lobby-toggle-ready" class="btn-lobby-ready">
+          <span id="lobby-ready-icon">⏳</span>
+          <span id="lobby-ready-label">Je suis prêt !</span>
+        </button>
+
+        <button type="button" id="btn-lobby-start-game" class="btn-lobby-start" style="display: none;">
+          <span>🚀</span> Démarrer la partie
+        </button>
+      </div>
+
+      <!-- Real-time Status Hint -->
+      <div id="lobby-status-hint" class="lobby-status-hint">
+        En attente que tous les joueurs soient prêts...
+      </div>
+
+      <div class="lobby-minimize-bar">
+        <button type="button" class="btn-lobby-minimize" data-close="lobby-modal">
+          👁️ Réduire pour voir la page en arrière-plan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: FIN DE MANCHE (ROUND OVER) -->
+  <div class="modal-overlay" id="round-over-modal">
+    <div class="modal round-over-modal-content">
+      <div class="modal-header">
+        <span class="modal-header-icon">🏁</span>
+        <h3>Fin de la manche !</h3>
+      </div>
+      <div class="modal-body">
+        <div class="round-over-trophy-banner">
+          <div class="trophy-big">🏆</div>
+          <div class="round-over-text">
+            <h2 id="round-over-winner-title">... a remporté la manche !</h2>
+            <div class="round-over-award">
+              <span>+1 point ajouté à son score en base de données</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="round-over-solution">
+          <span class="solution-tag">Titre secret de la page Wikipédia :</span>
+          <div id="round-over-solution-text" class="solution-text">...</div>
+          <a id="round-over-wiki-link" href="#" target="_blank" class="solution-wiki-btn">↗ Consulter sur Wikipédia</a>
+        </div>
+
+        <div class="round-over-scores-section">
+          <h4>Tableau des scores (enregistrés en BDD) :</h4>
+          <div id="round-over-scores-list" class="round-over-scores-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <div class="round-over-next-controls">
+          <div class="round-next-prompt">Cliquez sur « Prêt » pour la manche suivante :</div>
+          <div class="round-next-btn-group">
+            <button type="button" id="btn-round-ready" class="btn-lobby-ready">
+              <span id="round-ready-icon">⏳</span>
+              <span id="round-ready-label">Je suis prêt pour la suite !</span>
+            </button>
+            <button type="button" id="btn-round-next-game" class="btn-lobby-start" style="display: none;">
+              <span>🎲</span> Lancer la manche suivante
+            </button>
+          </div>
+          <div id="round-next-status-hint" class="lobby-status-hint">
+            En attente que tous les joueurs soient prêts...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOATING CHAT NOTIFICATION TOAST -->
+  <div id="chat-floating-toast" class="chat-floating-toast" style="display: none;">
+    <div class="chat-toast-avatar">💬</div>
+    <div class="chat-toast-body">
+      <div class="chat-toast-sender" id="chat-toast-sender">Joueur</div>
+      <div class="chat-toast-text" id="chat-toast-text">Message</div>
+    </div>
+    <button type="button" class="chat-toast-close" id="btn-chat-toast-close" title="Fermer">✕</button>
+  </div>
+
+  <!-- MODAL: SALONS MULTIJOUEUR (ROOM BROWSER & DISCOVERY) -->
+  <div class="modal-overlay" id="rooms-modal">
+    <div class="modal modal-wide rooms-modal-content">
+      <button class="modal-close" data-close="rooms-modal" aria-label="Fermer">&times;</button>
+      <div class="modal-header">
+        <span class="modal-header-icon">🌐</span>
+        <div class="modal-title-col">
+          <h3>Salons Multijoueur en ligne</h3>
+          <p class="modal-subtitle">Trouvez facilement d'autres joueurs ou lancez une partie avec vos amis !</p>
+        </div>
+      </div>
+      <div class="modal-body">
+        <!-- Quick Actions Bar -->
+        <div class="rooms-action-bar">
+          <button type="button" id="btn-modal-create-room" class="btn-create-highlight">
+            <span>➕</span> Créer un nouveau salon
+          </button>
+          
+          <div class="join-by-code-box">
+            <input type="text" id="input-join-code" placeholder="Nom ou code du salon..." maxlength="30" autocomplete="off" />
+            <button type="button" id="btn-modal-join-code" class="btn-join-code">Rejoindre</button>
+          </div>
+
+          <button type="button" id="btn-refresh-rooms" class="btn-refresh-rooms" title="Actualiser la liste des salons">
+            <span>🔄</span> Actualiser
+          </button>
+        </div>
+
+        <!-- Current Room Info Bar -->
+        <div class="current-room-bar">
+          <span>Vous êtes dans le salon : <strong id="current-room-name-text">default</strong></span>
+          <button type="button" id="btn-copy-current-link" class="btn-copy-small">📋 Copier le lien d'invitation</button>
+        </div>
+
+        <!-- Active Rooms List -->
+        <div class="rooms-list-container">
+          <div class="rooms-list-header">
+            <h4>Salons actifs sur le serveur :</h4>
+            <span id="rooms-count-badge" class="rooms-count-badge">0 salon disponible</span>
+          </div>
+          <div id="rooms-list" class="rooms-list-grid">
+            <div class="rooms-loading-placeholder">Chargement des salons en ligne...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PARAMÈTRES DU SERVEUR EN LIGNE (RENDER / NETLIFY) -->
+  <div class="modal-overlay" id="server-settings-modal">
+    <div class="modal server-modal-content">
+      <button class="modal-close" data-close="server-settings-modal" aria-label="Fermer">&times;</button>
+      <div class="modal-header">
+        <span class="modal-header-icon">⚙️</span>
+        <div class="modal-title-col">
+          <h3>Connexion au serveur (Render)</h3>
+          <p class="modal-subtitle">Hébergement en ligne Netlify + Render + Supabase</p>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="server-status-card">
+          <div class="server-status-indicator" id="server-modal-status-indicator">
+            <span class="status-dot"></span>
+            <span id="server-modal-status-text">Vérification de la connexion...</span>
+          </div>
+          <p class="server-status-sub" id="server-modal-status-sub">
+            💡 Sur le plan gratuit Render, le serveur s'endort après 15 minutes d'inactivité et prend environ 30 secondes à se réveiller au premier chargement.
+          </p>
+        </div>
+
+        <div class="form-group" style="margin-top: 1rem;">
+          <label for="input-backend-url" style="display: block; font-weight: 600; margin-bottom: 0.4rem;">
+            URL de votre API Render :
+          </label>
+          <input type="url" id="input-backend-url" class="form-control" placeholder="https://votre-backend.onrender.com" style="width: 100%; box-sizing: border-box; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--block-border); background: var(--block-bg); color: inherit;" />
+          <p style="font-size: 0.8rem; opacity: 0.75; margin-top: 0.4rem;">
+            Si le site est hébergé sur Netlify, collez ici l'URL de votre web service Render. Si le site est hébergé directement sur Render ou en local, laissez vide.
+          </p>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.2rem;">
+          <button type="button" id="btn-save-backend-url" class="btn-primary" style="padding: 0.6rem 1.2rem; border-radius: 8px; border: none; background: #059669; color: white; font-weight: 600; cursor: pointer;">
+            Enregistrer & Tester
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="toast"></div>
+
+  <!-- SCRIPTS -->
+  <script src="/static/js/config.js"></script>
+  <script src="/static/js/confetti.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: pedantix-api
+    runtime: python
+    plan: free
+    region: frankfurt            # proche de la France (et de Supabase eu-central)
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    # UN SEUL worker : les salons/parties sont gardés en mémoire du processus.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*' --ws-ping-interval 20 --ws-ping-timeout 20
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: PEDANTIX_MIN_LANGUAGES
+        value: "15"              # doit être une chaîne YAML, sinon Render rejette le blueprint
+      - key: PEDANTIX_SQLITE_PATH
+        value: /tmp/pedantix.db  # repli si Supabase est indisponible (disque éphémère)
+      - key: PEDANTIX_ALLOWED_ORIGINS
+        sync: false              # ex: https://mon-site.netlify.app (séparés par des virgules)
+      - key: DATABASE_URL
+        sync: false              # URI "Session pooler" de Supabase (voir DEPLOY.md)
