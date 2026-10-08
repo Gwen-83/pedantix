@@ -15,7 +15,63 @@ logger = logging.getLogger("pedantix.wiki")
 USER_AGENT = os.environ.get("PEDANTIX_USER_AGENT", "PedantixGame/2.0 (https://github.com/pedantix; pedantix-game@pedantix.org)")
 
 # Minimum number of translation languages required to consider an article sufficiently well-known
-DEFAULT_MIN_ARTICLE_LANGUAGES = int(os.environ.get("PEDANTIX_MIN_LANGUAGES", "15"))
+DEFAULT_MIN_ARTICLE_LANGUAGES = int(os.environ.get("PEDANTIX_MIN_LANGUAGES", "25"))
+
+# Strict notability criteria for biography / person articles (to prevent obscure athletes, regional figures, etc.)
+DEFAULT_MIN_PERSON_LANGUAGES = int(os.environ.get("PEDANTIX_MIN_PERSON_LANGUAGES", "50"))
+DEFAULT_MIN_PERSON_LANGUAGES_REGIONAL = int(os.environ.get("PEDANTIX_MIN_PERSON_LANGUAGES_REGIONAL", "28"))
+DEFAULT_MIN_PERSON_PAGEVIEWS = int(os.environ.get("PEDANTIX_MIN_PERSON_PAGEVIEWS", "3000"))
+DEFAULT_MIN_GENERAL_PAGEVIEWS = int(os.environ.get("PEDANTIX_MIN_GENERAL_PAGEVIEWS", "1000"))
+
+# Difficulty presets specifying language translations, 90-day pageviews, word count, and pool distribution
+DIFFICULTY_LEVELS = {
+    "facile": {
+        "id": "facile",
+        "name": "Facile",
+        "icon": "🟢",
+        "min_languages": 45,
+        "min_pageviews_90d": 20000,
+        "min_general_pageviews_60d": 13500,
+        "min_person_languages": 65,
+        "min_person_languages_regional": 35,
+        "min_person_pageviews_90d": 30000,
+        "min_person_pageviews_60d": 20000,
+        "min_words": 90,
+        "curated_pool_prob": 0.75,
+        "description": "Sujets très célèbres et incontournables (≥ 45 langues, ≥ 20k vues)"
+    },
+    "moyen": {
+        "id": "moyen",
+        "name": "Moyen",
+        "icon": "🟡",
+        "min_languages": 28,
+        "min_pageviews_90d": 4000,
+        "min_general_pageviews_60d": 2700,
+        "min_person_languages": 45,
+        "min_person_languages_regional": 28,
+        "min_person_pageviews_90d": 4500,
+        "min_person_pageviews_60d": 3000,
+        "min_words": 65,
+        "curated_pool_prob": 0.35,
+        "description": "Culture générale classique (≥ 28 langues, ≥ 4k vues)"
+    },
+    "difficile": {
+        "id": "difficile",
+        "name": "Difficile",
+        "icon": "🔴",
+        "min_languages": 18,
+        "min_pageviews_90d": 1500,
+        "min_general_pageviews_60d": 1000,
+        "min_person_languages": 30,
+        "min_person_languages_regional": 20,
+        "min_person_pageviews_90d": 2500,
+        "min_person_pageviews_60d": 1700,
+        "min_words": 50,
+        "curated_pool_prob": 0.0,
+        "description": "Sujets plus pointus ou spécialisés (≥ 18 langues, ≥ 1.5k vues)"
+    }
+}
+DIFFICULTY_CONFIGS = DIFFICULTY_LEVELS
 
 # Curated lists of iconic articles by category (universally known subjects)
 THEMES_ARTICLES = {
@@ -46,7 +102,7 @@ THEMES_ARTICLES = {
         "Évolution (biologie)", "Cerveau humain", "Radioactivité", "Gravitation",
         "Tableau périodique des éléments", "Télescope spatial James-Webb", "Étoile à neutrons",
         "Jupiter (planète)", "Soleil", "Terre", "Génétique", "Vaccin", "Pénicilline",
-        "Théorie du chaos", "Énergie nucléaire", "Électron", "Dinausore", "Laser",
+        "Théorie du chaos", "Énergie nucléaire", "Électron", "Dinosaure", "Laser",
         "Thermodynamique", "Tectonique des plaques", "Astéroïde", "Comète"
     ],
     "monuments": [
@@ -66,7 +122,13 @@ THEMES_ARTICLES = {
         "Cléopâtre VII", "Alexandre le Grand", "Galilée (savant)", "Aristote",
         "Socrate", "Jules César", "Mahatma Gandhi", "Nelson Mandela", "Martin Luther King",
         "Pablo Picasso", "Jean-Jacques Rousseau", "Voltaire", "Sigmund Freud",
-        "Christophe Colomb", "Marco Polo", "Pasteur (Louis)", "Frida Kahlo", "Jean Moulin"
+        "Christophe Colomb", "Marco Polo", "Louis Pasteur", "Frida Kahlo", "Jean Moulin",
+        "Zinédine Zidane", "Carl Lewis", "Usain Bolt", "Michael Jackson", "Charlie Chaplin",
+        "Coluche", "Alain Chabat", "Thomas Pesquet", "Simone Veil", "Georges Brassens",
+        "Édith Piaf", "Jacques Brel", "Charles Aznavour", "Louis de Funès", "Jean Reno",
+        "Stephen Hawking", "Nikola Tesla", "Archimède", "Michel-Ange", "Auguste Rodin",
+        "Jean de La Fontaine", "Émile Zola", "Albert Camus", "Antoine de Saint-Exupéry",
+        "Gustave Flaubert", "Honoré de Balzac", "Alexandre Dumas", "Arthur Rimbaud", "Charles Baudelaire"
     ],
     "arts_culture": [
         "La Joconde", "Impressionnisme", "Cinéma", "Photographie", "Bande dessinée",
@@ -80,7 +142,7 @@ THEMES_ARTICLES = {
         "Éléphant", "Manchot empereur", "Pieuvre", "Abeille", "Dinosaure",
         "Tyrannosaure", "Mammouth", "Séquoia géant", "Corail", "Panda géant",
         "Girafe", "Dauphin", "Chauve-souris", "Ours polaire", "Aigle royal",
-        "Gépard", "Caméléon", "Gorille", "Chimpanzé", "Kangourou", "Koala"
+        "Guépard", "Caméléon", "Gorille", "Chimpanzé", "Kangourou", "Koala"
     ],
     "tech_jeux": [
         "Internet", "Intelligence artificielle", "Ordinateur", "Jeu d'échecs",
@@ -143,33 +205,38 @@ def count_article_words(paragraphs: List[str]) -> int:
 
 
 BIO_ROLES = [
-    'homme politique', 'femme politique', 'écrivain', 'écrivaine', 'acteur', 'actrice',
-    'chanteur', 'chanteuse', 'musicien', 'musicienne', 'joueur', 'joueuse', 'sportif', 'sportive',
-    'scientifique', 'général', 'roi', 'reine', 'président', 'présidente', 'compositeur', 'compositrice',
-    'poète', 'poétesse', 'athlète', 'footballeur', 'footballeuse', 'cycliste', 'souverain', 'souveraine',
-    'cinéaste', 'réalisateur', 'réalisatrice', 'sculpteur', 'sculptrice', 'peintre', 'dramaturge',
-    'romancier', 'romancière', 'médecin', 'biologiste', 'physicien', 'physicienne', 'chimiste',
+    'homme politique', 'femme politique', 'homme d\'État', 'femme d\'État',
+    'écrivain', 'écrivaine', 'acteur', 'actrice', 'chanteur', 'chanteuse',
+    'musicien', 'musicienne', 'joueur', 'joueuse', 'sportif', 'sportive',
+    'scientifique', 'général', 'roi', 'reine', 'président', 'présidente',
+    'compositeur', 'compositrice', 'poète', 'poétesse', 'athlète', 'footballeur',
+    'footballeuse', 'cycliste', 'souverain', 'souveraine', 'cinéaste', 'réalisateur',
+    'réalisatrice', 'sculpteur', 'sculptrice', 'peintre', 'dramaturge', 'romancier',
+    'romancière', 'médecin', 'biologiste', 'physicien', 'physicienne', 'chimiste',
     'mathématicien', 'mathématicienne', 'militaire', 'avocat', 'avocate', 'journaliste',
-    'navigateur', 'navigatrice', 'explorateur', 'exploratrice', 'philosophe', 'homme d\'affaires',
-    'femme d\'affaires', 'animateur', 'animatrice', 'humoriste', 'militant', 'militante',
-    'évêque', 'archevêque', 'cardinal', 'pape', 'prince', 'princesse', 'duc', 'duchesse',
-    'empereur', 'impératrice', 'seigneur', 'architecte', 'historien', 'historienne',
-    'personnage', 'héros', 'héroïne', 'personnalité', 'théologien', 'universitaire'
+    'navigateur', 'navigatrice', 'explorateur', 'exploratrice', 'philosophe',
+    'homme d\'affaires', 'femme d\'affaires', 'animateur', 'animatrice', 'humoriste',
+    'militant', 'militante', 'évêque', 'archevêque', 'cardinal', 'pape', 'prince',
+    'princesse', 'duc', 'duchesse', 'empereur', 'impératrice', 'seigneur', 'architecte',
+    'historien', 'historienne', 'personnage', 'héros', 'héroïne', 'personnalité',
+    'théologien', 'universitaire', 'chancelier', 'chancelière', 'ministre',
+    'premier ministre', 'première ministre', 'sénateur', 'sénatrice', 'député',
+    'députée', 'maréchal', 'amiral', 'pilote', 'astronaute', 'cosmonaute', 'spationaute',
+    'rugbyman', 'basketteur', 'basketteuse', 'nageur', 'nageuse', 'skieur', 'skieuse',
+    'boxeur', 'boxeuse', 'tennisman', 'mannequin', 'photographe', 'dessinateur',
+    'dessinatrice', 'scénariste'
 ]
 
 BIO_REGEX = re.compile(
-    r'\b(?:est|était|fut)\s+(?:un|une)\s+(?:' + '|'.join(BIO_ROLES) + r')\b',
+    r'\b(?:est|était|fut)\s+(?:un|une)\s+(?:ancien\s+|ancienne\s+|célèbre\s+)?(?:' + '|'.join(BIO_ROLES) + r')\b',
     re.IGNORECASE
 )
 
-DATES_REGEX = re.compile(
-    r'\(\s*(?:né[e]?\s+(?:le|en|vers)\s+\d{1,4}|\d{3,4}\s*[-–—]\s*(?:\d{3,4}|mort|décédé))',
-    re.IGNORECASE
-)
-
-DEFAULTSORT_PERSON = re.compile(
-    r'^[A-ZÀ-ÖØ-ß][a-zà-öø-ÿ\-\']{1,25},\s+[A-ZÀ-ÖØ-ß]'
-)
+INVERTED_ARTICLES = {
+    'le', 'la', 'les', "l'", 'un', 'une', 'des', 'du',
+    'the', 'a', 'an', 'der', 'die', 'das', 'dem', 'den',
+    'el', 'il', 'lo', 'los', 'las', 'gli', 'i'
+}
 
 NON_PERSON_WORDS = [
     'bataille', 'traité', 'commune', 'église', 'canton', 'rue', 'avenue',
@@ -177,7 +244,10 @@ NON_PERSON_WORDS = [
     'parti', 'société', 'compagnie', 'groupe', 'île', 'îlot', 'mont', 'col',
     'vallée', 'rivière', 'fleuve', 'baie', 'golfe', 'cap', 'forêt', 'station',
     'canal', 'mer', 'océan', 'village', 'ville', 'royaume', 'dynastie',
-    'abbaye', 'cathédrale', 'monastère', 'hôtel', 'palais'
+    'abbaye', 'cathédrale', 'monastère', 'hôtel', 'palais', 'guerre', 'loi',
+    'planète', 'étoile', 'galaxie', 'université', 'stade', 'aéroport', 'théâtre',
+    'opéra', 'sympathie', 'théorie', 'principe', 'syndrome', 'maladie', 'accord',
+    'concile', 'massacre', 'sommet', 'fondation', 'académie'
 ]
 
 
@@ -186,43 +256,94 @@ def is_person_article(title: str, pageprops: Dict[str, Any], html_extract: str) 
     Determines whether a Wikipedia article represents a person (biography) or character.
     Uses microformats, birth/death patterns, biography vocabulary, defaultsort, and title patterns.
     """
-    # 1. Semantic microformats for birth/death dates
-    if 'bday' in html_extract or 'dday' in html_extract:
-        return True
-
-    # 2. Explicit birth or death mentions
-    if re.search(r'\b(?:né[e]?|baptisé[e]?)\s+(?:le|en|vers)\s+\d+', html_extract, re.IGNORECASE):
-        return True
-    if re.search(r'\b(?:mort[e]?|décédé[e]?)\s+(?:le|en|vers)\s+\d+', html_extract, re.IGNORECASE):
-        return True
-
-    # 3. Lifespan in parentheses e.g. (1789-1845)
-    if DATES_REGEX.search(html_extract):
-        return True
-
-    # 4. Sentence stating profession / role
-    if BIO_REGEX.search(html_extract):
-        return True
-
-    # 5. MediaWiki defaultsort formatted as 'Nom, Prénom'
-    defaultsort = pageprops.get("defaultsort", "")
-    if defaultsort and DEFAULTSORT_PERSON.match(defaultsort):
-        lower_t = title.lower()
-        if not any(k in lower_t for k in NON_PERSON_WORDS):
-            return True
-
-    # 6. Title parenthetical indicates occupation or character
+    # 0. Title parenthetical indicates occupation or character disambiguation
     parenthetical = re.search(r'\(([^)]+)\)$', title)
     if parenthetical:
         p_content = parenthetical.group(1).lower()
         if any(r in p_content for r in [
-            'chanteur', 'chanteuse', 'acteur', 'actrice', 'football', 'rugby',
-            'cyclisme', 'athlétisme', 'écrivain', 'peintre', 'politique', 'personnalité',
-            'personnage'
+            'chanteur', 'chanteuse', 'acteur', 'actrice', 'footballeur', 'football',
+            'rugby', 'cyclisme', 'athlétisme', 'tennis', 'natation', 'basket-ball',
+            'écrivain', 'peintre', 'sculpteur', 'sculptrice', 'compositeur', 'compositrice',
+            'musicien', 'musicienne', 'politique', 'homme politique', 'femme politique',
+            'personnalité', 'personnage', 'historien', 'philosophe', 'scientifique',
+            'médecin', 'militaire', 'général', 'amiral', 'évêque', 'archevêque',
+            'cardinal', 'animateur', 'humoriste', 'réalisateur'
         ]):
             return True
 
+    # 1. Semantic microformats for birth/death dates (Wikipedia biographical infoboxes)
+    if 'bday' in html_extract or 'dday' in html_extract:
+        return True
+
+    # 2. Extract clean lead text
+    clean_paras = clean_html_extract(html_extract)
+    lead_text = clean_paras[0] if clean_paras else ""
+
+    # 2b. Inanimate work / object guard: e.g. "La Joconde ... est un tableau"
+    if re.search(
+        r'\b(?:est|était|fut)\s+(?:un|une)\s+(?:tableau|peinture|film|série|roman|chanson|album|jeu|livre|sculpture|opéra)\b',
+        lead_text,
+        re.IGNORECASE
+    ):
+        return False
+
+    # 3. Explicit birth or death mentions in the lead
+    if re.search(r'\b(?:né[e]?|baptisé[e]?)\s+(?:le|en|vers)\s+\d+', lead_text, re.IGNORECASE):
+        return True
+    if re.search(r'\b(?:mort[e]?|décédé[e]?)\s+(?:le|en|vers)\s+\d+', lead_text, re.IGNORECASE):
+        if not re.search(r'\b(?:l\'artiste|l\'auteur|le peintre|le créateur)\s+(?:étant|est)\s+mort', lead_text, re.IGNORECASE):
+            return True
+
+    # 4. Lifespan in parentheses e.g. (1789-1845) or (vers 100 av. J.-C. - 44 av. J.-C.) in lead
+    if re.search(r'\(\s*(?:vers\s+)?-?\d{1,4}\s*(?:av\. J\.-C\.)?\s*[-–—]\s*(?:vers\s+)?-?\d{1,4}(?:\s*av\. J\.-C\.)?\s*\)', lead_text):
+        if not re.search(r'\b(?:guerre|bataille|traité|dynastie|période|siècle|révolution|accord|crise|empire|royaume)\b', lead_text, re.IGNORECASE):
+            return True
+
+    # 5. Sentence stating profession / role
+    if BIO_REGEX.search(lead_text):
+        return True
+
+    # 6. MediaWiki defaultsort formatted as 'Nom, Prénom' (excluding inverted grammatical articles)
+    defaultsort = pageprops.get("defaultsort", "")
+    if defaultsort and "," in defaultsort:
+        parts = [p.strip() for p in defaultsort.split(",", 1)]
+        if len(parts) == 2 and parts[1].lower() not in INVERTED_ARTICLES:
+            lower_t = title.lower()
+            if not any(k in lower_t for k in NON_PERSON_WORDS):
+                return True
+
     return False
+
+
+def calculate_article_difficulty(
+    lang_count: int,
+    pageviews_90d: int,
+    is_person: bool = False,
+    title: str = ""
+) -> str:
+    """
+    Classifies a Wikipedia article into a difficulty level: 'facile', 'moyen', or 'difficile'.
+    - Facile: highly famous, ubiquitous subjects (>= 45 langs or >= 20 000 views / 90d, or curated iconic).
+    - Moyen: classic general knowledge (>= 25 langs or >= 3 500 views / 90d).
+    - Difficile: more specific or specialized (fewer translations/views, but still sufficiently notable).
+    """
+    if title in ALL_CURATED_TITLES and (lang_count >= 35 or pageviews_90d >= 10000):
+        return "facile"
+
+    if is_person:
+        if lang_count >= 65 or (lang_count >= 35 and pageviews_90d >= 30000):
+            return "facile"
+        elif lang_count >= 38 or (lang_count >= 25 and pageviews_90d >= 4000):
+            return "moyen"
+        else:
+            return "difficile"
+    else:
+        if lang_count >= 45 or pageviews_90d >= 20000:
+            return "facile"
+        elif lang_count >= 25 or pageviews_90d >= 3500:
+            return "moyen"
+        else:
+            return "difficile"
 
 
 class WikipediaClient:
@@ -264,7 +385,7 @@ class WikipediaClient:
         if self.pageviews_pool:
             return self.pageviews_pool
 
-        months = ['2024/05', '2023/10', '2024/01', '2024/09', '2023/12', '2023/04']
+        months = ['2024/05', '2024/01', '2024/09', '2023/12', '2023/04', '2024/11']
         random.shuffle(months)
         for m in months:
             url = f"https://wikimedia.org/api/rest_v1/metrics/pageviews/top/fr.wikipedia/all-access/{m}/all-days"
@@ -280,7 +401,8 @@ class WikipediaClient:
                         if any(t.startswith(p) for p in [
                             "Wikipédia:", "Spécial:", "Fichier:", "Aide:", "Portail:",
                             "Discussion:", "Catégorie:", "Modèle:", "Liste", "Saison",
-                            "Épisode", "Chronologie", "Discographie", "Canton"
+                            "Épisode", "Chronologie", "Discographie", "Canton", "Sondage",
+                            "Utilisateur:"
                         ]):
                             continue
                         if t in ["Cookie (informatique)", "Accueil", "Spécial:Recherche"]:
@@ -302,7 +424,7 @@ class WikipediaClient:
         """Fetches full introductory extract, image, and metadata for a specific article title."""
         params = {
             "action": "query",
-            "prop": "extracts|pageimages|info|langlinks",
+            "prop": "extracts|pageimages|info|pageprops|langlinks|pageviews",
             "inprop": "url",
             "titles": title,
             "redirects": "1",
@@ -332,6 +454,11 @@ class WikipediaClient:
         page_url = page.get("fullurl", f"https://fr.wikipedia.org/wiki/{urllib.parse.quote(real_title)}")
         full_text_sample = " ".join(paragraphs)
         lang_count = len(page.get("langlinks", []))
+        pviews = page.get("pageviews", {})
+        total_pviews = sum(v for v in pviews.values() if v is not None) if pviews else 0
+        pageviews_90d = int(total_pviews * 1.5)
+        is_person = is_person_article(real_title, page.get("pageprops", {}), html_extract)
+        difficulty = calculate_article_difficulty(lang_count, pageviews_90d, is_person, real_title)
 
         return {
             "title": real_title,
@@ -340,7 +467,11 @@ class WikipediaClient:
             "url": page_url,
             "page_id": page.get("pageid", 0),
             "text_sample": full_text_sample,
-            "lang_count": lang_count
+            "lang_count": lang_count,
+            "pageviews_60d": total_pviews,
+            "pageviews_90d": pageviews_90d,
+            "difficulty": difficulty,
+            "is_person": is_person
         }
 
     def search_and_fetch(self, query: str) -> Optional[Dict[str, Any]]:
@@ -383,21 +514,133 @@ class WikipediaClient:
         page = next(iter(pages.values()), {})
         return len(page.get("langlinks", []))
 
+    def is_notable_candidate(
+        self,
+        title: str,
+        page: Dict[str, Any],
+        raw_extract: str,
+        min_languages: int,
+        min_person_languages: int = DEFAULT_MIN_PERSON_LANGUAGES,
+        min_person_languages_regional: int = DEFAULT_MIN_PERSON_LANGUAGES_REGIONAL,
+        min_person_pageviews: int = DEFAULT_MIN_PERSON_PAGEVIEWS,
+        min_general_pageviews: int = DEFAULT_MIN_GENERAL_PAGEVIEWS
+    ) -> bool:
+        """
+        Validates if an article candidate is sufficiently well known to be fun and fair in Pedantix.
+        - Persons/biographies require either high international fame (min 50 langs)
+          or significant French readership (min 28 langs + min 3,000 views over 60 days).
+        - Non-person articles require >= 25 langs or (>= 18 langs + >= 1,000 views).
+        - Discards numbered asteroids and obscure stubs.
+        """
+        # Always accept curated iconic subjects
+        if title in ALL_CURATED_TITLES:
+            return True
+
+        # Exclude numbered asteroids like "(899) Jokaste"
+        if re.match(r'^\(\d+\)', title):
+            return False
+
+        # Exclude technical, disambiguation, or ephemeral pages
+        lower_title = title.lower()
+        if "homonymie" in lower_title:
+            return False
+        if title.startswith((
+            "Liste", "Chronologie", "Saison", "Épisode",
+            "Discographie", "Canton", "Sondage", "Utilisateur:"
+        )):
+            return False
+
+        langs_count = len(page.get("langlinks", []))
+        pageviews_dict = page.get("pageviews", {})
+        pageviews_60d = sum(v for v in pageviews_dict.values() if v is not None) if pageviews_dict else 0
+        pageprops = page.get("pageprops", {})
+
+        is_person = is_person_article(title, pageprops, raw_extract)
+
+        if is_person:
+            # Person criteria:
+            # 1. Universally famous international person (e.g. Einstein 235, Zidane 122, Carl Lewis 72)
+            if langs_count >= min_person_languages:
+                return True
+            # 2. Prominent Francophone/French cultural figure with solid translation count and strong pageviews
+            # (e.g. Coluche 39 langs / 43k views, Jean Moulin 39 langs / 100k views, Thomas Pesquet 33 langs / 43k views)
+            if langs_count >= min_person_languages_regional and pageviews_60d >= min_person_pageviews:
+                return True
+            # In Wikimedia top monthly pageviews pool:
+            if bool(self.pageviews_pool) and title in self.pageviews_pool and langs_count >= 20:
+                return True
+
+            logger.info(
+                f"Skipping obscure person article: '{title}' "
+                f"({langs_count} languages, {pageviews_60d} views in 60d)"
+            )
+            return False
+        else:
+            # General (non-person) criteria:
+            if langs_count >= min_languages:
+                return True
+            if langs_count >= 18 and pageviews_60d >= min_general_pageviews:
+                return True
+            if bool(self.pageviews_pool) and title in self.pageviews_pool and langs_count >= 15:
+                return True
+
+            logger.info(
+                f"Skipping obscure concept/article: '{title}' "
+                f"({langs_count} languages, {pageviews_60d} views in 60d)"
+            )
+            return False
+
     def fetch_random_wikipedia_article(
         self,
+        difficulty: str = "moyen",
         min_languages: Optional[int] = None,
+        min_person_languages: Optional[int] = None,
+        min_person_languages_regional: Optional[int] = None,
+        min_person_pageviews: Optional[int] = None,
+        min_general_pageviews: Optional[int] = None,
         max_attempts: int = 6
     ) -> Optional[Dict[str, Any]]:
         """
-        Fetches a random article from French Wikipedia (fr.wikipedia.org) that is sufficiently well known.
-        - Requires the article to have at least 50 words.
-        - Requires the article to be sufficiently known:
-          * Must have at least `min_languages` interwiki translations (default: 15), OR
-          * Must be in curated iconic articles / Wikimedia top pageviews list.
-        - Filters out disambiguation pages, technical lists, and obscure articles.
+        Fetches a random article from French Wikipedia (fr.wikipedia.org) tailored to the requested difficulty level.
+        - Difficulty levels:
+          * 'facile': min 45 languages, min 20,000 views / 90d, high chance of iconic curated subjects, min 90 words.
+          * 'moyen': min 28 languages, min 4,000 views / 90d, balanced pool, min 65 words.
+          * 'difficile': min 18 languages, min 1,500 views / 90d, random Wikipedia topics, min 50 words.
         """
+        diff_key = difficulty.lower() if difficulty and difficulty.lower() in DIFFICULTY_LEVELS else "moyen"
+        cfg = DIFFICULTY_LEVELS[diff_key]
+
         if min_languages is None:
-            min_languages = self.min_languages
+            min_languages = cfg["min_languages"]
+        if min_person_languages is None:
+            min_person_languages = cfg["min_person_languages"]
+        if min_person_languages_regional is None:
+            min_person_languages_regional = cfg["min_person_languages_regional"]
+        if min_person_pageviews is None:
+            min_person_pageviews = cfg["min_person_pageviews_60d"]
+        if min_general_pageviews is None:
+            min_general_pageviews = cfg["min_general_pageviews_60d"]
+        min_words = cfg.get("min_words", 50)
+        curated_prob = cfg.get("curated_pool_prob", 0.35)
+
+        # Pre-populate pageviews pool if empty
+        if not self.pageviews_pool:
+            self._get_pageviews_pool()
+
+        # In easy / medium mode, prioritize high pageviews / curated pool
+        if curated_prob > 0 and random.random() < curated_prob and (self.pageviews_pool or ALL_CURATED_TITLES):
+            pool = list(dict.fromkeys(list(ALL_CURATED_TITLES) + self.pageviews_pool))
+            sample_candidates = random.sample(pool, min(5, len(pool)))
+            for candidate in sample_candidates:
+                art = self.fetch_article_by_title(candidate)
+                if art and count_article_words(art.get("paragraphs", [])) >= min_words:
+                    art["difficulty"] = diff_key
+                    art["pageviews_90d"] = int(art.get("pageviews_60d", 0) * 1.5)
+                    logger.info(
+                        f"Accepted notable article from popular pool for difficulty '{diff_key}': '{art['title']}' "
+                        f"({art.get('lang_count', 0)} languages)"
+                    )
+                    return art
 
         for attempt in range(max_attempts):
             params = {
@@ -406,7 +649,7 @@ class WikipediaClient:
                 "grnnamespace": "0",
                 "grnfilterredir": "nonredirects",
                 "grnlimit": "40",
-                "prop": "extracts|pageimages|info|pageprops|langlinks",
+                "prop": "extracts|pageimages|info|pageprops|langlinks|pageviews",
                 "lllimit": "500",
                 "inprop": "url",
                 "exintro": "1",
@@ -423,31 +666,39 @@ class WikipediaClient:
                 if not title:
                     continue
 
-                # Filter out technical disambiguation pages and technical list prefixes
-                lower_title = title.lower()
-                if "homonymie" in lower_title:
-                    continue
-                if title.startswith(("Liste", "Chronologie", "Saison", "Épisode", "Discographie")):
-                    continue
-
                 raw_extract = page.get("extract", "")
                 paragraphs = clean_html_extract(raw_extract)
                 if not paragraphs:
                     continue
 
-                # Enforce minimum article length of 50 words
+                # Enforce difficulty-specific minimum article length
                 word_count = count_article_words(paragraphs)
-                if word_count < 50:
+                if word_count < min_words:
+                    continue
+
+                # Notability validation (person vs general)
+                if not self.is_notable_candidate(
+                    title=title,
+                    page=page,
+                    raw_extract=raw_extract,
+                    min_languages=min_languages,
+                    min_person_languages=min_person_languages,
+                    min_person_languages_regional=min_person_languages_regional,
+                    min_person_pageviews=min_person_pageviews,
+                    min_general_pageviews=min_general_pageviews
+                ):
                     continue
 
                 langs_count = len(page.get("langlinks", []))
+                pviews = page.get("pageviews", {})
+                total_pviews = sum(v for v in pviews.values() if v is not None) if pviews else 0
+                pageviews_90d = int(total_pviews * 1.5)
 
-                # Check notability: iconic curated, top pageviews, or minimum translation languages
-                is_curated = title in ALL_CURATED_TITLES or (bool(self.pageviews_pool) and title in self.pageviews_pool)
-                if not is_curated and langs_count < min_languages:
-                    logger.debug(f"Skipping obscure article: '{title}' ({langs_count} languages < {min_languages})")
+                # For hard difficulty, prefer articles that are not overly trivial
+                if diff_key == "difficile" and langs_count > 90 and total_pviews > 40000:
                     continue
 
+                is_person = is_person_article(title, page.get("pageprops", {}), raw_extract)
                 thumbnail = page.get("thumbnail", {}).get("source", "")
                 page_url = page.get("fullurl", f"https://fr.wikipedia.org/wiki/{urllib.parse.quote(title)}")
 
@@ -458,28 +709,37 @@ class WikipediaClient:
                     "url": page_url,
                     "page_id": page.get("pageid", 0),
                     "text_sample": " ".join(paragraphs),
-                    "lang_count": langs_count
+                    "lang_count": langs_count,
+                    "pageviews_60d": total_pviews,
+                    "pageviews_90d": pageviews_90d,
+                    "difficulty": diff_key,
+                    "is_person": is_person
                 })
 
             if candidates:
                 chosen = random.choice(candidates)
+                chosen["difficulty"] = diff_key
                 logger.info(
-                    f"Accepted sufficiently known article: '{chosen['title']}' "
-                    f"({chosen['lang_count']} languages >= {min_languages}, "
+                    f"Accepted article for difficulty '{diff_key}': '{chosen['title']}' "
+                    f"({chosen['lang_count']} languages, {chosen['pageviews_90d']} views 90d, "
                     f"{count_article_words(chosen['paragraphs'])} words)"
                 )
                 return chosen
 
         # Fallback to curated only if live network request fails or no candidate met criteria
         logger.warning(
-            f"Could not find random article meeting >= {min_languages} languages after {max_attempts} attempts; "
+            f"Could not find random article meeting criteria for difficulty '{diff_key}' after {max_attempts} attempts; "
             "falling back to curated iconic articles."
         )
-        return self.fetch_curated_article()
+        fallback = self.fetch_curated_article(difficulty=diff_key)
+        if fallback:
+            fallback["difficulty"] = diff_key
+            fallback["pageviews_90d"] = int(fallback.get("pageviews_60d", 0) * 1.5) or 25000
+        return fallback
 
     fetch_notable_random_wikipedia_article = fetch_random_wikipedia_article
 
-    def fetch_curated_article(self, category: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def fetch_curated_article(self, category: Optional[str] = None, difficulty: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Picks a random article from the curated collections and fetches it."""
         if category and category in THEMES_ARTICLES:
             titles_pool = THEMES_ARTICLES[category]
@@ -490,6 +750,8 @@ class WikipediaClient:
         for title in chosen_titles:
             article = self.fetch_article_by_title(title)
             if article and count_article_words(article.get("paragraphs", [])) >= 50:
+                if difficulty:
+                    article["difficulty"] = difficulty
                 return article
 
         # Fallback to local curated_articles.json if network is unavailable
@@ -499,8 +761,10 @@ class WikipediaClient:
                 with open(json_path, "r", encoding="utf-8") as f:
                     local_curated = json.load(f)
                     if local_curated:
-                        chosen = random.choice(list(local_curated.values()))
+                        chosen = dict(random.choice(list(local_curated.values())))
                         if count_article_words(chosen.get("paragraphs", [])) >= 50:
+                            chosen["difficulty"] = difficulty or chosen.get("difficulty", "facile")
+                            chosen["pageviews_90d"] = chosen.get("pageviews_90d", 25000)
                             return chosen
         except Exception as e:
             logger.debug(f"Failed loading offline curated: {e}")

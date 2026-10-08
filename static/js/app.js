@@ -2,6 +2,31 @@
  * Pédantix - Moteur Concours Multijoueur en Réseau Local
  */
 
+// Frame-busting : Empêche le site d'être chargé dans un encart ou une iframe de superposition
+if (window.top !== window.self) {
+  try {
+    window.top.location = window.self.location;
+  } catch (e) {
+    document.documentElement.innerHTML = '<div style="color:#ef4444;padding:40px;text-align:center;font-family:sans-serif;font-size:1.5rem;font-weight:bold;">⛔ Ce site ne peut pas être exécuté dans un encart ou une iframe de superposition.</div>';
+  }
+}
+
+// Caches des API natives pour empêcher le détournement par extensions
+const _NATIVE_FETCH = window.fetch ? window.fetch.bind(window) : null;
+const _NATIVE_WS = window.WebSocket;
+
+// Neutralisation immédiate des Shadow DOM injectés par des extensions de triche
+try {
+  if (typeof Element !== 'undefined' && Element.prototype && Element.prototype.attachShadow) {
+    const _origAttachShadow = Element.prototype.attachShadow;
+    Element.prototype.attachShadow = function(init) {
+      console.warn('[Anti-Cheat] Tentative de Shadow DOM interceptée et neutralisée.');
+      try { this.remove(); } catch (e) {}
+      return _origAttachShadow.apply(this, [init]);
+    };
+  }
+} catch (e) {}
+
 class PedantixApp {
   constructor() {
     // Room & Player configuration
@@ -18,10 +43,14 @@ class PedantixApp {
       localStorage.setItem('pedantix_player_id', this.playerId);
     }
 
+    const savedLastRoom = localStorage.getItem('pedantix_last_room');
+    const validSavedRoom = (savedLastRoom && !savedLastRoom.startsWith('solo-')) ? savedLastRoom : null;
+    const validRoomParam = (roomParam && !roomParam.startsWith('solo-')) ? roomParam : null;
+
     if (this.isSoloMode) {
       this.roomId = `solo-${this.playerId}`;
     } else {
-      this.roomId = roomParam || localStorage.getItem('pedantix_last_room') || `salon-${Math.floor(Math.random() * 899 + 100)}`;
+      this.roomId = validRoomParam || validSavedRoom || `salon-${Math.floor(Math.random() * 899 + 100)}`;
     }
 
     this.authUser = localStorage.getItem('pedantix_auth_user') || null;
@@ -38,6 +67,7 @@ class PedantixApp {
     this.tokensById = {};
     this.history = [];
     this.isWon = false;
+    this.isAbandoned = false;
     this.totalWords = 0;
     this.revealedWordsCount = 0;
     this.solution = null;
@@ -45,6 +75,7 @@ class PedantixApp {
     // Multiplayer room state
     this.isHost = false;
     this.isReady = false;
+    this.isSpectator = false;
     this.canStart = false;
     this.roomStatus = 'lobby'; // 'lobby', 'starting', 'playing', 'ending', 'round_over'
     this.myScore = 0;
@@ -54,6 +85,17 @@ class PedantixApp {
     this.revealedLetters = [];
     this.nextLetterHintTime = null;
     this.hintInterval = null;
+    this.surrenderCooldownTimer = null;
+    this.surrenderCooldownRemaining = 0;
+
+    // Anti-bot & anti-triche state
+    this.guessToken = null;
+    this.lastGuessTimestamp = 0;
+    this.isInputLocked = false;
+    this.inputLockTimeout = null;
+    this.trustedKeystrokeCount = 0;
+    this.lastTrustedPaste = false;
+    this.firstKeystrokeTime = 0;
 
     this.sortMode = 'chrono'; // 'chrono' or 'alpha'
     this.sortAsc = true;
@@ -72,6 +114,10 @@ class PedantixApp {
 
     this.soundEnabled = localStorage.getItem('pedantix_sound') !== 'false';
     this.theme = localStorage.getItem('pedantix_theme') || 'dark-colorful';
+    this.currentDifficulty = localStorage.getItem('pedantix_difficulty') || 'moyen';
+    this.articleDifficulty = 'moyen';
+    this.articleLangCount = 0;
+    this.articlePageviews90d = 0;
 
     this.confetti = typeof ConfettiGenerator !== 'undefined' ? new ConfettiGenerator('confetti-canvas') : null;
     this.audioCtx = null;
@@ -96,6 +142,8 @@ class PedantixApp {
     this.setupNetworkUI();
     this.applyTheme(this.theme);
     this.updateSoundIcon();
+    this.checkAutomationEnvironment();
+    this.initOverlayWatchdog();
 
     // Setup pseudo input and fetch network IP
     if (this.dom.playerPseudoInput) this.dom.playerPseudoInput.value = this.playerName;
@@ -107,11 +155,14 @@ class PedantixApp {
       document.body.classList.add('solo-mode');
       if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add('active');
       if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
+      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
     } else {
       document.body.classList.remove('solo-mode');
       if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
       if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
+      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
     }
+    this.updateDifficultyUI(this.currentDifficulty);
 
     // Connect to room & start game
     this.joinRoom();
@@ -178,6 +229,8 @@ class PedantixApp {
       collapseBtn: document.getElementById('collapse'),
       guessesTbody: document.getElementById('guesses'),
       btnSideNew: document.getElementById('btn-side-new'),
+      sidebarDiffIndicator: document.getElementById('sidebar-diff-indicator'),
+      sidebarDiffPill: document.getElementById('sidebar-diff-pill'),
       yesterdayBox: document.getElementById('yesterday-box'),
       yesterdayLink: document.getElementById('yesterday-link'),
 
@@ -185,6 +238,9 @@ class PedantixApp {
       pedantixTitle: document.getElementById('pedantix-title'),
       btnTypeSolo: document.getElementById('btn-type-solo'),
       btnTypeMulti: document.getElementById('btn-type-multi'),
+      soloDifficultySelector: document.getElementById('solo-difficulty-selector'),
+      btnSoloDiffChoices: document.querySelectorAll('.btn-diff-choice'),
+      difficultyBadge: document.getElementById('difficulty-badge'),
       modeBadge: document.getElementById('mode-badge'),
       roomCodeDisplay: document.getElementById('room-code-display'),
       btnBrowseRooms: document.getElementById('btn-browse-rooms'),
@@ -242,6 +298,9 @@ class PedantixApp {
       lobbyReadyIcon: document.getElementById('lobby-ready-icon'),
       lobbyReadyLabel: document.getElementById('lobby-ready-label'),
       btnLobbyStartGame: document.getElementById('btn-lobby-start-game'),
+      btnLobbySpectator: document.getElementById('btn-lobby-spectator'),
+      lobbySpecIcon: document.getElementById('lobby-spec-icon'),
+      lobbySpecLabel: document.getElementById('lobby-spec-label'),
       lobbyStatusHint: document.getElementById('lobby-status-hint'),
 
       // Mode & Teams DOM elements
@@ -255,6 +314,15 @@ class PedantixApp {
       compIndividualSection: document.getElementById('comp-individual-section'),
       compTeamsConfrontation: document.getElementById('comp-teams-confrontation'),
       sideMyTeamBadge: document.getElementById('side-my-team-badge'),
+
+      // Lobby Difficulty DOM elements
+      lobbyDifficultyBox: document.querySelector('.lobby-difficulty-box'),
+      lobbyDifficultyHint: document.getElementById('lobby-difficulty-hint'),
+      btnLobbyDiffs: document.querySelectorAll('.btn-diff-toggle'),
+
+      // Spectator mode banner
+      spectatorModeBanner: document.getElementById('spectator-mode-banner'),
+      btnBannerResume: document.getElementById('btn-banner-resume'),
 
       // Guess form (Center)
       form: document.getElementById('form'),
@@ -274,11 +342,31 @@ class PedantixApp {
       // Victory / Win box
       successBox: document.getElementById('success'),
       solutionDisplay: document.getElementById('solution-display'),
+      successDiffRow: document.getElementById('success-diff-row'),
+      successDiffBadge: document.getElementById('success-diff-badge'),
+      successLangVal: document.getElementById('success-lang-val'),
+      successViewsVal: document.getElementById('success-views-val'),
       triesSpan: document.getElementById('tries'),
       meterSpan: document.getElementById('meter'),
       shareBtn: document.getElementById('share'),
       solutionLink: document.getElementById('solution'),
       seeFullPageBtn: document.getElementById('see-full-page'),
+      btnSuccessNew: document.getElementById('btn-success-new'),
+
+      // Surrender banner
+      surrenderBanner: document.getElementById('surrender-banner'),
+      surrenderSolutionDisplay: document.getElementById('surrender-solution-display'),
+      surrenderDiffRow: document.getElementById('surrender-diff-row'),
+      surrenderDiffBadge: document.getElementById('surrender-diff-badge'),
+      surrenderLangVal: document.getElementById('surrender-lang-val'),
+      surrenderViewsVal: document.getElementById('surrender-views-val'),
+      surrenderSolutionLink: document.getElementById('surrender-solution-link'),
+      btnSurrenderNew: document.getElementById('btn-surrender-new'),
+
+      // Bottom of article finished bar
+      articleFinishedBar: document.getElementById('article-finished-bar'),
+      articleFinishedWikiLink: document.getElementById('article-finished-wiki-link'),
+      btnArticleNew: document.getElementById('btn-article-new'),
 
       // Opponent Win Banner
       opponentWinBanner: document.getElementById('opponent-win-banner'),
@@ -301,6 +389,9 @@ class PedantixApp {
       sideReadyText: document.getElementById('side-ready-text'),
       btnSideStart: document.getElementById('btn-side-start'),
       btnOpenLobby: document.getElementById('btn-open-lobby'),
+      btnSideSpectator: document.getElementById('btn-side-spectator'),
+      sideSpecIcon: document.getElementById('side-spec-icon'),
+      sideSpecText: document.getElementById('side-spec-text'),
       playersList: document.getElementById('players-list'),
       activityFeed: document.getElementById('activity-feed'),
       btnNewRoundComp: document.getElementById('btn-new-round-comp'),
@@ -314,6 +405,9 @@ class PedantixApp {
       btnRoundReady: document.getElementById('btn-round-ready'),
       roundReadyIcon: document.getElementById('round-ready-icon'),
       roundReadyLabel: document.getElementById('round-ready-label'),
+      btnRoundSpectator: document.getElementById('btn-round-spectator'),
+      roundSpecIcon: document.getElementById('round-spec-icon'),
+      roundSpecLabel: document.getElementById('round-spec-label'),
       btnRoundNextGame: document.getElementById('btn-round-next-game'),
       roundNextStatusHint: document.getElementById('round-next-status-hint'),
 
@@ -544,6 +638,16 @@ class PedantixApp {
       this.dom.btnTypeMulti.addEventListener('click', () => this.switchPlayMode('multi'));
     }
 
+    // Solo difficulty selection buttons
+    if (this.dom.btnSoloDiffChoices) {
+      this.dom.btnSoloDiffChoices.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const diff = btn.getAttribute('data-diff');
+          if (diff) this.setSoloDifficulty(diff);
+        });
+      });
+    }
+
     // Create new party / room button
     if (this.dom.btnCreateRoom) {
       this.dom.btnCreateRoom.addEventListener('click', () => this.createNewRoom());
@@ -593,11 +697,28 @@ class PedantixApp {
       this.dom.btnModeTeam.addEventListener('click', () => this.switchGameMode('team'));
     }
 
+    // Lobby difficulty toggle buttons
+    if (this.dom.btnLobbyDiffs) {
+      this.dom.btnLobbyDiffs.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const diff = btn.getAttribute('data-diff');
+          if (diff) this.setRoomDifficulty(diff);
+        });
+      });
+    }
+
     // Ready toggle buttons
     const handleReadyToggle = () => this.toggleReady();
     if (this.dom.btnLobbyToggleReady) this.dom.btnLobbyToggleReady.addEventListener('click', handleReadyToggle);
     if (this.dom.btnSideReady) this.dom.btnSideReady.addEventListener('click', handleReadyToggle);
     if (this.dom.btnRoundReady) this.dom.btnRoundReady.addEventListener('click', handleReadyToggle);
+
+    // Spectator mode toggle buttons
+    const handleSpectatorToggle = () => this.toggleSpectator();
+    if (this.dom.btnSideSpectator) this.dom.btnSideSpectator.addEventListener('click', handleSpectatorToggle);
+    if (this.dom.btnLobbySpectator) this.dom.btnLobbySpectator.addEventListener('click', handleSpectatorToggle);
+    if (this.dom.btnRoundSpectator) this.dom.btnRoundSpectator.addEventListener('click', handleSpectatorToggle);
+    if (this.dom.btnBannerResume) this.dom.btnBannerResume.addEventListener('click', handleSpectatorToggle);
 
     // Host Start Game buttons
     const handleStartGame = () => this.startGame();
@@ -628,6 +749,9 @@ class PedantixApp {
     if (this.dom.btnSideNew) this.dom.btnSideNew.addEventListener('click', handleNewRoundTrigger);
     if (this.dom.btnNewRoundComp) this.dom.btnNewRoundComp.addEventListener('click', handleNewRoundTrigger);
     if (this.dom.btnOpponentNewRound) this.dom.btnOpponentNewRound.addEventListener('click', handleNewRoundTrigger);
+    if (this.dom.btnSuccessNew) this.dom.btnSuccessNew.addEventListener('click', handleNewRoundTrigger);
+    if (this.dom.btnSurrenderNew) this.dom.btnSurrenderNew.addEventListener('click', handleNewRoundTrigger);
+    if (this.dom.btnArticleNew) this.dom.btnArticleNew.addEventListener('click', handleNewRoundTrigger);
 
     // Server settings save
     if (this.dom.btnSaveBackendUrl) {
@@ -687,12 +811,36 @@ class PedantixApp {
     // Guess form submit
     this.dom.form.addEventListener('submit', (e) => {
       e.preventDefault();
-      this.handleGuessSubmit();
+      this.handleGuessSubmit(e);
+    });
+
+    // Telemetry anti-bot: enregistre la saisie humaine réelle au clavier
+    this.dom.guessInput.addEventListener('keydown', (e) => {
+      if (e.isTrusted) {
+        if (!this.firstKeystrokeTime) this.firstKeystrokeTime = Date.now();
+        if (e.key && e.key.length === 1) {
+          this.trustedKeystrokeCount++;
+        } else if (e.key === 'Backspace') {
+          this.trustedKeystrokeCount = Math.max(0, this.trustedKeystrokeCount - 1);
+        }
+      }
+    });
+
+    this.dom.guessInput.addEventListener('paste', (e) => {
+      if (e.isTrusted) {
+        this.lastTrustedPaste = true;
+        if (!this.firstKeystrokeTime) this.firstKeystrokeTime = Date.now();
+      }
     });
 
     // Live word length indicator
     this.dom.guessInput.addEventListener('input', (e) => {
       const len = e.target.value.trim().length;
+      if (len === 0) {
+        this.trustedKeystrokeCount = 0;
+        this.lastTrustedPaste = false;
+        this.firstKeystrokeTime = 0;
+      }
       if (this.dom.guessLenBadge) {
         if (len > 0) {
           this.dom.guessLenBadge.textContent = `${len} lettre${len > 1 ? 's' : ''}`;
@@ -1224,11 +1372,8 @@ class PedantixApp {
     }
   }
 
-  async createNewRoom() {
-    this.playTone('click');
-    const customCode = prompt('Nom ou code du nouveau salon (laissez vide pour générer un code aléatoire) :');
-    if (customCode === null) return;
-    const roomId = (customCode && customCode.trim()) ? customCode.trim() : `salon-${Math.floor(Math.random() * 899 + 100)}`;
+  async createMultiplayerRoom(customId = null) {
+    const roomId = (customId && customId.trim()) ? customId.trim() : `salon-${Math.floor(Math.random() * 899 + 100)}`;
 
     try {
       if (this.roomId && this.roomId !== roomId) {
@@ -1249,15 +1394,20 @@ class PedantixApp {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           host_player_id: this.playerId,
-          room_id: roomId
+          host_name: this.playerName,
+          room_id: roomId,
+          difficulty: this.currentDifficulty
         })
       });
       const data = await resp.json();
 
       this.roomId = data.room_id || roomId;
       this.isSoloMode = false;
+      this.lobbyMinimized = false;
       localStorage.setItem('pedantix_play_mode', 'multi');
-      localStorage.setItem('pedantix_last_room', this.roomId);
+      if (!this.roomId.startsWith('solo-')) {
+        localStorage.setItem('pedantix_last_room', this.roomId);
+      }
 
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete('mode');
@@ -1267,15 +1417,25 @@ class PedantixApp {
       document.body.classList.remove('solo-mode');
       if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
       if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
+      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
 
       this.closeModal(this.dom.roomsModal);
       this.showToast(`Salon « ${this.roomId} » créé ! Vous êtes l'Host 👑`);
       this.fetchNetworkInfo();
-      this.joinRoom();
+      await this.joinRoom();
+      return this.roomId;
     } catch (e) {
       console.error(e);
       this.showToast('Erreur lors de la création du salon.');
+      return null;
     }
+  }
+
+  async createNewRoom() {
+    this.playTone('click');
+    const customCode = prompt('Nom ou code du nouveau salon (laissez vide pour générer un code aléatoire) :');
+    if (customCode === null) return;
+    await this.createMultiplayerRoom(customCode);
   }
 
   // =========================================================================
@@ -1520,7 +1680,20 @@ class PedantixApp {
     this.previousInputs = [];
     this.prevInputIdx = -1;
     this.isWon = false;
-    this.dom.successBox.classList.remove('active');
+    this.isAbandoned = false;
+    if (this.dom.successBox) this.dom.successBox.classList.remove('active');
+    if (this.dom.surrenderBanner) {
+      this.dom.surrenderBanner.style.display = 'none';
+      this.dom.surrenderBanner.classList.remove('active');
+    }
+    if (this.dom.articleFinishedBar) {
+      this.dom.articleFinishedBar.style.display = 'none';
+    }
+    if (this.dom.form) {
+      this.dom.form.style.display = 'flex';
+      this.dom.form.style.opacity = '1';
+      this.dom.form.style.pointerEvents = 'auto';
+    }
     this.dom.errorLabel.textContent = '';
     this.dom.wikiImg.style.display = 'none';
     this.hideOpponentWin();
@@ -1536,7 +1709,8 @@ class PedantixApp {
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          player_name: this.playerName
+          player_name: this.playerName,
+          difficulty: this.currentDifficulty
         })
       });
 
@@ -1545,6 +1719,7 @@ class PedantixApp {
 
       this.sessionId = data.session.session_id;
       this.seed = data.seed;
+      if (data.guess_token) this.guessToken = data.guess_token;
       this.tokens = data.session.tokens;
       this.tokensById = {};
       this.tokens.forEach(t => {
@@ -1559,6 +1734,7 @@ class PedantixApp {
       this.isWon = data.player ? data.player.is_won : false;
       this.isHost = data.player ? data.player.is_host : false;
       this.isReady = data.player ? data.player.is_ready : false;
+      this.isSpectator = data.player ? !!data.player.is_spectator : false;
       this.myScore = data.player ? data.player.score : 0;
       this.canStart = data.can_start || false;
       this.roomStatus = data.status || 'lobby';
@@ -1567,6 +1743,12 @@ class PedantixApp {
       this.gameMode = data.game_mode || 'individual';
       if (data.player && data.player.team) this.myTeam = data.player.team;
       if (data.teams) this.teamsData = data.teams;
+
+      this.currentDifficulty = data.difficulty || this.currentDifficulty;
+      this.articleDifficulty = data.article_difficulty || (data.session && data.session.difficulty) || this.currentDifficulty;
+      this.articleLangCount = data.article_lang_count || (data.session && data.session.lang_count) || 0;
+      this.articlePageviews90d = data.article_pageviews_90d || (data.session && data.session.pageviews_90d) || 0;
+      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
 
       this.updateBadges();
       this.renderBoard();
@@ -1613,6 +1795,7 @@ class PedantixApp {
       if (data.session) {
         this.sessionId = data.session.session_id;
         this.seed = data.seed;
+        if (data.guess_token) this.guessToken = data.guess_token;
         this.tokens = data.session.tokens || [];
         this.tokensById = {};
         this.tokens.forEach(t => {
@@ -1709,6 +1892,10 @@ class PedantixApp {
   handleWebSocketMessage(msg) {
     if (msg.type === 'init') {
       if (msg.game_mode) this.gameMode = msg.game_mode;
+      if (msg.difficulty) this.currentDifficulty = msg.difficulty;
+      if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;
+      if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
+      if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
       if (msg.teams) this.teamsData = msg.teams;
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
       if (msg.activity) this.updateActivity(msg.activity);
@@ -1717,8 +1904,13 @@ class PedantixApp {
       if (msg.next_letter_hint_time) this.nextLetterHintTime = msg.next_letter_hint_time;
       this.roomStatus = msg.status || this.roomStatus;
       this.canStart = msg.can_start || this.canStart;
+      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
       this.updateModeUI();
       this.syncRoomUI();
+
+      if (msg.surrender_cooldowns && msg.surrender_cooldowns[this.playerId] > 0) {
+        this.startSurrenderCooldown(msg.surrender_cooldowns[this.playerId]);
+      }
 
       if (this.roomStatus === 'playing' && this.nextLetterHintTime && !this.isWon) {
         this.startHintTimer(this.nextLetterHintTime);
@@ -1726,8 +1918,33 @@ class PedantixApp {
         this.stopHintTimer();
       }
 
+    } else if (msg.type === 'anti_cheat_alert') {
+      this.playTone('miss');
+      this.showToast(msg.message || 'Comportement automatisé détecté.');
+      if (this.dom.activityFeed) {
+        const item = document.createElement('div');
+        item.className = 'activity-item activity-cheat-alert';
+        item.innerHTML = `<span class="activity-icon">🤖</span><span class="activity-text" style="color:var(--danger, #ef4444); font-weight:600;">${this.escapeHtml(msg.message)}</span>`;
+        this.dom.activityFeed.prepend(item);
+      }
+      if (msg.player_id === this.playerId && msg.penalty_seconds) {
+        this.lockInputTemporarily(msg.penalty_seconds);
+      }
+
     } else if (msg.type === 'chat_message') {
       this.handleIncomingChatMessage(msg.message);
+
+    } else if (msg.type === 'difficulty_changed') {
+      this.currentDifficulty = msg.difficulty || this.currentDifficulty;
+      this.articleDifficulty = msg.article_difficulty || this.currentDifficulty;
+      this.articleLangCount = msg.article_lang_count || 0;
+      this.articlePageviews90d = msg.article_pageviews_90d || 0;
+      if (msg.can_start !== undefined) this.canStart = msg.can_start;
+      if (msg.activity) this.updateActivity(msg.activity);
+      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+      this.syncRoomUI();
+      const diffLabel = this.getDifficultyLabel(this.currentDifficulty);
+      this.showToast(`🎯 Difficulté réglée sur : ${diffLabel}`);
 
     } else if (msg.type === 'mode_changed') {
       this.gameMode = msg.game_mode;
@@ -1761,7 +1978,7 @@ class PedantixApp {
       if (this.dom.lobbyModal && savedOverlayScroll) this.dom.lobbyModal.scrollTop = savedOverlayScroll;
       if (savedWindowScroll) window.scrollTo(0, savedWindowScroll);
 
-    } else if (msg.type === 'player_joined' || msg.type === 'player_ready_changed' || msg.type === 'player_left' || msg.type === 'player_disconnected') {
+    } else if (msg.type === 'player_joined' || msg.type === 'player_ready_changed' || msg.type === 'player_left' || msg.type === 'player_disconnected' || msg.type === 'player_spectator_changed') {
       const lobbyInner = this.dom.lobbyModal ? this.dom.lobbyModal.querySelector('.modal') : null;
       const savedLobbyScroll = lobbyInner ? lobbyInner.scrollTop : 0;
       const savedOverlayScroll = this.dom.lobbyModal ? this.dom.lobbyModal.scrollTop : 0;
@@ -1769,6 +1986,7 @@ class PedantixApp {
 
       const wasHost = this.isHost;
       if (msg.game_mode) this.gameMode = msg.game_mode;
+      if (msg.difficulty) this.currentDifficulty = msg.difficulty;
       if (msg.teams) this.teamsData = msg.teams;
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
       if (msg.activity) this.updateActivity(msg.activity);
@@ -1776,8 +1994,19 @@ class PedantixApp {
       if (msg.host_player_id) {
         this.isHost = (msg.host_player_id === this.playerId);
       }
-      if (msg.player_id === this.playerId && msg.is_ready !== undefined) {
-        this.isReady = msg.is_ready;
+      if (msg.player_id === this.playerId) {
+        if (msg.is_ready !== undefined) this.isReady = msg.is_ready;
+        if (msg.is_spectator !== undefined) {
+          this.isSpectator = !!msg.is_spectator;
+          this.updateSpectatorUI();
+        }
+      }
+      if (msg.type === 'player_spectator_changed' && msg.player_id !== this.playerId && msg.player_name) {
+        if (msg.is_spectator) {
+          this.showToast(`👁️ ${msg.player_name} est passé en mode Spectateur (en pause)`);
+        } else {
+          this.showToast(`🎮 ${msg.player_name} a repris sa place de joueur !`);
+        }
       }
       if (msg.type === 'player_left' && msg.player_name) {
         if (this.isHost && !wasHost) {
@@ -1797,9 +2026,15 @@ class PedantixApp {
       if (savedWindowScroll) window.scrollTo(0, savedWindowScroll);
 
     } else if (msg.type === 'countdown_started') {
+      this.clearSurrenderCooldown();
       this.roomStatus = 'starting';
       this.stopHintTimer();
       if (msg.game_mode) this.gameMode = msg.game_mode;
+      if (msg.difficulty) this.currentDifficulty = msg.difficulty;
+      if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;
+      if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
+      if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
+      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
       if (msg.teams) this.teamsData = msg.teams;
       this.reloadGameSession();
       this.startCountdown(msg.seconds || 5, msg.end_time);
@@ -1882,6 +2117,7 @@ class PedantixApp {
       this.showToast(`🏆 ${msg.winner_name} a trouvé le titre ! Il vous reste 30 secondes pour trouver (+2 pt au 2e, +1 pt au 3e) !`);
 
     } else if (msg.type === 'round_over' || msg.type === 'round_over_to_lobby') {
+      this.clearSurrenderCooldown();
       this.stopHintTimer();
       if (this.sprintInterval) clearInterval(this.sprintInterval);
       if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
@@ -1889,6 +2125,11 @@ class PedantixApp {
       this.isReady = false;
       this.lastRound = msg.last_round || null;
       if (msg.game_mode) this.gameMode = msg.game_mode;
+      if (msg.difficulty) this.currentDifficulty = msg.difficulty;
+      if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;
+      if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
+      if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
+      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
       if (msg.teams) this.teamsData = msg.teams;
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
       if (msg.activity) this.updateActivity(msg.activity);
@@ -1898,10 +2139,16 @@ class PedantixApp {
       this.syncRoomUI();
 
     } else if (msg.type === 'new_round') {
+      this.clearSurrenderCooldown();
       this.stopHintTimer();
       this.hideOpponentWin();
       this.closeModal(this.dom.roundOverModal);
       this.dom.successBox.classList.remove('active');
+      if (msg.difficulty) this.currentDifficulty = msg.difficulty;
+      if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;
+      if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
+      if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
+      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
       this.showToast('🎲 Nouvelle partie lancée !');
       this.joinRoom();
 
@@ -1946,6 +2193,9 @@ class PedantixApp {
       if (msg.activity) this.updateActivity(msg.activity);
       this.playTone('error');
       this.showToast(`❌ L'abandon a été refusé par ${msg.refuser_name || 'un joueur'}. La partie continue !`);
+      if (msg.initiator_id && msg.initiator_id === this.playerId) {
+        this.startSurrenderCooldown(msg.cooldown_seconds || 30);
+      }
 
     } else if (msg.type === 'surrender_cancelled') {
       this.closeModal(this.dom.surrenderModal);
@@ -1953,6 +2203,7 @@ class PedantixApp {
       this.showToast(`↩️ ${msg.initiator_name || 'L\'initiateur'} a annulé la demande d'abandon.`);
 
     } else if (msg.type === 'surrender_passed') {
+      this.clearSurrenderCooldown();
       this.handleSurrenderPassed(msg);
     }
   }
@@ -1992,6 +2243,105 @@ class PedantixApp {
     }
   }
 
+  async toggleSpectator() {
+    this.playTone('click');
+    const newSpecVal = !this.isSpectator;
+    const lobbyInner = this.dom.lobbyModal ? this.dom.lobbyModal.querySelector('.modal') : null;
+    const savedLobbyScroll = lobbyInner ? lobbyInner.scrollTop : 0;
+    const savedOverlayScroll = this.dom.lobbyModal ? this.dom.lobbyModal.scrollTop : 0;
+    const savedWindowScroll = window.scrollY;
+
+    try {
+      const resp = await fetch(this.getApiUrl('/api/room/spectator'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: this.roomId,
+          player_id: this.playerId,
+          is_spectator: newSpecVal
+        })
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        this.isSpectator = !!data.is_spectator;
+        if (data.is_ready !== undefined) this.isReady = data.is_ready;
+        if (data.can_start !== undefined) this.canStart = data.can_start;
+        if (data.leaderboard) this.updateLeaderboard(data.leaderboard);
+        this.updateSpectatorUI();
+        this.syncRoomUI();
+        if (this.isSpectator) {
+          this.showToast('👁️ Mode Spectateur activé : vous êtes en pause.');
+        } else {
+          this.showToast('🎮 De retour en jeu ! Vous pouvez proposer des mots.');
+        }
+      } else {
+        this.showToast(data.detail || 'Erreur lors du passage en mode spectateur.');
+      }
+
+      if (lobbyInner && savedLobbyScroll) lobbyInner.scrollTop = savedLobbyScroll;
+      if (this.dom.lobbyModal && savedOverlayScroll) this.dom.lobbyModal.scrollTop = savedOverlayScroll;
+      if (savedWindowScroll) window.scrollTo(0, savedWindowScroll);
+    } catch (e) {
+      console.error('toggleSpectator error:', e);
+      this.showToast('Erreur lors du changement de mode.');
+    }
+  }
+
+  updateSpectatorUI() {
+    if (this.isSoloMode) {
+      if (this.dom.btnSideSpectator) this.dom.btnSideSpectator.style.display = 'none';
+      if (this.dom.spectatorModeBanner) this.dom.spectatorModeBanner.style.display = 'none';
+      return;
+    }
+
+    if (this.dom.btnSideSpectator) {
+      this.dom.btnSideSpectator.style.display = 'inline-flex';
+      this.dom.btnSideSpectator.classList.toggle('is-spectator-active', this.isSpectator);
+      if (this.dom.sideSpecIcon) this.dom.sideSpecIcon.textContent = this.isSpectator ? '🎮' : '👁️';
+      if (this.dom.sideSpecText) this.dom.sideSpecText.textContent = this.isSpectator ? 'Reprendre la partie' : 'Pause Spectateur';
+      this.dom.btnSideSpectator.title = this.isSpectator ? 'Reprendre votre place de joueur actif' : 'Passer en spectateur pour faire une pause';
+    }
+
+    if (this.dom.btnLobbySpectator) {
+      this.dom.btnLobbySpectator.classList.toggle('is-spectator-active', this.isSpectator);
+      if (this.dom.lobbySpecIcon) this.dom.lobbySpecIcon.textContent = this.isSpectator ? '🎮' : '👁️';
+      if (this.dom.lobbySpecLabel) this.dom.lobbySpecLabel.textContent = this.isSpectator ? 'Reprendre ma place' : 'Mode Spectateur (Pause)';
+      this.dom.btnLobbySpectator.title = this.isSpectator ? 'Reprendre votre place de joueur actif' : 'Passer en spectateur pour faire une pause';
+    }
+
+    if (this.dom.btnRoundSpectator) {
+      this.dom.btnRoundSpectator.classList.toggle('is-spectator-active', this.isSpectator);
+      if (this.dom.roundSpecIcon) this.dom.roundSpecIcon.textContent = this.isSpectator ? '🎮' : '👁️';
+      if (this.dom.roundSpecLabel) this.dom.roundSpecLabel.textContent = this.isSpectator ? 'Reprendre ma place' : 'Mode Spectateur (Pause)';
+      this.dom.btnRoundSpectator.title = this.isSpectator ? 'Reprendre votre place de joueur actif' : 'Passer en spectateur pour faire une pause';
+    }
+
+    // Banner visibility
+    if (this.dom.spectatorModeBanner) {
+      const showBanner = this.isSpectator && (this.roomStatus === 'playing' || this.roomStatus === 'ending');
+      this.dom.spectatorModeBanner.style.display = showBanner ? 'flex' : 'none';
+    }
+
+    // Inputs disabled / enabled state
+    if (this.isSpectator) {
+      if (this.dom.guessInput) {
+        this.dom.guessInput.disabled = true;
+        this.dom.guessInput.placeholder = '👁️ Mode Spectateur (en pause)...';
+      }
+      if (this.dom.guessBtn) this.dom.guessBtn.disabled = true;
+      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
+      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
+    } else {
+      if (this.dom.guessInput && (this.roomStatus === 'playing' || this.isSoloMode)) {
+        this.dom.guessInput.disabled = false;
+        this.dom.guessInput.placeholder = 'Entrez un mot...';
+      }
+      if (this.dom.guessBtn && (this.roomStatus === 'playing' || this.isSoloMode)) {
+        this.dom.guessBtn.disabled = false;
+      }
+    }
+  }
+
   async startGame() {
     this.playTone('click');
     try {
@@ -2021,12 +2371,31 @@ class PedantixApp {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           room_id: this.roomId,
-          player_id: this.playerId
+          player_id: this.playerId,
+          difficulty: this.currentDifficulty
         })
       });
-      const data = await resp.json();
-      if (data.error) {
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        this.showToast(data.detail || data.error || 'Erreur lors du lancement de la manche.');
+      } else if (data.error) {
         this.showToast(data.error);
+      } else {
+        if (this.isSoloMode) {
+          this.stopHintTimer();
+          this.hideOpponentWin();
+          this.closeModal(this.dom.roundOverModal);
+          if (this.dom.successBox) this.dom.successBox.classList.remove('active');
+          if (this.dom.surrenderBanner) {
+            this.dom.surrenderBanner.style.display = 'none';
+            this.dom.surrenderBanner.classList.remove('active');
+          }
+          if (this.dom.articleFinishedBar) {
+            this.dom.articleFinishedBar.style.display = 'none';
+          }
+          this.showToast('🎲 Nouvelle page chargée !');
+          await this.joinRoom();
+        }
       }
     } catch (e) {
       console.error(e);
@@ -2197,9 +2566,20 @@ class PedantixApp {
       this.dom.myPlayerScoreBadge.textContent = `${this.myScore} pt${this.myScore > 1 ? 's' : ''}`;
     }
 
+    // Solo difficulty buttons state
+    if (this.dom.btnSoloDiffChoices) {
+      this.dom.btnSoloDiffChoices.forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-diff') === this.currentDifficulty);
+      });
+    }
+
     // 2. Ready status on buttons
-    const readyLabel = this.isReady ? 'Je suis prêt ! ✓' : 'Cliquer pour être prêt';
-    const readyIcon = this.isReady ? '🟢' : '⏳';
+    let readyLabel = this.isReady ? 'Je suis prêt ! ✓' : 'Cliquer pour être prêt';
+    let readyIcon = this.isReady ? '🟢' : '⏳';
+    if (this.isSpectator) {
+      readyLabel = 'En pause (Spectateur) 👁️';
+      readyIcon = '👁️';
+    }
 
     if (this.dom.btnLobbyToggleReady) {
       this.dom.btnLobbyToggleReady.className = `btn-lobby-ready ${this.isReady ? 'is-ready' : ''}`;
@@ -2224,16 +2604,20 @@ class PedantixApp {
       this.closeModal(this.dom.lobbyModal);
       if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
       if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
-      if (this.dom.form) {
-        this.dom.form.style.opacity = '1';
-        this.dom.form.style.pointerEvents = 'auto';
-      }
       if (this.dom.wiki) this.dom.wiki.style.opacity = '1';
       if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = 'inline-flex';
-      if (!this.isWon) {
+      if (!this.isWon && !this.isAbandoned) {
+        if (this.dom.form) {
+          this.dom.form.style.display = 'flex';
+          this.dom.form.style.opacity = '1';
+          this.dom.form.style.pointerEvents = 'auto';
+        }
         if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'inline-flex';
         if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'flex';
       } else {
+        if (this.dom.form) {
+          this.dom.form.style.display = 'none';
+        }
         if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
         if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
       }
@@ -2351,6 +2735,20 @@ class PedantixApp {
         }
       }
 
+      // Sync lobby difficulty options
+      if (this.dom.btnLobbyDiffs) {
+        this.dom.btnLobbyDiffs.forEach(btn => {
+          const diff = btn.getAttribute('data-diff');
+          btn.classList.toggle('active', diff === this.currentDifficulty);
+          btn.disabled = !this.isHost;
+        });
+      }
+      if (this.dom.lobbyDifficultyHint) {
+        this.dom.lobbyDifficultyHint.textContent = this.isHost
+          ? "(Configurable par vous 👑)"
+          : "(Choisi par l'Host 👑)";
+      }
+
     } else if (this.roomStatus === 'starting') {
       this.closeModal(this.dom.lobbyModal);
       this.closeModal(this.dom.roundOverModal);
@@ -2373,6 +2771,9 @@ class PedantixApp {
       this.closeModal(this.dom.roundOverModal);
       if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'inline-flex';
       if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'flex';
+      if (this.surrenderCooldownRemaining > 0) {
+        this._applyCooldownToSurrenderButtons();
+      }
       if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = 'none';
       if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = 'none';
       if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = 'none';
@@ -2392,6 +2793,9 @@ class PedantixApp {
       this.closeModal(this.dom.roundOverModal);
       if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'inline-flex';
       if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'flex';
+      if (this.surrenderCooldownRemaining > 0) {
+        this._applyCooldownToSurrenderButtons();
+      }
       if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = 'none';
       if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = 'none';
       if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = 'none';
@@ -2408,6 +2812,7 @@ class PedantixApp {
     }
 
     this.updateModeUI();
+    this.updateSpectatorUI();
   }
 
   async switchPlayMode(mode) {
@@ -2430,6 +2835,7 @@ class PedantixApp {
       document.body.classList.add('solo-mode');
       if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add('active');
       if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
+      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
       this.roomId = `solo-${this.playerId}`;
       this.closeModal(this.dom.lobbyModal);
       this.closeModal(this.dom.roomsModal);
@@ -2438,21 +2844,29 @@ class PedantixApp {
       this.joinRoom();
     } else {
       // Switching to multiplayer:
-      // If no room is specified in URL, open the Rooms Browser modal so player can choose or create one!
-      const currentParam = url.searchParams.get('room');
+      if (previousRoomId && previousRoomId.startsWith('solo-') && this.ws) {
+        try {
+          this.ws.onclose = null;
+          this.ws.close();
+        } catch (e) {}
+        this.ws = null;
+        this.wsRoomId = null;
+      }
+
       document.body.classList.remove('solo-mode');
       if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
       if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
+      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
 
-      if (!currentParam) {
-        this.openRoomsBrowser();
-        return;
+      const currentParam = url.searchParams.get('room');
+      if (currentParam && !currentParam.startsWith('solo-')) {
+        this.roomId = currentParam;
+        this.showToast('🌐 Mode Multijoueur activé');
+        window.history.replaceState({}, '', url.toString());
+        await this.joinRoom();
+      } else {
+        await this.createMultiplayerRoom();
       }
-
-      this.roomId = currentParam;
-      this.showToast('🌐 Mode Multijoueur activé');
-      window.history.replaceState({}, '', url.toString());
-      this.joinRoom();
     }
   }
 
@@ -2562,6 +2976,138 @@ class PedantixApp {
     if (isTeam) {
       this.renderTeamsRoster();
       this.renderTeamConfrontation();
+    }
+  }
+
+  // =========================================================================
+  // DIFFICULTY MANAGEMENT (Facile, Moyen, Difficile)
+  // =========================================================================
+
+  formatNumber(n) {
+    if (n === null || n === undefined || isNaN(n)) return '--';
+    return Number(n).toLocaleString('fr-FR');
+  }
+
+  getDifficultyLabel(diff) {
+    switch (diff) {
+      case 'facile': return 'Facile';
+      case 'difficile': return 'Difficile';
+      case 'moyen':
+      default: return 'Moyen';
+    }
+  }
+
+  getDifficultyBadgeText(diff) {
+    switch (diff) {
+      case 'facile': return '🟢 Facile';
+      case 'difficile': return '🔴 Difficile';
+      case 'moyen':
+      default: return '🟡 Moyen';
+    }
+  }
+
+  updateDifficultyUI(diff, langCount = null, pageviews90d = null) {
+    if (!diff) diff = this.currentDifficulty || 'moyen';
+    const badgeText = this.getDifficultyBadgeText(diff);
+
+    if (langCount !== null && langCount !== undefined) this.articleLangCount = langCount;
+    if (pageviews90d !== null && pageviews90d !== undefined) this.articlePageviews90d = pageviews90d;
+
+    // 1. Header difficulty badge
+    if (this.dom.difficultyBadge) {
+      this.dom.difficultyBadge.textContent = badgeText;
+      this.dom.difficultyBadge.className = `difficulty-badge difficulty-${diff}`;
+      this.dom.difficultyBadge.title = `Difficulté de la page : ${this.getDifficultyLabel(diff)}` +
+        (this.articleLangCount ? ` (${this.articleLangCount} langues, ${this.formatNumber(this.articlePageviews90d)} vues 90j)` : '');
+    }
+
+    // 2. Sidebar difficulty indicator
+    if (this.dom.sidebarDiffPill) {
+      this.dom.sidebarDiffPill.textContent = badgeText;
+      this.dom.sidebarDiffPill.className = `diff-badge-pill diff-badge-${diff}`;
+    }
+
+    // 3. Solo selector buttons active state
+    if (this.dom.btnSoloDiffChoices) {
+      this.dom.btnSoloDiffChoices.forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-diff') === this.currentDifficulty);
+      });
+    }
+
+    // 4. Lobby selector buttons active state
+    if (this.dom.btnLobbyDiffs) {
+      this.dom.btnLobbyDiffs.forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-diff') === this.currentDifficulty);
+        btn.disabled = !this.isHost;
+      });
+    }
+
+    // 5. Success diff row stats
+    if (this.dom.successDiffBadge) {
+      this.dom.successDiffBadge.className = `diff-badge-pill diff-badge-${diff}`;
+      this.dom.successDiffBadge.textContent = badgeText;
+    }
+    if (this.dom.successLangVal) {
+      this.dom.successLangVal.textContent = this.articleLangCount ? this.articleLangCount : '--';
+    }
+    if (this.dom.successViewsVal) {
+      this.dom.successViewsVal.textContent = this.articlePageviews90d ? this.formatNumber(this.articlePageviews90d) : '--';
+    }
+
+    // 6. Surrender diff row stats
+    if (this.dom.surrenderDiffBadge) {
+      this.dom.surrenderDiffBadge.className = `diff-badge-pill diff-badge-${diff}`;
+      this.dom.surrenderDiffBadge.textContent = badgeText;
+    }
+    if (this.dom.surrenderLangVal) {
+      this.dom.surrenderLangVal.textContent = this.articleLangCount ? this.articleLangCount : '--';
+    }
+    if (this.dom.surrenderViewsVal) {
+      this.dom.surrenderViewsVal.textContent = this.articlePageviews90d ? this.formatNumber(this.articlePageviews90d) : '--';
+    }
+  }
+
+  async setSoloDifficulty(diff) {
+    if (!['facile', 'moyen', 'difficile'].includes(diff)) return;
+    if (this.currentDifficulty === diff) return;
+    this.playTone('click');
+    this.currentDifficulty = diff;
+    localStorage.setItem('pedantix_difficulty', diff);
+    this.updateDifficultyUI(diff);
+    this.showToast(`🎯 Difficulté réglée sur : ${this.getDifficultyLabel(diff)}. Nouvelle page en cours...`);
+    await this.requestNewRound();
+  }
+
+  async setRoomDifficulty(diff) {
+    if (!['facile', 'moyen', 'difficile'].includes(diff)) return;
+    if (!this.isHost) {
+      this.showToast("Seul l'Host 👑 peut modifier la difficulté du salon.");
+      return;
+    }
+    if (this.currentDifficulty === diff) return;
+    this.playTone('click');
+    try {
+      const resp = await fetch(this.getApiUrl('/api/room/difficulty'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: this.roomId,
+          player_id: this.playerId,
+          difficulty: diff
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        this.showToast(data.detail || data.error || 'Erreur lors du changement de difficulté.');
+        return;
+      }
+      this.currentDifficulty = diff;
+      this.articleDifficulty = data.article_difficulty || diff;
+      this.updateDifficultyUI(this.articleDifficulty);
+      this.showToast(`🎯 Difficulté du salon réglée sur : ${this.getDifficultyLabel(diff)}`);
+    } catch (e) {
+      console.error(e);
+      this.showToast('Erreur de connexion au serveur.');
     }
   }
 
@@ -2806,9 +3352,11 @@ class PedantixApp {
 
   renderPlayerCard(p, idx, isMe) {
     const medals = ['🥇', '🥈', '🥉'];
-    const rankDisplay = medals[idx] || `#${idx + 1}`;
+    const rankDisplay = p.is_spectator ? '👁️' : (medals[idx] || `#${idx + 1}`);
     let statusHtml = '';
-    if (p.is_won) {
+    if (p.is_spectator) {
+      statusHtml = `<span class="player-status-tag status-spectator">👁️ Spectateur</span>`;
+    } else if (p.is_won) {
       statusHtml = `<span class="player-status-tag status-win">🏆 Gagné !</span>`;
     } else if (p.last_status === 'close') {
       const scoreStr = p.last_score ? ` (${p.last_score}%)` : '';
@@ -2820,7 +3368,7 @@ class PedantixApp {
     }
 
     const card = document.createElement('div');
-    card.className = `comp-player-card ${isMe ? 'is-me' : ''} ${p.is_won ? 'is-winner' : ''}`;
+    card.className = `comp-player-card ${isMe ? 'is-me' : ''} ${p.is_won ? 'is-winner' : ''} ${p.is_spectator ? 'is-spectator' : ''}`;
     card.innerHTML = `
       <div class="comp-player-top">
         <div class="comp-player-left">
@@ -2828,14 +3376,15 @@ class PedantixApp {
           <span class="comp-player-name" title="${this.escapeHtml(p.name)}">${this.escapeHtml(p.name)}</span>
           ${p.is_host ? '<span class="host-icon-mini" title="Host">👑</span>' : ''}
           ${isMe ? '<span class="player-you-tag">Vous</span>' : ''}
+          ${p.is_spectator ? '<span class="spectator-tag" style="font-size:0.68rem;padding:0.1rem 0.4rem;background:rgba(168,85,247,0.18);color:#c084fc;border:1px solid rgba(168,85,247,0.35);border-radius:6px;font-weight:700;">👁️ En pause</span>' : ''}
         </div>
         <div class="comp-player-right">
           <span class="comp-player-score-tag" title="Score persistant en BDD">🏆 ${p.score || 0}</span>
-          <span class="comp-pct-number">${p.pct}%</span>
+          <span class="comp-pct-number">${p.is_spectator ? 'Pause' : `${p.pct}%`}</span>
         </div>
       </div>
       <div class="comp-prog-bar">
-        <div class="comp-prog-fill" style="width: ${p.pct}%;"></div>
+        <div class="comp-prog-fill" style="width: ${p.is_spectator ? 0 : p.pct}%;"></div>
       </div>
       <div class="comp-player-bottom">
         <span class="comp-sub-stats"><b>${p.attempts}</b> coup${p.attempts > 1 ? 's' : ''} • <b>${p.revealed_words_count || 0}</b> mot${(p.revealed_words_count || 0) > 1 ? 's' : ''}</span>
@@ -2853,19 +3402,24 @@ class PedantixApp {
     if (me) {
       this.isHost = me.is_host;
       this.isReady = me.is_ready;
+      this.isSpectator = !!me.is_spectator;
       this.myScore = me.score || 0;
+      this.updateSpectatorUI();
     }
 
-    const readyCount = players.filter(p => p.is_ready).length;
-    const totalCount = players.length;
+    const activePlayers = players.filter(p => !p.is_spectator);
+    const readyCount = activePlayers.filter(p => p.is_ready).length;
+    const totalCount = activePlayers.length;
     this.canStart = totalCount > 0 && readyCount === totalCount;
 
-    const connectedCount = players.filter(p => p.connected).length;
-    this.dom.compStatusBadge.textContent = `🟢 ${connectedCount} joueur${connectedCount > 1 ? 's' : ''}`;
+    const connectedCount = players.filter(p => p.connected !== false).length;
+    this.dom.compStatusBadge.textContent = `🟢 ${connectedCount} joueur${connectedCount > 1 ? 's' : ''} en ligne`;
 
     // 1. Update Lobby Grid
     if (this.dom.lobbyReadyRatio) {
-      this.dom.lobbyReadyRatio.textContent = `${readyCount}/${totalCount} prêt${readyCount > 1 ? 's' : ''}`;
+      const specCount = players.filter(p => p.is_spectator).length;
+      const specText = specCount > 0 ? ` (${specCount} en pause 👁️)` : '';
+      this.dom.lobbyReadyRatio.textContent = `${readyCount}/${totalCount} prêt${readyCount > 1 ? 's' : ''}${specText}`;
     }
 
     if (this.dom.lobbyPlayersGrid) {
@@ -2873,8 +3427,9 @@ class PedantixApp {
       players.forEach(p => {
         const isMe = p.player_id === this.playerId;
         const card = document.createElement('div');
-        card.className = `lobby-player-card ${isMe ? 'is-me' : ''} ${p.is_ready ? 'is-ready' : ''}`;
-        const avatarIcon = p.is_host ? '👑' : '👤';
+        const stateClass = p.is_spectator ? 'state-spec' : (p.is_ready ? 'is-ready' : '');
+        card.className = `lobby-player-card ${isMe ? 'is-me' : ''} ${stateClass}`;
+        const avatarIcon = p.is_spectator ? '👁️' : (p.is_host ? '👑' : '👤');
         card.innerHTML = `
           <div class="lobby-card-avatar-wrap">
             <span class="lobby-avatar-icon">${avatarIcon}</span>
@@ -2884,13 +3439,14 @@ class PedantixApp {
               <span class="lobby-card-name" title="${this.escapeHtml(p.name)}">${this.escapeHtml(p.name)}</span>
               ${isMe ? '<span class="player-you-tag">Vous</span>' : ''}
               ${p.is_host ? '<span class="host-pill" style="font-size:0.68rem;padding:0.1rem 0.45rem;">👑 Host</span>' : ''}
+              ${p.is_spectator ? '<span class="spectator-pill" style="font-size:0.68rem;padding:0.1rem 0.45rem;background:rgba(168,85,247,0.2);color:#c084fc;border:1px solid rgba(168,85,247,0.35);border-radius:6px;font-weight:700;">👁️ Spectateur</span>' : ''}
             </div>
             <div class="lobby-card-score">
               🏆 <b>${p.score || 0}</b> victoire${(p.score || 0) > 1 ? 's' : ''}
             </div>
           </div>
-          <div class="lobby-card-state ${p.is_ready ? 'state-ready' : 'state-wait'}">
-            ${p.is_ready ? '🟢 Prêt' : '⏳ En attente'}
+          <div class="lobby-card-state ${p.is_spectator ? 'state-spec' : (p.is_ready ? 'state-ready' : 'state-wait')}">
+            ${p.is_spectator ? '👁️ Spectateur' : (p.is_ready ? '🟢 Prêt' : '⏳ En attente')}
           </div>
         `;
         this.dom.lobbyPlayersGrid.appendChild(card);
@@ -2901,15 +3457,15 @@ class PedantixApp {
     if (this.dom.playersList) {
       this.dom.playersList.innerHTML = '';
 
-      if (players.length <= 5) {
-        // Mode direct : affiche tous les joueurs si 5 joueurs ou moins
+      if (players.length <= 25) {
+        // Mode direct : affiche tous les joueurs si 25 joueurs ou moins
         players.forEach((p, idx) => {
           const isMe = p.player_id === this.playerId;
           const card = this.renderPlayerCard(p, idx, isMe);
           this.dom.playersList.appendChild(card);
         });
       } else {
-        // Mode menu déroulant : menu déroulant avec tous les joueurs si plus de 5 joueurs
+        // Mode menu déroulant : menu déroulant avec tous les joueurs si plus de 25 joueurs
         const container = document.createElement('div');
         container.className = 'comp-dropdown-leaderboard-container';
 
@@ -2923,10 +3479,11 @@ class PedantixApp {
         let optionsHtml = '';
         players.forEach((p, idx) => {
           const isMe = p.player_id === this.playerId;
-          const rankDisplay = medals[idx] || `#${idx + 1}`;
+          const rankDisplay = p.is_spectator ? '👁️' : (medals[idx] || `#${idx + 1}`);
           const meTag = isMe ? ' (Vous)' : '';
           const winTag = p.is_won ? ' • 🏆 GAGNÉ' : '';
-          const label = `${rankDisplay} ${p.name}${meTag} — ${p.pct}% (${p.attempts} c., 🏆 ${p.score || 0})${winTag}`;
+          const specTag = p.is_spectator ? ' • 👁️ SPECTATEUR' : '';
+          const label = `${rankDisplay} ${p.name}${meTag} — ${p.pct}% (${p.attempts} c., 🏆 ${p.score || 0})${winTag}${specTag}`;
           const isSelected = p.player_id === this.selectedLeaderboardPlayerId ? 'selected' : '';
           optionsHtml += `<option value="${p.player_id}" ${isSelected}>${this.escapeHtml(label)}</option>`;
         });
@@ -3051,6 +3608,13 @@ class PedantixApp {
       this.dom.wikiHeading.appendChild(this.createTokenElement(t, true));
     });
 
+    // Canari piège titre invisible (détecte les scrapers de titre)
+    const titleCanary = document.createElement('span');
+    titleCanary.className = 'w revealed canary-trap';
+    titleCanary.textContent = 'piegebothoney';
+    titleCanary.setAttribute('aria-hidden', 'true');
+    this.dom.wikiHeading.appendChild(titleCanary);
+
     // 2. Render Paragraphs
     this.dom.article.innerHTML = '';
     const bodyTokens = this.tokens.filter(t => !t.is_title);
@@ -3069,6 +3633,19 @@ class PedantixApp {
       });
       this.dom.article.appendChild(pEl);
     });
+
+    // 3. Canaris pièges invisibles (détectent scrapers DOM et extensions tierces)
+    const canary1 = document.createElement('span');
+    canary1.className = 'w revealed canary-trap';
+    canary1.textContent = 'canaritrichebot';
+    canary1.setAttribute('aria-hidden', 'true');
+    this.dom.article.appendChild(canary1);
+
+    const canary2 = document.createElement('span');
+    canary2.className = 'w revealed canary-trap';
+    canary2.textContent = 'xylophonepiege';
+    canary2.setAttribute('aria-hidden', 'true');
+    this.dom.article.appendChild(canary2);
   }
 
   renderTokenContent(token, span) {
@@ -3129,7 +3706,6 @@ class PedantixApp {
     } else {
       span.classList.remove('has-hint', 'close-heat-grey');
       span.innerHTML = '&nbsp;'.repeat(Math.max(1, token.length));
-      span.dataset.len = token.length;
       span.style.color = '';
       span.style.backgroundColor = '';
       span.style.borderColor = '';
@@ -3183,9 +3759,60 @@ class PedantixApp {
   // GUESS SUBMISSION & HANDLING
   // =========================================================================
 
-  async handleGuessSubmit() {
+  async handleGuessSubmit(e) {
+    if (e && e.isTrusted === false) {
+      this.playTone('miss');
+      this.showToast('🤖 Action automatisée ou script de triche détecté.');
+      return;
+    }
+
+    if (this.isInputLocked) {
+      this.showToast('Veuillez patienter avant de pouvoir reproposer un mot.');
+      return;
+    }
+
+    const now = Date.now();
+    if (this.lastGuessTimestamp && (now - this.lastGuessTimestamp) < 300) {
+      this.showToast('Cadence trop rapide. Ralentissez !');
+      return;
+    }
+    this.lastGuessTimestamp = now;
+
+    if (this.isSpectator) {
+      this.showToast('👁️ Vous êtes en mode spectateur (en pause). Reprenez votre place pour proposer des mots.');
+      return;
+    }
     const rawWord = this.dom.guessInput.value.trim();
     if (!rawWord) return;
+
+    // Détection immédiate du canari piège (honeypot DOM)
+    const cleanLower = rawWord.toLowerCase().replace(/[- ']/g, '');
+    if (cleanLower === 'canaritrichebot' || cleanLower === 'piegebothoney' || cleanLower === 'xylophonepiege') {
+      this.playTone('miss');
+      this.showToast('🤖 Piège anti-triche activé ! Extension ou scraper détecté.');
+      this.lockInputTemporarily(30);
+      this.dom.errorLabel.innerHTML = '🤖 <b>Anti-Triche</b> : Scraping DOM / Extension détectée. Suspendu 30s.';
+      this.dom.guessInput.value = '';
+      return;
+    }
+
+    // Vérification de la saisie humaine réelle (bloque l'injection de input.value par scripts / extensions)
+    const isHumanTyped = (this.trustedKeystrokeCount >= 1 || this.lastTrustedPaste);
+    if (rawWord.length > 0 && !isHumanTyped) {
+      this.playTone('miss');
+      this.showToast('⚠️ Saisie automatisée par extension/script détectée. Veuillez saisir vos mots au clavier.');
+      this.dom.errorLabel.innerHTML = '⚠️ <b>Anti-Triche</b> : Saisie automatisée non autorisée.';
+      this.dom.guessInput.value = '';
+      this.trustedKeystrokeCount = 0;
+      this.lastTrustedPaste = false;
+      this.firstKeystrokeTime = 0;
+      return;
+    }
+
+    // Réinitialise la télémétrie pour le mot suivant
+    this.trustedKeystrokeCount = 0;
+    this.lastTrustedPaste = false;
+    this.firstKeystrokeTime = 0;
 
     if (this.roomStatus === 'lobby') {
       this.showToast('Attendez que l\'Host démarre la partie !');
@@ -3210,12 +3837,17 @@ class PedantixApp {
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          word: rawWord
+          word: rawWord,
+          guess_token: this.guessToken
         })
       });
 
       if (!resp.ok) throw new Error('Erreur réseau');
       const data = await resp.json();
+
+      if (data.next_token) {
+        this.guessToken = data.next_token;
+      }
 
       this.processGuessResult(data, rawWord);
 
@@ -3225,9 +3857,205 @@ class PedantixApp {
     }
   }
 
+  checkAutomationEnvironment() {
+    const isAutomated = !!(
+      navigator.webdriver ||
+      window.document.documentElement.getAttribute('webdriver') ||
+      window.cdc_adoQx080412CBWNTeNaNZlmsub3_ ||
+      window.document.$cdc_asdjflasutopfhvcZLmcfl_ ||
+      window.__puppeteer_evaluation_script__ ||
+      window.__playwright ||
+      window.__nightmare ||
+      window.callPhantom ||
+      window._phantom
+    );
+
+    if (isAutomated) {
+      console.warn('[Anti-Cheat] Automated WebDriver / Selenium environment detected.');
+      this.lockInputTemporarily(9999);
+      if (this.dom.guessInput) {
+        this.dom.guessInput.disabled = true;
+        this.dom.guessInput.placeholder = 'Navigateur automatisé interdit';
+      }
+      this.showToast('⛔ Navigateur automatisé détecté (Selenium/Puppeteer/WebDriver). Jeu verrouillé.');
+    }
+  }
+
+  triggerOverlayPenalty() {
+    this.playTone('miss');
+    this.lockInputTemporarily(15);
+    this.showToast('🛡️ Encart de triche ou extension en superposition neutralisé(e) !');
+    if (this.dom.errorLabel) {
+      this.dom.errorLabel.innerHTML = '🤖 <b>Anti-Triche</b> : Encart / extension en superposition bloqué(e) (suspension 15s).';
+    }
+    // Reporte l'incident au serveur pour avertir le salon
+    if (this.roomId && this.playerId && !this.roomId.startsWith('solo-')) {
+      fetch(this.getApiUrl('/api/room/cheat-report'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: this.roomId,
+          player_id: this.playerId,
+          reason: 'overlay_detected'
+        })
+      }).catch(() => {});
+    }
+  }
+
+  scanAndNukeOverlays() {
+    const knownModalIds = new Set([
+      'app', 'sidebar', 'main', 'rules-modal', 'faq-modal', 'themes-modal',
+      'stats-modal', 'auth-modal', 'round-over-modal', 'surrender-modal',
+      'rooms-modal', 'server-settings-modal', 'lobby-modal', 'countdown-overlay',
+      'toast', 'confetti-canvas', 'chat-floating-toast', 'guess-len-badge'
+    ]);
+
+    const checkNode = (node) => {
+      if (!node || node.nodeType !== 1) return;
+      if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE' || node.tagName === 'LINK') return;
+
+      const id = node.id || '';
+      const cls = typeof node.className === 'string' ? node.className : '';
+      const tag = node.tagName.toUpperCase();
+
+      if (id && knownModalIds.has(id)) return;
+      if (cls && (cls.includes('modal-overlay') || cls.includes('toast') || cls.includes('confetti') || cls.includes('chat-floating-toast') || cls.includes('sticky-pinned') || cls.includes('canary-trap'))) return;
+      if (node.closest && (node.closest('.modal-overlay') || node.closest('.sidebar-aside') || node.closest('.main-center') || node.closest('.comp-panel-aside'))) return;
+
+      // 1. Tags interdits : IFRAME, EMBED, OBJECT ou balises personnalisées d'extensions
+      if (tag === 'IFRAME' || tag === 'EMBED' || tag === 'OBJECT' || (tag.includes('-') && !tag.startsWith('PEDANTIX'))) {
+        console.warn('[Anti-Cheat] Balise étrangère ou iframe de superposition détruite:', tag, node);
+        try { node.remove(); } catch (e) {}
+        this.triggerOverlayPenalty();
+        return;
+      }
+
+      // 2. Mots-clés suspects dans la classe ou l'ID (helpers, solvers, bots, tampermonkey)
+      const lowerCls = cls.toLowerCase();
+      const lowerId = id.toLowerCase();
+      const isSuspicious = ['solver', 'helper', 'cheat', 'bot', 'overlay', 'suggest', 'tampermonkey', 'violentmonkey', 'greasemonkey', 'pedantix-helper'].some(kw => lowerCls.includes(kw) || lowerId.includes(kw));
+      if (isSuspicious) {
+        console.warn('[Anti-Cheat] Encart suspect détecté et détruit:', node);
+        try { node.remove(); } catch (e) {}
+        this.triggerOverlayPenalty();
+        return;
+      }
+
+      // 3. Position fixe ou absolue avec z-index élevé hors composants approuvés
+      const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+      if (style) {
+        const isFixedOrAbs = style.position === 'fixed' || (style.position === 'absolute' && (node.parentElement === document.body || node.parentElement === document.documentElement));
+        const zIndex = parseInt(style.zIndex, 10) || 0;
+        if (isFixedOrAbs && zIndex >= 40) {
+          console.warn('[Anti-Cheat] Encart flottant non autorisé détecté et détruit:', node);
+          try { node.remove(); } catch (e) {}
+          this.triggerOverlayPenalty();
+        }
+      }
+    };
+
+    // Scan des enfants directs de html et body
+    if (document.documentElement) {
+      Array.from(document.documentElement.children).forEach(el => {
+        if (el !== document.head && el !== document.body) checkNode(el);
+      });
+    }
+    if (document.body) {
+      Array.from(document.body.children).forEach(el => {
+        if (el.id !== 'app' && !el.classList.contains('pedantix-app-root') && !knownModalIds.has(el.id)) {
+          checkNode(el);
+        }
+      });
+    }
+
+    // Scan des éléments à z-index élevé dans tout le document
+    const highZNodes = document.querySelectorAll('[style*="fixed"], [style*="absolute"], [style*="z-index"]');
+    highZNodes.forEach(checkNode);
+  }
+
+  initOverlayWatchdog() {
+    // Scan immédiat à l'initialisation
+    this.scanAndNukeOverlays();
+
+    // Surveillance temps réel des ajouts dans tout le DOM
+    try {
+      const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          if (m.addedNodes) {
+            for (let i = 0; i < m.addedNodes.length; i++) {
+              const node = m.addedNodes[i];
+              if (node.nodeType === 1) {
+                const id = node.id || '';
+                const tag = node.tagName.toUpperCase();
+                const cls = typeof node.className === 'string' ? node.className : '';
+                if (tag === 'IFRAME' || tag === 'EMBED' || (tag.includes('-') && !tag.startsWith('PEDANTIX'))) {
+                  try { node.remove(); } catch (e) {}
+                  this.triggerOverlayPenalty();
+                } else if (node.parentElement === document.body || node.parentElement === document.documentElement) {
+                  if (id !== 'app' && !cls.includes('modal-overlay') && !cls.includes('toast') && !cls.includes('confetti') && !cls.includes('chat-floating-toast')) {
+                    try { node.remove(); } catch (e) {}
+                    this.triggerOverlayPenalty();
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    } catch (e) {}
+
+    // Balayage périodique toutes les 350ms (neutralise les injections différées ou stylisées a posteriori)
+    setInterval(() => this.scanAndNukeOverlays(), 350);
+  }
+
+  lockInputTemporarily(seconds) {
+    if (this.inputLockTimeout) clearInterval(this.inputLockTimeout);
+    this.isInputLocked = true;
+    if (this.dom.guessInput) {
+      this.dom.guessInput.disabled = true;
+      this.dom.guessInput.placeholder = `Suspension anti-triche : ${seconds}s...`;
+    }
+    const submitBtn = this.dom.form ? this.dom.form.querySelector('button[type="submit"], input[type="submit"]') : null;
+    if (submitBtn) submitBtn.disabled = true;
+
+    let remaining = seconds;
+    this.inputLockTimeout = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(this.inputLockTimeout);
+        this.inputLockTimeout = null;
+        this.isInputLocked = false;
+        if (this.dom.guessInput) {
+          this.dom.guessInput.disabled = false;
+          this.dom.guessInput.placeholder = 'Entrez un mot...';
+          this.dom.guessInput.focus();
+        }
+        if (submitBtn) submitBtn.disabled = false;
+        if (this.dom.errorLabel && this.dom.errorLabel.textContent.includes('Anti-Triche')) {
+          this.dom.errorLabel.textContent = '';
+        }
+      } else {
+        if (this.dom.guessInput) {
+          this.dom.guessInput.placeholder = `Suspension anti-triche : ${remaining}s...`;
+        }
+      }
+    }, 1000);
+  }
+
   processGuessResult(data, word) {
     if (data.status === 'already_won') {
       this.showToast(data.message);
+      return;
+    }
+
+    // Bot / Anti-cheat rejection check
+    if (data.status === 'bot_blocked') {
+      this.playTone('miss');
+      this.dom.errorLabel.innerHTML = `🤖 <b>Protection Anti-Triche</b> : ${this.escapeHtml(data.error || 'Requête bloquée.')}`;
+      this.showToast(data.error || 'Requête bloquée par l\'anti-triche.');
+      const cd = data.cooldown_seconds || 1;
+      this.lockInputTemporarily(cd);
       return;
     }
 
@@ -3379,6 +4207,8 @@ class PedantixApp {
   // =========================================================================
 
   handleVictory() {
+    this.isWon = true;
+    this.isAbandoned = false;
     this.stopHintTimer();
     this.playTone('win');
     try {
@@ -3394,12 +4224,29 @@ class PedantixApp {
     }
 
     this.dom.triesSpan.textContent = `${this.history.length} coup${this.history.length > 1 ? 's' : ''}`;
+
+    if (this.dom.successDiffBadge) {
+      this.dom.successDiffBadge.className = `diff-badge-pill diff-badge-${this.articleDifficulty}`;
+      this.dom.successDiffBadge.textContent = this.getDifficultyBadgeText(this.articleDifficulty);
+    }
+    if (this.dom.successLangVal) {
+      this.dom.successLangVal.textContent = this.articleLangCount ? this.articleLangCount : '--';
+    }
+    if (this.dom.successViewsVal) {
+      this.dom.successViewsVal.textContent = this.articlePageviews90d ? this.formatNumber(this.articlePageviews90d) : '--';
+    }
+
     this.dom.successBox.classList.add('active');
+    if (this.dom.surrenderBanner) {
+      this.dom.surrenderBanner.style.display = 'none';
+      this.dom.surrenderBanner.classList.remove('active');
+    }
     this.hideOpponentWin();
 
     const title = this.tokens.filter(t => t.is_title).map(t => t.text).join('');
     this.dom.solutionDisplay.textContent = title;
 
+    const wikiUrl = this.solution ? this.solution.url : `https://fr.wikipedia.org/wiki/${encodeURIComponent(title)}`;
     if (this.solution) {
       this.dom.solutionLink.href = this.solution.url;
       if (this.solution.image) {
@@ -3407,16 +4254,26 @@ class PedantixApp {
         this.dom.wikiImg.style.display = 'block';
       }
     } else {
-      this.dom.solutionLink.href = `https://fr.wikipedia.org/wiki/${encodeURIComponent(title)}`;
+      this.dom.solutionLink.href = wikiUrl;
+    }
+
+    if (this.dom.articleFinishedBar) {
+      if (this.dom.articleFinishedWikiLink) this.dom.articleFinishedWikiLink.href = wikiUrl;
+      this.dom.articleFinishedBar.style.display = 'flex';
     }
 
     this.recordWinStats(title, this.history.length);
     this.updateYesterdayLink(title, this.dom.solutionLink.href);
 
+    this.syncRoomUI();
     this.dom.successBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async unmaskAllWords() {
+    if (!this.isWon && !this.isAbandoned) {
+      this.showToast("L'article ne peut être démasqué qu'une fois la manche terminée.");
+      return;
+    }
     try {
       if (this.dom.seeFullPageBtn) {
         this.dom.seeFullPageBtn.disabled = true;
@@ -3559,8 +4416,18 @@ class PedantixApp {
   }
 
   async handleSurrenderClick() {
+    if (this.isSpectator) {
+      this.showToast("👁️ Vous êtes en mode spectateur (en pause). Reprenez votre place de joueur pour voter ou proposer l'abandon.");
+      return;
+    }
+
     if (this.roomStatus !== 'playing' && this.roomStatus !== 'ending') {
       this.showToast('Aucune partie en cours à abandonner.');
+      return;
+    }
+
+    if (this.surrenderCooldownRemaining > 0) {
+      this.showToast(`Votre demande d'abandon a été refusée. Veuillez patienter encore ${this.surrenderCooldownRemaining} s avant de pouvoir refaire une demande.`);
       return;
     }
 
@@ -3583,11 +4450,72 @@ class PedantixApp {
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
+        if (err.cooldown_remaining) {
+          this.startSurrenderCooldown(err.cooldown_remaining);
+        }
         this.showToast(err.detail || 'Erreur lors de la demande d\'abandon.');
       }
     } catch (err) {
       console.error('Erreur demande abandon:', err);
       this.showToast('Erreur de connexion lors de la demande d\'abandon.');
+    }
+  }
+
+  startSurrenderCooldown(seconds = 30) {
+    if (this.surrenderCooldownTimer) {
+      clearInterval(this.surrenderCooldownTimer);
+      this.surrenderCooldownTimer = null;
+    }
+    this.surrenderCooldownRemaining = Math.max(0, Math.ceil(seconds));
+    if (this.surrenderCooldownRemaining <= 0) {
+      this.clearSurrenderCooldown();
+      return;
+    }
+
+    this._applyCooldownToSurrenderButtons();
+
+    this.surrenderCooldownTimer = setInterval(() => {
+      this.surrenderCooldownRemaining--;
+      if (this.surrenderCooldownRemaining <= 0) {
+        this.clearSurrenderCooldown();
+      } else {
+        this._applyCooldownToSurrenderButtons();
+      }
+    }, 1000);
+  }
+
+  _applyCooldownToSurrenderButtons() {
+    const label = `🏳️ Abandonner (${this.surrenderCooldownRemaining}s)`;
+    const title = `Demande refusée. Réessai possible dans ${this.surrenderCooldownRemaining}s`;
+    if (this.dom.btnSurrenderRoom) {
+      this.dom.btnSurrenderRoom.classList.add('btn-cooldown');
+      this.dom.btnSurrenderRoom.textContent = label;
+      this.dom.btnSurrenderRoom.title = title;
+    }
+    if (this.dom.btnSideSurrender) {
+      this.dom.btnSideSurrender.classList.add('btn-cooldown');
+      this.dom.btnSideSurrender.textContent = label;
+      this.dom.btnSideSurrender.title = title;
+    }
+  }
+
+  clearSurrenderCooldown() {
+    if (this.surrenderCooldownTimer) {
+      clearInterval(this.surrenderCooldownTimer);
+      this.surrenderCooldownTimer = null;
+    }
+    this.surrenderCooldownRemaining = 0;
+    const defaultLabel = '🏳️ Abandonner';
+    const defaultTitle = "Proposer d'abandonner la partie en cours";
+    if (this.dom.btnSurrenderRoom) {
+      this.dom.btnSurrenderRoom.classList.remove('btn-cooldown');
+      this.dom.btnSurrenderRoom.textContent = defaultLabel;
+      this.dom.btnSurrenderRoom.title = defaultTitle;
+    }
+    if (this.dom.btnSideSurrender) {
+      this.dom.btnSideSurrender.classList.remove('btn-cooldown');
+      this.dom.btnSideSurrender.textContent = defaultLabel;
+      this.dom.btnSideSurrender.title = defaultTitle;
     }
   }
 
@@ -3662,8 +4590,10 @@ class PedantixApp {
     if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
     this.hideOpponentWin();
 
-    this.roomStatus = 'lobby';
-    this.isReady = false;
+    this.isAbandoned = true;
+    this.isWon = false;
+    this.roomStatus = this.isSoloMode ? 'playing' : 'lobby';
+    this.isReady = this.isSoloMode ? true : false;
     this.lastRound = msg.last_round || null;
     if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
     if (msg.teams) this.teamsData = msg.teams;
@@ -3680,18 +4610,56 @@ class PedantixApp {
     }
 
     this.playTone('hint');
-    this.showToast('🏳️ Partie abandonnée à l\'unanimité ! L\'article a été entièrement démasqué. Aucun point attribué.');
+    this.showToast('🏳️ Partie abandonnée ! L\'article a été entièrement démasqué.');
 
     const title = msg.title || (msg.solution && msg.solution.title) || '';
+    const wikiUrl = msg.url || (msg.solution && msg.solution.url) || `https://fr.wikipedia.org/wiki/${encodeURIComponent(title)}`;
     if (this.dom.solutionDisplay) {
       this.dom.solutionDisplay.textContent = title;
     }
-    if (this.dom.solutionLink && (msg.url || (msg.solution && msg.solution.url))) {
-      this.dom.solutionLink.href = msg.url || msg.solution.url;
+    if (this.dom.solutionLink) {
+      this.dom.solutionLink.href = wikiUrl;
+    }
+
+    // Display surrender banner
+    if (this.dom.surrenderBanner) {
+      if (this.dom.surrenderSolutionDisplay) this.dom.surrenderSolutionDisplay.textContent = title;
+      if (this.dom.surrenderSolutionLink) this.dom.surrenderSolutionLink.href = wikiUrl;
+      if (this.dom.surrenderDiffBadge) {
+        this.dom.surrenderDiffBadge.className = `diff-badge-pill diff-badge-${this.articleDifficulty}`;
+        this.dom.surrenderDiffBadge.textContent = this.getDifficultyBadgeText(this.articleDifficulty);
+      }
+      if (this.dom.surrenderLangVal) {
+        this.dom.surrenderLangVal.textContent = this.articleLangCount ? this.articleLangCount : '--';
+      }
+      if (this.dom.surrenderViewsVal) {
+        this.dom.surrenderViewsVal.textContent = this.articlePageviews90d ? this.formatNumber(this.articlePageviews90d) : '--';
+      }
+      this.dom.surrenderBanner.style.display = 'block';
+      this.dom.surrenderBanner.classList.add('active');
+    }
+    if (this.dom.successBox) {
+      this.dom.successBox.classList.remove('active');
+    }
+
+    // Show finished bar at bottom of article
+    if (this.dom.articleFinishedBar) {
+      if (this.dom.articleFinishedWikiLink) {
+        this.dom.articleFinishedWikiLink.href = wikiUrl;
+      }
+      this.dom.articleFinishedBar.style.display = 'flex';
+    }
+
+    if (this.solution && this.solution.image && this.dom.wikiImg) {
+      this.dom.wikiImg.src = this.solution.image;
+      this.dom.wikiImg.style.display = 'block';
     }
 
     this.updateModeUI();
     this.syncRoomUI();
+    if (this.dom.surrenderBanner) {
+      this.dom.surrenderBanner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   copyShareScore() {
@@ -4054,5 +5022,5 @@ class PedantixApp {
 
 // Start app on DOMContentLoaded
 window.addEventListener('DOMContentLoaded', () => {
-  window.app = new PedantixApp();
+  new PedantixApp();
 });

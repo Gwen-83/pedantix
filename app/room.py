@@ -4,6 +4,7 @@ import threading
 import logging
 import random
 import time
+import math
 import uuid
 from collections import Counter
 from typing import Dict, List, Optional, Set, Any
@@ -44,6 +45,7 @@ class RoomPlayer:
         self.last_count: int = 0
         self.last_score: int = 0
         self.connected = True
+        self.is_spectator = False
 
     def refresh_score(self):
         self.score = get_player_score(self.name)
@@ -55,6 +57,7 @@ class RoomPlayer:
             "is_host": self.is_host,
             "team": self.team,
             "is_ready": self.is_ready,
+            "is_spectator": self.is_spectator,
             "score": self.score,
             "attempts": self.attempts,
             "revealed_words_count": self.revealed_words_count,
@@ -70,10 +73,11 @@ class RoomPlayer:
 
 
 class Room:
-    def __init__(self, room_id: str, article_data: Dict[str, Any], seed: str):
+    def __init__(self, room_id: str, article_data: Dict[str, Any], seed: str, difficulty: str = "moyen"):
         self.room_id = room_id
         self.article_data = article_data
         self.seed = seed
+        self.difficulty: str = difficulty or article_data.get("difficulty", "moyen")
         self.created_at = time.time()
         self.players: Dict[str, RoomPlayer] = {}
         self.websockets: Set[WebSocket] = set()
@@ -103,6 +107,7 @@ class Room:
         self.surrender_initiator_id: Optional[str] = None
         self.surrender_initiator_name: Optional[str] = None
         self.surrender_votes: Set[str] = set()
+        self.surrender_cooldowns: Dict[str, float] = {}
 
     def _pick_next_hint_letter(self) -> Optional[str]:
         """
@@ -211,7 +216,10 @@ class Room:
                 image=self.article_data.get("image", ""),
                 paragraphs=self.article_data["paragraphs"],
                 mode="team",
-                category=self.article_data.get("category", "general")
+                category=self.article_data.get("category", "general"),
+                difficulty=self.difficulty,
+                lang_count=self.article_data.get("lang_count", 0),
+                pageviews_90d=self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5))
             )
 
     def get_teams_data(self) -> Dict[str, Any]:
@@ -279,31 +287,97 @@ class Room:
         self.add_activity(f"👕 {player.name} a rejoint l'{team_name}", "team_change")
         return True
 
+    def set_difficulty(self, difficulty: str) -> bool:
+        if difficulty not in ("facile", "moyen", "difficile"):
+            return False
+        if self.difficulty == difficulty:
+            return True
+        self.difficulty = difficulty
+        if self.status == "lobby":
+            try:
+                new_art = room_manager._fetch_random_article(difficulty=difficulty)
+                if new_art:
+                    self.article_data = new_art
+                    if self.game_mode == "team":
+                        self._init_team_sessions()
+                        for p in self.players.values():
+                            p.session = self.team_sessions.get(p.team)
+                    else:
+                        for p in self.players.values():
+                            p.session = GameSession(
+                                session_id=str(uuid.uuid4()),
+                                seed=self.seed,
+                                title=self.article_data["title"],
+                                url=self.article_data.get("url", ""),
+                                image=self.article_data.get("image", ""),
+                                paragraphs=self.article_data["paragraphs"],
+                                mode="multiplayer",
+                                category=self.article_data.get("category", "general"),
+                                difficulty=self.difficulty,
+                                lang_count=self.article_data.get("lang_count", 0),
+                                pageviews_90d=self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5))
+                            )
+            except Exception as e:
+                logger.error(f"Error updating article on difficulty change: {e}")
+        diff_label = {"facile": "🟢 Facile", "moyen": "🟡 Moyen", "difficile": "🔴 Difficile"}.get(difficulty, difficulty.capitalize())
+        self.add_activity(f"🎯 Difficulté configurée : {diff_label}", "difficulty")
+        return True
+
     def get_leaderboard(self) -> List[Dict[str, Any]]:
-        """Returns players sorted by victory status, then highest percentage, then lowest attempts, then DB score."""
+        """Returns players sorted by victory status, then highest percentage, then lowest attempts, then DB score.
+        Ensures any player with an active websocket is marked as connected."""
+        active_ws_pids = set(self.ws_player_map.values())
+        for p in self.players.values():
+            if p.player_id in active_ws_pids:
+                p.connected = True
+
         player_list = [p.to_dict() for p in self.players.values()]
 
         def sort_key(p):
+            is_active_player = 0 if p.get("is_spectator") else 1
             is_won = 1 if p["is_won"] else 0
             pct = p["pct"]
             attempts = -p["attempts"] if p["attempts"] > 0 else -9999
             score = p["score"]
-            return (is_won, pct, attempts, score)
+            return (is_active_player, is_won, pct, attempts, score)
 
         player_list.sort(key=sort_key, reverse=True)
         return player_list
 
     def can_start(self) -> bool:
-        """Returns True if there is at least one player and all players are ready."""
-        if not self.players:
+        """Returns True if there is at least one active player and all active players are ready."""
+        if self.room_id.startswith("solo-"):
+            return True
+        active_players = [p for p in self.players.values() if not p.is_spectator]
+        if not active_players:
             return False
-        if not all(p.is_ready for p in self.players.values()):
+        if not all(p.is_ready for p in active_players):
             return False
-        if self.game_mode == "team" and len(self.players) >= 2:
-            occupied_teams = set(p.team for p in self.players.values())
+        if self.game_mode == "team" and len(active_players) >= 2:
+            occupied_teams = set(p.team for p in active_players)
             if len(occupied_teams) < 2:
                 return False
         return True
+
+    def toggle_spectator(self, player_id: str, is_spectator: Optional[bool] = None) -> bool:
+        """Toggles or sets the spectator mode for a player."""
+        if player_id not in self.players:
+            return False
+        player = self.players[player_id]
+        if is_spectator is None:
+            player.is_spectator = not player.is_spectator
+        else:
+            player.is_spectator = bool(is_spectator)
+        if player.is_spectator:
+            player.is_ready = False
+            self.add_activity(f"👁️ {player.name} est passé en mode Spectateur (en pause)", "spectator")
+            if self.surrender_in_progress:
+                connected_pids = {p.player_id for p in self.players.values() if p.connected and not p.is_spectator}
+                if connected_pids and self.surrender_votes >= connected_pids:
+                    asyncio.create_task(self.execute_surrender())
+        else:
+            self.add_activity(f"🎮 {player.name} a repris sa place de joueur !", "spectator")
+        return player.is_spectator
 
     def add_activity(self, text: str, event_type: str = "info"):
         event = {
@@ -374,7 +448,10 @@ class Room:
                 image=self.article_data.get("image", ""),
                 paragraphs=self.article_data["paragraphs"],
                 mode="multiplayer",
-                category=self.article_data.get("category", "general")
+                category=self.article_data.get("category", "general"),
+                difficulty=self.difficulty,
+                lang_count=self.article_data.get("lang_count", 0),
+                pageviews_90d=self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5))
             )
 
         player = RoomPlayer(player_id=player_id, name=player_name, session=session, is_host=is_first, team=default_team)
@@ -392,6 +469,9 @@ class Room:
         if player_id not in self.players:
             return False
         player = self.players[player_id]
+        if player.is_spectator:
+            player.is_spectator = False
+            self.add_activity(f"🎮 {player.name} a repris sa place de joueur !", "spectator")
         if ready is None:
             player.is_ready = not player.is_ready
         else:
@@ -409,7 +489,7 @@ class Room:
         if not player.is_host:
             return {"error": "Seul l'Host peut lancer la partie."}
         if not self.can_start():
-            not_ready_count = sum(1 for p in self.players.values() if not p.is_ready)
+            not_ready_count = sum(1 for p in self.players.values() if not p.is_spectator and not p.is_ready)
             return {"error": f"Impossible de lancer : {not_ready_count} joueur(s) ne sont pas encore prêts."}
 
         # If a previous round was already finished, launch a new round with a fresh article
@@ -431,6 +511,7 @@ class Room:
         self.surrender_initiator_id = None
         self.surrender_initiator_name = None
         self.surrender_votes = set()
+        self.surrender_cooldowns.clear()
         self.status = "starting"
         self.countdown_end = time.time() + 5.0
         self.add_activity("⏳ Compte à rebours de 5 secondes lancé !", "countdown")
@@ -480,6 +561,11 @@ class Room:
         if player_id not in self.players:
             return {"error": "Joueur non trouvé dans la salle."}
 
+        player = self.players[player_id]
+
+        if player.is_spectator:
+            return {"error": "Vous êtes en mode spectateur (en pause). Reprenez votre place de joueur pour proposer des mots."}
+
         if self.status not in ("playing", "ending"):
             if self.status == "lobby":
                 return {"error": "La partie n'a pas encore été lancée par l'Host."}
@@ -487,8 +573,6 @@ class Room:
                 return {"error": "La partie démarre dans quelques secondes..."}
             elif self.status == "round_over":
                 return {"error": "Cette manche est terminée. Attendez la suivante !"}
-
-        player = self.players[player_id]
 
         # Use team session if in team mode, else player session
         if self.game_mode == "team":
@@ -581,7 +665,7 @@ class Room:
                     self.add_activity(f"🎯 {team_name} a également découvert le titre !", "win_also")
 
                     # Check if all active teams have won
-                    active_teams = set(p.team for p in self.players.values() if p.connected)
+                    active_teams = set(p.team for p in self.players.values() if p.connected and not p.is_spectator)
                     won_teams = set(p.team for p in self.players.values() if p.is_won)
                     if won_teams >= active_teams:
                         if self._timer_30s_task and not self._timer_30s_task.done():
@@ -598,7 +682,7 @@ class Room:
                         self.winners.append(player.player_id)
 
                     rank = len(self.winners)
-                    connected_players = [p for p in self.players.values() if p.connected]
+                    connected_players = [p for p in self.players.values() if p.connected and not p.is_spectator]
                     if rank == 1:
                         self.first_winner_id = player.player_id
                         self.first_winner_name = player.name
@@ -735,7 +819,12 @@ class Room:
             else:
                 record_user_game_finish(p.name, won=False, attempts=p.attempts, points=0)
             p.refresh_score()
-            p.is_ready = False
+            p.is_ready = True if self.room_id.startswith("solo-") else False
+            if p.session:
+                p.session.is_surrendered = True
+        if self.game_mode == "team" and self.team_sessions:
+            for s in self.team_sessions.values():
+                s.is_surrendered = True
 
         self.last_round_results = {
             "title": self.article_data["title"],
@@ -755,6 +844,10 @@ class Room:
             "winner_attempts": self.first_winner_attempts,
             "game_mode": self.game_mode,
             "winning_team": self.winning_team,
+            "difficulty": self.difficulty,
+            "article_difficulty": self.article_data.get("difficulty", self.difficulty),
+            "article_lang_count": self.article_data.get("lang_count", 0),
+            "article_pageviews_90d": self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5)),
             "teams": self.get_teams_data(),
             "title": self.article_data["title"],
             "url": self.article_data.get("url", ""),
@@ -775,11 +868,15 @@ class Room:
         if player_id not in self.players:
             return {"error": "Joueur non trouvé"}
         player = self.players[player_id]
-        if not player.is_host:
-            return {"error": "Seul l'Host peut lancer la partie."}
-        if not self.can_start():
-            not_ready = [p.name for p in self.players.values() if not p.is_ready]
-            return {"error": f"En attente que tous les joueurs soient prêts : {', '.join(not_ready)}"}
+        if self.room_id.startswith("solo-"):
+            player.is_host = True
+            player.is_ready = True
+        else:
+            if not player.is_host:
+                return {"error": "Seul l'Host peut lancer la partie."}
+            if not self.can_start():
+                not_ready = [p.name for p in self.players.values() if not p.is_spectator and not p.is_ready]
+                return {"error": f"En attente que tous les joueurs soient prêts : {', '.join(not_ready)}"}
 
         if self._timer_30s_task and not self._timer_30s_task.done():
             self._timer_30s_task.cancel()
@@ -791,7 +888,7 @@ class Room:
         self.next_letter_hint_time = None
 
         if not new_article:
-            new_article = room_manager._fetch_notable_article()
+            new_article = room_manager._fetch_notable_article(difficulty=self.difficulty)
         if not new_seed:
             new_seed = f"P-{random.randint(1000, 9999)}"
 
@@ -809,7 +906,9 @@ class Room:
         self.surrender_initiator_id = None
         self.surrender_initiator_name = None
         self.surrender_votes = set()
+        self.surrender_cooldowns.clear()
         self.created_at = time.time()
+        self.last_round_results = None
 
         # Re-initialize sessions with the new article
         if self.game_mode == "team":
@@ -837,7 +936,10 @@ class Room:
                     image=self.article_data.get("image", ""),
                     paragraphs=self.article_data["paragraphs"],
                     mode="multiplayer",
-                    category=self.article_data.get("category", "general")
+                    category=self.article_data.get("category", "general"),
+                    difficulty=self.difficulty,
+                    lang_count=self.article_data.get("lang_count", 0),
+                    pageviews_90d=self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5))
                 )
                 p.attempts = 0
                 p.revealed_words_count = 0
@@ -860,12 +962,16 @@ class Room:
                 "type": "new_round",
                 "status": "playing",
                 "seed": self.seed,
+                "difficulty": self.difficulty,
+                "article_difficulty": self.article_data.get("difficulty", self.difficulty),
+                "article_lang_count": self.article_data.get("lang_count", 0),
+                "article_pageviews_90d": self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5)),
                 "game_mode": self.game_mode,
                 "teams": self.get_teams_data(),
                 "leaderboard": self.get_leaderboard(),
                 "activity": self.recent_activity
             })
-            return {"status": "playing", "seed": self.seed}
+            return {"status": "playing", "seed": self.seed, "difficulty": self.difficulty}
 
         self.add_activity("🎲 Nouvelle partie lancée ! Compte à rebours de 5 secondes...", "new_round")
 
@@ -875,6 +981,10 @@ class Room:
             "end_time": self.countdown_end,
             "status": "starting",
             "seed": self.seed,
+            "difficulty": self.difficulty,
+            "article_difficulty": self.article_data.get("difficulty", self.difficulty),
+            "article_lang_count": self.article_data.get("lang_count", 0),
+            "article_pageviews_90d": self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5)),
             "game_mode": self.game_mode,
             "teams": self.get_teams_data(),
             "leaderboard": self.get_leaderboard(),
@@ -893,6 +1003,9 @@ class Room:
             session = self.team_sessions.get(player.team, player.session)
         else:
             session = player.session
+        if not (player.is_won or session.is_won or session.is_surrendered or (self.status in ("lobby", "round_over") and self.rounds_played > 0)):
+            return {"error": "L'article ne peut être démasqué qu'une fois la manche terminée."}
+        session.is_surrendered = True
         return session.unmask_all()
 
     async def propose_or_vote_surrender(self, player_id: str, vote: str = "yes") -> Dict[str, Any]:
@@ -903,6 +1016,8 @@ class Room:
             return {"error": "Aucune partie en cours à abandonner."}
 
         player = self.players[player_id]
+        if player.is_spectator:
+            return {"error": "Les spectateurs en pause ne peuvent pas proposer ou voter l'abandon."}
 
         if vote == "cancel":
             if self.surrender_in_progress and self.surrender_initiator_id == player_id:
@@ -920,6 +1035,10 @@ class Room:
             return {"error": "Impossible d'annuler cette demande."}
 
         if vote == "no":
+            refused_initiator_id = self.surrender_initiator_id
+            if refused_initiator_id:
+                self.surrender_cooldowns[refused_initiator_id] = time.time() + 30.0
+
             self.surrender_in_progress = False
             self.surrender_initiator_id = None
             self.surrender_initiator_name = None
@@ -928,12 +1047,31 @@ class Room:
             await self.broadcast({
                 "type": "surrender_rejected",
                 "refuser_name": player.name,
+                "initiator_id": refused_initiator_id,
+                "cooldown_seconds": 30,
                 "activity": self.recent_activity
             })
-            return {"status": "rejected", "refuser_name": player.name}
+            return {
+                "status": "rejected",
+                "refuser_name": player.name,
+                "initiator_id": refused_initiator_id,
+                "cooldown_seconds": 30
+            }
 
         # vote == "yes"
+        if player.is_spectator:
+            return {"error": "Les spectateurs en pause ne peuvent pas proposer l'abandon."}
+
         if not self.surrender_in_progress:
+            now = time.time()
+            cd_until = self.surrender_cooldowns.get(player_id, 0.0)
+            if cd_until > now:
+                remaining = int(math.ceil(cd_until - now))
+                return {
+                    "error": f"Votre demande d'abandon a été refusée. Veuillez patienter encore {remaining} s avant de pouvoir refaire une demande.",
+                    "cooldown_remaining": remaining
+                }
+
             self.surrender_in_progress = True
             self.surrender_initiator_id = player_id
             self.surrender_initiator_name = player.name
@@ -942,7 +1080,7 @@ class Room:
         else:
             self.surrender_votes.add(player_id)
 
-        connected_pids = {p.player_id for p in self.players.values() if p.connected}
+        connected_pids = {p.player_id for p in self.players.values() if p.connected and not p.is_spectator}
         if not connected_pids:
             connected_pids = {player_id}
 
@@ -991,18 +1129,21 @@ class Room:
         # Reset ready status for everyone and ensure NO points are awarded
         for p in self.players.values():
             p.refresh_score()
-            p.is_ready = False
+            p.is_ready = True if self.room_id.startswith("solo-") else False
 
         # Unmask all tokens across sessions
         unmasked_tokens: Dict[str, str] = {}
         if self.game_mode == "team" and self.team_sessions:
             for s in self.team_sessions.values():
+                s.is_surrendered = True
                 res = s.unmask_all()
                 unmasked_tokens.update(res.get("tokens", {}))
         else:
             for p in self.players.values():
-                res = p.session.unmask_all()
-                unmasked_tokens.update(res.get("tokens", {}))
+                if p.session:
+                    p.session.is_surrendered = True
+                    res = p.session.unmask_all()
+                    unmasked_tokens.update(res.get("tokens", {}))
 
         self.last_round_results = {
             "title": self.article_data["title"],
@@ -1057,6 +1198,8 @@ class Room:
         self.websockets.add(ws)
         if player_id:
             self.ws_player_map[ws] = player_id
+            if player_id in self.players:
+                self.players[player_id].connected = True
 
     def remove_websocket(self, ws: WebSocket):
         self.websockets.discard(ws)
@@ -1112,6 +1255,8 @@ class Room:
             if self.room_id != "default":
                 room_manager.delete_room(self.room_id)
             return True
+
+        self.surrender_cooldowns.pop(player_id, None)
 
         if self.surrender_in_progress:
             self.surrender_votes.discard(player_id)
@@ -1177,6 +1322,8 @@ class Room:
     def identify_websocket(self, ws: WebSocket, player_id: str):
         if player_id:
             self.ws_player_map[ws] = player_id
+            if player_id in self.players:
+                self.players[player_id].connected = True
 
     async def broadcast(self, message: Dict[str, Any]):
         to_remove = set()
@@ -1262,17 +1409,17 @@ class RoomManager:
         self.prefetch_articles()
         return art
 
-    async def get_or_create_room_async(self, room_id: str = "default") -> "Room":
+    async def get_or_create_room_async(self, room_id: str = "default", difficulty: str = "moyen") -> "Room":
         """Version non bloquante : à utiliser dans les handlers async (WebSocket / routes)."""
         clean_id = (room_id or "").strip() or "default"
         if clean_id in self.rooms:
             return self.rooms[clean_id]
         await asyncio.to_thread(self._ensure_article_ready)
-        return self.get_or_create_room(clean_id)
+        return self.get_or_create_room(clean_id, difficulty=difficulty)
 
-    async def create_new_room_async(self, host_player_id: str, custom_id: Optional[str] = None) -> "Room":
+    async def create_new_room_async(self, host_player_id: str, custom_id: Optional[str] = None, difficulty: str = "moyen") -> "Room":
         await asyncio.to_thread(self._ensure_article_ready)
-        return self.create_new_room(host_player_id, custom_id)
+        return self.create_new_room(host_player_id, custom_id, difficulty=difficulty)
 
     def _ensure_article_ready(self):
         """Garantit qu'un article est disponible dans le pool (appelé hors boucle asyncio)."""
@@ -1288,17 +1435,31 @@ class RoomManager:
                 with self._pool_lock:
                     self._article_pool.append(art)
 
-    def _fetch_random_article(self) -> Dict[str, Any]:
-        """Fetches a random notable article from French Wikipedia (satisfying language count criteria)."""
-        article = self._pop_pooled_article()
+    def _fetch_random_article(self, difficulty: str = "moyen") -> Dict[str, Any]:
+        """Fetches a random notable article from French Wikipedia for the given difficulty."""
+        diff_key = difficulty.lower() if difficulty and difficulty.lower() in ("facile", "moyen", "difficile") else "moyen"
+        article = None
+        # Check if pooled article matches requested difficulty
+        with self._pool_lock:
+            for idx, a in enumerate(self._article_pool):
+                if a.get("difficulty") == diff_key:
+                    article = self._article_pool.pop(idx)
+                    break
+            else:
+                if diff_key == "moyen" and self._article_pool:
+                    article = self._article_pool.pop(0)
+
+        self.prefetch_articles()
+
         if article is None:
             try:
-                article = self.wiki_client.fetch_random_wikipedia_article()
+                article = self.wiki_client.fetch_random_wikipedia_article(difficulty=diff_key)
             except Exception as e:
                 logger.error(f"Error fetching random article: {e}")
 
         if not article and self.game_manager.offline_curated:
-            article = random.choice(list(self.game_manager.offline_curated.values()))
+            article = dict(random.choice(list(self.game_manager.offline_curated.values())))
+            article["difficulty"] = diff_key
 
         if not article:
             article = {
@@ -1310,27 +1471,43 @@ class RoomManager:
                 ],
                 "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg/500px-Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg",
                 "url": "https://fr.wikipedia.org/wiki/Tour_Eiffel",
-                "category": "monuments"
+                "category": "monuments",
+                "difficulty": diff_key,
+                "lang_count": 130,
+                "pageviews_90d": 75000
             }
         return article
 
     _fetch_notable_article = _fetch_random_article
 
-    def get_or_create_room(self, room_id: str = "default") -> Room:
+    def get_or_create_room(self, room_id: str = "default", difficulty: str = "moyen") -> Room:
         clean_id = room_id.strip() or "default"
         if clean_id not in self.rooms:
-            article = self._fetch_notable_article()
+            article = self._fetch_notable_article(difficulty=difficulty)
             seed_num = random.randint(1000, 9999)
             seed = f"P-{seed_num}"
-            self.rooms[clean_id] = Room(room_id=clean_id, article_data=article, seed=seed)
+            self.rooms[clean_id] = Room(room_id=clean_id, article_data=article, seed=seed, difficulty=difficulty)
         return self.rooms[clean_id]
 
-    def create_new_room(self, host_player_id: str, custom_id: Optional[str] = None) -> Room:
-        room_id = custom_id.strip() if custom_id else f"salon-{random.randint(100, 999)}"
-        article = self._fetch_notable_article()
+    def create_new_room(self, host_player_id: str, custom_id: Optional[str] = None, difficulty: str = "moyen") -> Room:
+        if custom_id and custom_id.strip():
+            clean_custom = custom_id.strip()
+            if clean_custom.startswith("solo-"):
+                clean_custom = clean_custom[5:] or f"salon-{random.randint(100, 999)}"
+            room_id = clean_custom
+        else:
+            for _ in range(100):
+                cand = f"salon-{random.randint(100, 999)}"
+                if cand not in self.rooms:
+                    room_id = cand
+                    break
+            else:
+                room_id = f"salon-{random.randint(1000, 9999)}"
+
+        article = self._fetch_notable_article(difficulty=difficulty)
         seed_num = random.randint(1000, 9999)
         seed = f"P-{seed_num}"
-        room = Room(room_id=room_id, article_data=article, seed=seed)
+        room = Room(room_id=room_id, article_data=article, seed=seed, difficulty=difficulty)
         room.host_player_id = host_player_id
         self.rooms[room_id] = room
         return room
@@ -1349,10 +1526,13 @@ class RoomManager:
 
     def list_active_rooms(self) -> List[Dict[str, Any]]:
         """Returns a list of all active public rooms with player counts and statuses."""
-        # Clean up any empty rooms
+        now = time.time()
+        # Clean up any empty rooms (older than 30s)
         empty_ids = [
             rid for rid, r in list(self.rooms.items())
-            if rid != "default" and (len(r.players) == 0 or not any(p.connected for p in r.players.values()))
+            if rid != "default"
+            and (now - r.created_at > 30)
+            and (len(r.players) == 0 or not any(p.connected for p in r.players.values()))
         ]
         for rid in empty_ids:
             self.delete_room(rid)
@@ -1361,9 +1541,13 @@ class RoomManager:
         for r in list(self.rooms.values()):
             if r.room_id.startswith("solo-"):
                 continue  # Never expose private solo rooms
+            active_ws_pids = set(r.ws_player_map.values())
+            for p in r.players.values():
+                if p.player_id in active_ws_pids:
+                    p.connected = True
             connected_names = [p.name for p in r.players.values() if p.connected]
             active_count = len(connected_names)
-            if active_count == 0 and r.room_id != "default":
+            if active_count == 0 and r.room_id != "default" and (now - r.created_at > 30):
                 continue
             active.append({
                 "room_id": r.room_id,
@@ -1371,6 +1555,7 @@ class RoomManager:
                 "players": connected_names[:6],
                 "status": r.status,
                 "game_mode": r.game_mode,
+                "difficulty": r.difficulty,
                 "host_name": r.players.get(r.host_player_id).name if r.host_player_id and r.host_player_id in r.players else "Anonyme",
                 "created_at": r.created_at,
                 "rounds_played": r.rounds_played

@@ -24,7 +24,10 @@ class GameSession:
         image: str,
         paragraphs: List[str],
         mode: str,
-        category: str
+        category: str,
+        difficulty: str = "moyen",
+        lang_count: int = 0,
+        pageviews_90d: int = 0
     ):
         self.session_id = session_id
         self.seed = seed
@@ -34,6 +37,9 @@ class GameSession:
         self.paragraphs = paragraphs
         self.mode = mode
         self.category = category
+        self.difficulty = difficulty
+        self.lang_count = lang_count
+        self.pageviews_90d = pageviews_90d
         self.created_at = time.time()
 
         # Tokenize article
@@ -235,6 +241,9 @@ class GameSession:
 
     def unmask_all(self) -> Dict[str, Any]:
         """Démasque entièrement tous les mots de l'article pour le joueur."""
+        if not (self.is_won or self.is_surrendered):
+            return {"error": "L'article ne peut être démasqué qu'une fois la manche terminée."}
+
         tokens_map: Dict[str, str] = {}
         for t in self.tokens:
             t["revealed"] = True
@@ -294,6 +303,9 @@ class GameSession:
             "seed": self.seed,
             "mode": self.mode,
             "category": self.category,
+            "difficulty": self.difficulty,
+            "lang_count": self.lang_count,
+            "pageviews_90d": self.pageviews_90d,
             "tokens": client_tokens,
             "attempts": self.attempts,
             "revealed_words_count": len(self.revealed_word_ids),
@@ -330,7 +342,8 @@ class GameManager:
         mode: str = "curated",
         category: Optional[str] = None,
         query: Optional[str] = None,
-        date_str: Optional[str] = None
+        date_str: Optional[str] = None,
+        difficulty: str = "moyen"
     ) -> GameSession:
         session_id = str(uuid.uuid4())
         seed_num = random.randint(1000, 9999)
@@ -349,13 +362,13 @@ class GameManager:
 
         # 3. By specific category/theme
         elif category and category in ("histoire", "geographie", "sciences", "monuments", "biographies", "arts_culture", "nature", "tech_jeux", "litterature"):
-            article_data = self.wiki_client.fetch_curated_article(category)
+            article_data = self.wiki_client.fetch_curated_article(category, difficulty=difficulty)
             if not article_data:
                 article_data = get_random_cached_article(category)
 
-        # 4. Random French Wikipedia article meeting notability criteria (minimum language translations)
+        # 4. Random French Wikipedia article meeting difficulty criteria
         if not article_data:
-            article_data = self.wiki_client.fetch_random_wikipedia_article()
+            article_data = self.wiki_client.fetch_random_wikipedia_article(difficulty=difficulty)
             if not article_data and self.offline_curated:
                 article_data = random.choice(list(self.offline_curated.values()))
             if not article_data:
@@ -372,7 +385,10 @@ class GameManager:
                 ],
                 "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg/500px-Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg",
                 "url": "https://fr.wikipedia.org/wiki/Tour_Eiffel",
-                "category": "monuments"
+                "category": "monuments",
+                "difficulty": "facile",
+                "lang_count": 130,
+                "pageviews_90d": 75000
             }
 
         # Cache in DB for future offline use
@@ -392,7 +408,10 @@ class GameManager:
             image=article_data.get("image", ""),
             paragraphs=article_data["paragraphs"],
             mode=mode,
-            category=category or article_data.get("category", "general")
+            category=category or article_data.get("category", "general"),
+            difficulty=article_data.get("difficulty", difficulty),
+            lang_count=article_data.get("lang_count", 0),
+            pageviews_90d=article_data.get("pageviews_90d", int(article_data.get("pageviews_60d", 0) * 1.5))
         )
 
         self._purge_old_sessions()

@@ -1,6 +1,7 @@
 import unicodedata
 import re
 import os
+import math
 import gzip
 import json
 from typing import Set, Dict, Optional, List
@@ -1254,11 +1255,213 @@ for _w, _assocs in WORD_ASSOCIATIONS.items():
         _a_stem = stem_french(_a_word)
         ASSOCIATION_STEMS[_w_stem][_a_stem] = max(ASSOCIATION_STEMS[_w_stem].get(_a_stem, 0), _score)
 
-# Precomputed sets of stems for THEMATIC_CLUSTERS
-CLUSTER_STEMS = [
-    {stem_french(w) for w in cluster} for cluster in THEMATIC_CLUSTERS.values()
+# Known false homographs and coincidental stems that must NEVER match
+FALSE_HOMOGRAPHS = {
+    ("banc", "banque"), ("banque", "banc"),
+    ("banc", "bancaire"), ("bancaire", "banc"),
+    ("banc", "banquier"), ("banquier", "banc"),
+    ("conte", "continuer"), ("continuer", "conte"),
+    ("paner", "panique"), ("panique", "paner"),
+    ("mer", "mere"), ("mere", "mer"),
+    ("pere", "perdre"), ("perdre", "pere"),
+    ("mort", "morceau"), ("morceau", "mort"),
+    ("port", "porte"), ("porte", "port"),
+    ("pont", "ponte"), ("ponte", "pont"),
+    ("car", "carte"), ("carte", "car"),
+    ("vol", "volee"), ("volee", "vol"),
+}
+
+# Rich conceptual domain taxonomy with core & extended semantic relations
+CONCEPT_DOMAINS = [
+    # Sports & Games
+    {
+        "core": {"football", "foot", "ballon", "match", "joueur", "stade", "equipe", "but", "gardien", "arbitre"},
+        "extended": {"championnat", "coupe", "ligue", "tournoi", "penalty", "prolongation", "mi-temps", "pelouse", "buteur", "entraineur", "club"},
+        "base_score": 82.0
+    },
+    {
+        "core": {"tennis", "raquette", "balle", "court", "filet", "service", "set", "tournoi"},
+        "extended": {"grand-chelem", "roland-garros", "wimbledon", "arbitre", "joueur", "match"},
+        "base_score": 82.0
+    },
+    {
+        "core": {"sport", "athlete", "competition", "championnat", "champion", "medaille", "olympique", "jeu", "stade", "entrainement"},
+        "extended": {"football", "rugby", "basket", "tennis", "natation", "cyclisme", "athletisme", "course", "equipe", "match"},
+        "base_score": 75.0
+    },
+    # Furniture & Home
+    {
+        "core": {"table", "chaise", "meuble", "fauteuil", "tabouret", "bureau", "buffet", "armoire", "commode", "tiroir"},
+        "extended": {"salon", "salle", "cuisine", "mobilier", "bois", "siege", "etagere"},
+        "base_score": 83.0
+    },
+    {
+        "core": {"lit", "matelas", "sommier", "oreiller", "couverture", "draps", "chambre", "coucher", "dormir", "sommeil"},
+        "extended": {"meuble", "nuit", "reve", "reveil", "couette"},
+        "base_score": 83.0
+    },
+    # Food, Bakery & Agriculture
+    {
+        "core": {"pain", "boulangerie", "boulanger", "baguette", "farine", "four", "ble", "pate", "croissant", "patisserie"},
+        "extended": {"levure", "mie", "croute", "fournil", "brioche", "biscuit", "gateau", "artisan", "nourriture"},
+        "base_score": 84.0
+    },
+    {
+        "core": {"viande", "boucherie", "boucher", "boeuf", "porc", "veau", "agneau", "volaille", "poulet", "charcuterie"},
+        "extended": {"abattoir", "nourriture", "steak", "cotelette", "jambon", "saucisse"},
+        "base_score": 82.0
+    },
+    {
+        "core": {"pomme", "poire", "fruit", "orange", "banane", "fraise", "raisin", "cerise", "peche", "abricot", "citron"},
+        "extended": {"verger", "arbre", "jus", "sucre", "vitamine", "cueillette", "panier", "legume"},
+        "base_score": 83.0
+    },
+    {
+        "core": {"fromage", "lait", "beurre", "creme", "vache", "chevre", "brebis", "laiterie", "fromagerie"},
+        "extended": {"ferme", "elevage", "traite", "pasteurise", "yaourt", "pate"},
+        "base_score": 83.0
+    },
+    {
+        "core": {"cafe", "the", "tasse", "boisson", "sucre", "lait", "grain", "expresso", "percolateur", "chocolat"},
+        "extended": {"matin", "petit-dejeuner", "bistro", "pause", "serveur", "bar"},
+        "base_score": 83.0
+    },
+    # Health & Medicine
+    {
+        "core": {"medecin", "docteur", "hopital", "clinique", "patient", "maladie", "soin", "soigner", "traitement", "medicament", "ordonnance", "infirmier", "infirmiere", "chirurgien"},
+        "extended": {"sante", "diagnostic", "guerison", "urgence", "chambre", "visite", "therapie", "consultation", "blessure", "fievre", "virus", "bacterie", "vaccin"},
+        "base_score": 84.0
+    },
+    # Transportation & Vehicles
+    {
+        "core": {"voiture", "automobile", "auto", "vehicule", "moteur", "roue", "pneu", "volant", "conducteur", "chauffeur", "route", "autoroute"},
+        "extended": {"frein", "vitesse", "carburant", "essence", "diesel", "garage", "mecanique", "carrosserie", "permis", "circulation", "traffic"},
+        "base_score": 83.0
+    },
+    {
+        "core": {"train", "gare", "rail", "chemin", "locomotive", "wagon", "voie", "conducteur", "voyageur", "quai", "ligne", "tgv"},
+        "extended": {"sncf", "reseau", "billet", "trajet", "vitesse", "electrique", "transport"},
+        "base_score": 84.0
+    },
+    {
+        "core": {"avion", "aeroport", "vol", "pilote", "aviation", "voler", "piste", "aile", "aerien", "passager", "compagnie"},
+        "extended": {"reacteur", "cockpit", "terminal", "voyage", "altitude", "atterrissage", "decollage", "cie"},
+        "base_score": 84.0
+    },
+    {
+        "core": {"bateau", "navire", "port", "marin", "mer", "ocean", "voilier", "capitaine", "equipage", "navigation", "naviguer"},
+        "extended": {"coque", "voile", "mouille", "ancre", "flotte", "maritime", "peche", "pecheur", "babord", "tribord"},
+        "base_score": 83.0
+    },
+    # Clothing & Body
+    {
+        "core": {"chaussure", "pied", "chaussette", "soulier", "bottes", "lacet", "semelle", "talon", "pantoufle"},
+        "extended": {"marche", "chausser", "cuir", "pointure", "vetement"},
+        "base_score": 83.0
+    },
+    {
+        "core": {"vetement", "habit", "chemise", "pantalon", "robe", "jupe", "manteau", "veste", "tissu", "costume"},
+        "extended": {"mode", "couture", "taille", "soie", "coton", "laine", "bouton", "manche"},
+        "base_score": 82.0
+    },
+    # Nature & Astronomy
+    {
+        "core": {"arbre", "foret", "bois", "tronc", "branche", "feuille", "racine", "chene", "sapin", "pin", "vegetal"},
+        "extended": {"nature", "ecorce", "forets", "clairiere", "faune", "flore", "sylvestre"},
+        "base_score": 85.0
+    },
+    {
+        "core": {"fleur", "plante", "petale", "jardin", "rose", "tulipe", "tige", "feuille", "parfum", "botanique"},
+        "extended": {"bouquet", "jardinier", "bourgeon", "nature", "herbe", "semence", "graine"},
+        "base_score": 84.0
+    },
+    {
+        "core": {"soleil", "lune", "etoile", "ciel", "terre", "planete", "lumiere", "espace", "univers", "cosmos", "galaxie", "orbite", "satellite"},
+        "extended": {"astronomie", "astronome", "telescope", "jour", "nuit", "rayon", "chaleur", "gravite", "etoiles", "planetes"},
+        "base_score": 82.0
+    },
+    {
+        "core": {"pluie", "nuage", "orage", "eau", "averse", "tempete", "vent", "eclair", "tonnerre", "meteo", "temps", "parapluie"},
+        "extended": {"goutte", "ciel", "precipitation", "inondation", "humide", "brume", "brouillard"},
+        "base_score": 84.0
+    },
+    {
+        "core": {"neige", "hiver", "glace", "froid", "flocon", "gel", "givre", "glacier", "avalanche", "ski"},
+        "extended": {"temperature", "saison", "blizzard", "montagne", "piste", "patinage"},
+        "base_score": 84.0
+    },
+    # Science & Matter
+    {
+        "core": {"atome", "molecule", "electron", "proton", "neutron", "noyau", "matiere", "particule", "charge", "physique", "chimie"},
+        "extended": {"liaison", "quantique", "element", "masse", "energie", "rayonnement", "orbital"},
+        "base_score": 85.0
+    },
+    {
+        "core": {"cellule", "organisme", "adn", "gene", "chromosome", "genome", "proteine", "membrane", "biologie"},
+        "extended": {"tissu", "organe", "noyau", "division", "mutations", "genetique", "vivant"},
+        "base_score": 85.0
+    },
+    # Education
+    {
+        "core": {"ecole", "professeur", "eleve", "classe", "cours", "enseignant", "enseignement", "scolaire", "etudiant", "college", "lycee", "universite"},
+        "extended": {"tableau", "cahier", "livre", "examen", "note", "diplome", "apprentissage", "etude", "scolarite", "recre", "directeur"},
+        "base_score": 84.0
+    },
+    # Animals
+    {
+        "core": {"chien", "chat", "chiot", "chaton", "canin", "felin", "aboiement", "miaulement", "animal", "compagnie", "maitre"},
+        "extended": {"veterinaire", "laisse", "croquette", "poil", "fourrure", "pattes", "queue"},
+        "base_score": 83.0
+    },
+    # Arts & Music
+    {
+        "core": {"peintre", "peinture", "tableau", "toile", "pinceau", "artiste", "musee", "galerie", "portrait", "paysage", "couleur", "exposition"},
+        "extended": {"art", "dessin", "sculpteur", "sculpture", "chef-d-oeuvre", "atelier", "beaux-arts"},
+        "base_score": 85.0
+    },
+    {
+        "core": {"musique", "musicien", "chanson", "chanteur", "chanteuse", "album", "concert", "instrument", "piano", "guitare", "violon", "orchestre", "symphonie", "compositeur", "corde", "touche", "clavier"},
+        "extended": {"partition", "son", "rythme", "melodie", "groupe", "opera", "harmonie", "note", "voix", "archet", "manche"},
+        "base_score": 85.0
+    },
+    # Literature
+    {
+        "core": {"livre", "roman", "auteur", "ecrivain", "litterature", "page", "chapitre", "texte", "poesie", "poeme", "editeur", "edition", "bibliotheque"},
+        "extended": {"histoire", "recit", "personnage", "tome", "volume", "lecture", "lecteur", "plume"},
+        "base_score": 85.0
+    },
+    # Politics & History
+    {
+        "core": {"president", "republique", "gouvernement", "ministre", "premier-ministre", "election", "elysee", "etat", "politique", "vote", "loi", "parlement", "assemblee", "senat"},
+        "extended": {"mandat", "constitution", "democratie", "campagne", "pouvoir", "citoyen", "depute", "senateur", "regime"},
+        "base_score": 84.0
+    },
+    {
+        "core": {"roi", "reine", "royaume", "monarchie", "couronne", "trone", "prince", "princesse", "dynastie", "regne", "souverain", "chateau", "palais"},
+        "extended": {"royal", "noble", "noblesse", "cour", "heritier", "succession", "empire", "empereur"},
+        "base_score": 86.0
+    },
+    {
+        "core": {"guerre", "paix", "bataille", "armee", "soldat", "militaire", "combat", "conflit", "victoire", "defaite", "traite", "arme", "troupes"},
+        "extended": {"invasion", "ennemi", "front", "attaque", "defense", "tranchee", "colonel", "general", "capitaine", "guerrier"},
+        "base_score": 84.0
+    },
+    {
+        "core": {"revolution", "bastille", "monarchie", "republique", "guillotine", "peuple", "insurrection", "revolte", "1789"},
+        "extended": {"liberte", "egalite", "fraternite", "sans-culottes", "convention", "terreur", "paris", "citoyen"},
+        "base_score": 84.0
+    }
 ]
 
+# Fast reverse index for concept domains
+CONCEPT_LOOKUP: Dict[str, List[Tuple[dict, str]]] = {}
+for cd in CONCEPT_DOMAINS:
+    for w in cd["core"]:
+        wn = normalize_text(w)
+        CONCEPT_LOOKUP.setdefault(wn, []).append((cd, "core"))
+    for w in cd["extended"]:
+        wn = normalize_text(w)
+        CONCEPT_LOOKUP.setdefault(wn, []).append((cd, "extended"))
 
 
 def calculate_numeric_proximity(g_val: int, t_val: int) -> float:
@@ -1291,13 +1494,12 @@ def calculate_numeric_proximity(g_val: int, t_val: int) -> float:
 
 def calculate_proximity(guess: str, target: str, context_words: Optional[Set[str]] = None) -> float:
     """
-    Calculates a semantic and morphological proximity score between 0.0 and 100.0.
+    Calculates a continuous, organic semantic and morphological proximity score between 0.0 and 100.0.
     100.0 = exact match
-    95.0  = curated high-confidence direct synonym / lexical equivalent
-    92.0  = standard thesaurus or API synonym
-    94.0  = shared morphological root / stem
-    88.0  = shared Greek/Latin or historical etymological root
-    78-88 = curated domain associations & tight semantic clusters
+    94-98 = curated high-confidence direct synonym / lexical equivalent
+    90-94 = standard thesaurus synonym or direct morphological family
+    82-92 = high-affinity domain association (e.g. football/ballon, table/chaise, medecin/hopital)
+    60-82 = shared 2nd-degree semantic overlap (Adamic-Adar specificity weighted)
     < 48  = unrelated (returns 0.0)
     """
     g_clean = clean_guess(guess)
@@ -1311,11 +1513,8 @@ def calculate_proximity(guess: str, target: str, context_words: Optional[Set[str
         return 100.0
 
     # Number / date proximity handling:
-    # If both guess and target are numeric (e.g. years like 1974 and 1920):
     if g_norm.isdigit() and t_norm.isdigit():
         return calculate_numeric_proximity(int(g_norm), int(t_norm))
-
-    # If one is numeric and the other is not, they cannot be close
     if g_norm.isdigit() or t_norm.isdigit():
         return 0.0
 
@@ -1323,36 +1522,79 @@ def calculate_proximity(guess: str, target: str, context_words: Optional[Set[str
     if g_norm in STOPWORDS_EXACT or t_norm in STOPWORDS_EXACT:
         return 0.0
 
+    # False homographs safety protection (e.g. banc vs banque, mer vs mere)
+    if (g_norm, t_norm) in FALSE_HOMOGRAPHS or (t_norm, g_norm) in FALSE_HOMOGRAPHS:
+        return 0.0
+
     t_forms = {t_norm} | get_singular_forms(t_norm)
     g_forms = {g_norm} | get_singular_forms(g_norm)
 
-    # 1. Curated Hardcoded Synonyms (highest fidelity, score 95.0)
+    # 1. Curated Hardcoded Synonyms (highest fidelity, continuous scoring)
     g_hard = HARDCODED_SYNONYMS.get(g_norm, set())
     t_hard = HARDCODED_SYNONYMS.get(t_norm, set())
-    if any(tf in g_hard for tf in t_forms) or any(gf in t_hard for gf in g_forms):
-        return 95.0
+    is_hard_mutual = any(tf in g_hard for tf in t_forms) and any(gf in t_hard for gf in g_forms)
+    is_hard_one_way = any(tf in g_hard for tf in t_forms) or any(gf in t_hard for gf in g_forms)
 
-    # 2. General French Thesaurus & API Synonyms (score 92.0)
+    if is_hard_mutual:
+        len_ratio = min(len(g_norm), len(t_norm)) / max(len(g_norm), len(t_norm))
+        return round(94.0 + 3.5 * len_ratio, 1)
+    if is_hard_one_way:
+        len_ratio = min(len(g_norm), len(t_norm)) / max(len(g_norm), len(t_norm))
+        return round(90.0 + 3.5 * len_ratio, 1)
+
+    # 2. General French Thesaurus Synonyms
     g_syns = FRENCH_SYNONYMS.get(g_norm, set())
     t_syns = FRENCH_SYNONYMS.get(t_norm, set())
-    if any(tf in g_syns for tf in t_forms) or any(gf in t_syns for gf in g_forms):
-        return 92.0
+    is_syn_mutual = any(tf in g_syns for tf in t_forms) and any(gf in t_syns for gf in g_forms)
+    is_syn_one_way = any(tf in g_syns for tf in t_forms) or any(gf in t_syns for gf in g_forms)
 
-    # 3. Morphological family / Stem analysis
+    if is_syn_mutual:
+        len_ratio = min(len(g_norm), len(t_norm)) / max(len(g_norm), len(t_norm))
+        return round(91.0 + 3.0 * len_ratio, 1)
+    if is_syn_one_way:
+        len_ratio = min(len(g_norm), len(t_norm)) / max(len(g_norm), len(t_norm))
+        return round(86.0 + 3.5 * len_ratio, 1)
+
+    # 3. High-Affinity Concept Domain Associations (sports, objects, trades, health, science, etc.)
+    g_concepts = CONCEPT_LOOKUP.get(g_norm, [])
+    t_concepts = CONCEPT_LOOKUP.get(t_norm, [])
+    best_concept_score = 0.0
+
+    for cd_g, role_g in g_concepts:
+        for cd_t, role_t in t_concepts:
+            if cd_g is cd_t:
+                base = cd_g["base_score"]
+                if role_g == "core" and role_t == "core":
+                    len_ratio = min(len(g_norm), len(t_norm)) / max(len(g_norm), len(t_norm))
+                    score = base + 4.0 + 3.0 * len_ratio
+                elif role_g == "core" or role_t == "core":
+                    score = base - 2.0
+                else:
+                    score = base - 8.0
+                if score > best_concept_score:
+                    best_concept_score = score
+
+    if best_concept_score >= 60.0:
+        return round(best_concept_score, 1)
+
+    # 4. Curated Word Associations (direct)
+    if g_norm in WORD_ASSOCIATIONS and t_norm in WORD_ASSOCIATIONS[g_norm]:
+        return float(WORD_ASSOCIATIONS[g_norm][t_norm])
+    if t_norm in WORD_ASSOCIATIONS and g_norm in WORD_ASSOCIATIONS[t_norm]:
+        return float(WORD_ASSOCIATIONS[t_norm][g_norm])
+
+    # 5. Morphological family / Stem analysis with homograph safety
     g_stem = stem_french(g_norm)
     t_stem = stem_french(t_norm)
 
-    if g_stem == t_stem and len(g_stem) >= 3:
-        # Avoid false homographs where one word is just word + "e" (e.g. pont vs ponte, port vs porte)
-        if (g_norm == t_norm + "e" or t_norm == g_norm + "e") and min(len(g_norm), len(t_norm)) <= 5:
-            if not (any(tf in g_syns for tf in t_forms) or any(gf in t_syns for gf in g_forms)):
-                pass
-            else:
-                return 94.0
-        else:
-            return 94.0
+    if g_stem == t_stem and len(g_stem) >= 4:
+        len_ratio = min(len(g_norm), len(t_norm)) / max(len(g_norm), len(t_norm))
+        return round(91.0 + 4.0 * len_ratio, 1)
+    elif g_stem == t_stem and len(g_stem) == 3:
+        if g_norm[:3] == t_norm[:3] and not ((g_norm, t_norm) in FALSE_HOMOGRAPHS or (t_norm, g_norm) in FALSE_HOMOGRAPHS):
+            return 91.0
 
-    # 4. Etymological Root Families (curated Greek/Latin root clusters)
+    # Etymological Root Families (curated Greek/Latin root clusters)
     g_etym = ETYMOLOGICAL_INDEX.get(g_norm)
     t_etym = ETYMOLOGICAL_INDEX.get(t_norm)
     if g_etym and t_etym and g_etym == t_etym:
@@ -1363,37 +1605,30 @@ def calculate_proximity(guess: str, target: str, context_words: Optional[Set[str
     t_nopre = strip_prefix(t_norm)
     if g_nopre != g_norm or t_nopre != t_norm:
         if stem_french(g_nopre) == stem_french(t_nopre) and len(g_nopre) >= 4 and len(t_nopre) >= 4:
-            return 90.0
+            return 89.5
 
         g_etym_nopre = ETYMOLOGICAL_INDEX.get(g_nopre)
         t_etym_nopre = ETYMOLOGICAL_INDEX.get(t_nopre)
         if g_etym_nopre and t_etym_nopre and g_etym_nopre == t_etym_nopre:
             return 86.0
 
-    # 5. Shared 2nd-degree synonyms (filtered to eliminate generic bridge words like 'net', 'pur', 'fort')
+    # 6. Shared 2nd-degree synonyms with Adamic-Adar specificity weighting
     if g_syns and t_syns:
         meaningful_shared = (g_syns & t_syns) - GENERIC_BRIDGE_WORDS
-        if len(meaningful_shared) >= 2:
-            jaccard = len(meaningful_shared) / max(len(g_syns | t_syns), 1)
-            if len(meaningful_shared) >= 3 or jaccard >= 0.04:
-                return 80.0
+        if len(meaningful_shared) >= 1:
+            total_weight = 0.0
+            for shared_w in meaningful_shared:
+                deg = len(FRENCH_SYNONYMS.get(shared_w, set()))
+                weight = 1.0 / math.log2(max(deg, 2))
+                total_weight += weight
 
-    # 6. Curated Word Associations (direct or stem-based bidirectional)
-    if g_norm in WORD_ASSOCIATIONS and t_norm in WORD_ASSOCIATIONS[g_norm]:
-        return float(WORD_ASSOCIATIONS[g_norm][t_norm])
-    if t_norm in WORD_ASSOCIATIONS and g_norm in WORD_ASSOCIATIONS[t_norm]:
-        return float(WORD_ASSOCIATIONS[t_norm][g_norm])
-    if len(g_stem) >= 3 and len(t_stem) >= 3:
-        if g_stem in ASSOCIATION_STEMS and t_stem in ASSOCIATION_STEMS[g_stem]:
-            return float(ASSOCIATION_STEMS[g_stem][t_stem])
-        if t_stem in ASSOCIATION_STEMS and g_stem in ASSOCIATION_STEMS[t_stem]:
-            return float(ASSOCIATION_STEMS[t_stem][g_stem])
+            if total_weight >= 0.35:
+                score = 58.0 + 24.0 * min(total_weight / 2.5, 1.0)
+                return round(score, 1)
 
-    # 7. Direct Thematic Cluster membership or cluster stem overlap
-    for cluster, c_stems in zip(THEMATIC_CLUSTERS.values(), CLUSTER_STEMS):
-        g_in = g_norm in cluster or (len(g_stem) >= 3 and g_stem in c_stems)
-        t_in = t_norm in cluster or (len(t_stem) >= 3 and t_stem in c_stems)
-        if g_in and t_in:
-            return 78.0
+    # 7. Direct Thematic Cluster membership (exact word verification, no loose stem collision)
+    for cluster in THEMATIC_CLUSTERS.values():
+        if g_norm in cluster and t_norm in cluster:
+            return 64.0
 
     return 0.0

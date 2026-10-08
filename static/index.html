@@ -18,7 +18,7 @@
   <!-- CANVAS FOR CONFETTI -->
   <canvas id="confetti-canvas"></canvas>
 
-  <section>
+  <section id="app" class="pedantix-app-root">
     <article class="game-container">
 
       <!-- ASIDE (LEFT COLUMN: SUMMARY & MY STATS) -->
@@ -77,6 +77,10 @@
 
           <div class="sidebar-action-btns">
             <button class="side-btn" id="btn-side-new"><span>🎲</span> Nouvelle page</button>
+            <div class="sidebar-diff-indicator" id="sidebar-diff-indicator">
+              <span class="sidebar-diff-label">Difficulté :</span>
+              <span class="diff-badge-pill diff-badge-moyen" id="sidebar-diff-pill" title="Difficulté de la page Wikipédia">🟡 Moyen</span>
+            </div>
           </div>
 
           <div class="yesterday" id="yesterday-box">
@@ -103,6 +107,18 @@
                 <button type="button" id="btn-type-solo" class="btn-type-toggle" title="Jouer seul à son propre rythme">🎯 Solo</button>
                 <button type="button" id="btn-type-multi" class="btn-type-toggle active" title="Jouer en ligne avec d'autres joueurs">🌐 Multijoueur</button>
               </div>
+
+              <!-- Solo difficulty selector (visible in Solo mode) -->
+              <div class="solo-difficulty-selector" id="solo-difficulty-selector" style="display: none;">
+                <span class="solo-diff-label">Difficulté :</span>
+                <button type="button" class="btn-diff-choice" data-diff="facile" title="Facile : sujets très célèbres (≥ 45 langues, ≥ 20k vues)">🟢 Facile</button>
+                <button type="button" class="btn-diff-choice active" data-diff="moyen" title="Moyen : culture générale classique (≥ 28 langues, ≥ 4k vues)">🟡 Moyen</button>
+                <button type="button" class="btn-diff-choice" data-diff="difficile" title="Difficile : sujets plus pointus (≥ 18 langues, ≥ 1.5k vues)">🔴 Difficile</button>
+              </div>
+
+              <!-- Difficulty badge of current article -->
+              <span class="difficulty-badge" id="difficulty-badge" title="Difficulté de la page Wikipédia en cours">🟡 Moyen</span>
+
               <span class="mode-badge" id="mode-badge" style="display: none;">Concours Réseau</span>
 
               <span class="room-badge" id="room-badge" title="Cliquez pour voir les salons disponibles">Salon : <b id="room-code-display">default</b></span>
@@ -166,16 +182,55 @@
               <div class="success-trophy-badge">🏆</div>
               <h2>Félicitations ! Vous avez découvert le titre !</h2>
               <div class="solution-display" id="solution-display">...</div>
+              <div class="article-diff-row" id="success-diff-row">
+                <span class="diff-badge-pill diff-badge-moyen" id="success-diff-badge">🟡 Moyen</span>
+                <span class="diff-stat-item" id="success-lang-stat">🌐 <b id="success-lang-val">--</b> langues</span>
+                <span class="diff-stat-item" id="success-views-stat">👁️ <b id="success-views-val">--</b> vues (90j)</span>
+              </div>
               <p class="success-summary-text">Vous avez découvert le titre en <b><span id="tries">0</span></b> coups !</p>
               <div class="meter-wrapper">
                 <p id="meter">🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩</p>
               </div>
               <div class="success-links">
+                <button type="button" id="btn-success-new" class="success-btn next-action-btn"><span>🎲</span> Nouvelle page</button>
                 <button id="share" class="success-btn share-action-btn"><span>📋</span> Copier mon résumé (partager)</button>
                 <a id="solution" target="_blank" class="success-btn wiki-action-btn"><span>↗</span> Lire sur Wikipédia</a>
                 <button id="see-full-page" class="success-btn"><span>👁️</span> Voir tout démasqué</button>
               </div>
             </div>
+          </div>
+
+          <!-- SURRENDER PANEL (Appears when player surrenders) -->
+          <div id="surrender-banner" class="success surrender-banner" style="display: none;">
+            <div class="success-content">
+              <div class="success-trophy-badge">🏳️</div>
+              <h2>Partie abandonnée</h2>
+              <div class="solution-display" id="surrender-solution-display">...</div>
+              <div class="article-diff-row" id="surrender-diff-row">
+                <span class="diff-badge-pill diff-badge-moyen" id="surrender-diff-badge">🟡 Moyen</span>
+                <span class="diff-stat-item" id="surrender-lang-stat">🌐 <b id="surrender-lang-val">--</b> langues</span>
+                <span class="diff-stat-item" id="surrender-views-stat">👁️ <b id="surrender-views-val">--</b> vues (90j)</span>
+              </div>
+              <p class="success-summary-text">L'article a été entièrement démasqué pour vous permettre de le lire.</p>
+              <div class="success-links">
+                <button type="button" id="btn-surrender-new" class="success-btn next-action-btn"><span>🎲</span> Nouvelle page</button>
+                <a id="surrender-solution-link" target="_blank" class="success-btn wiki-action-btn"><span>↗</span> Lire sur Wikipédia</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- SPECTATOR MODE BANNER -->
+          <div id="spectator-mode-banner" class="spectator-mode-banner" style="display: none;">
+            <div class="spectator-banner-left">
+              <span class="spectator-banner-icon">👁️</span>
+              <div class="spectator-banner-texts">
+                <span class="spectator-banner-title">Mode Spectateur actif (en pause)</span>
+                <span class="spectator-banner-desc">Vous observez la partie sans proposer de mots et ne bloquez pas le démarrage.</span>
+              </div>
+            </div>
+            <button type="button" id="btn-banner-resume" class="btn-banner-resume">
+              <span>🎮</span> Reprendre la partie
+            </button>
           </div>
 
           <!-- GUESS FORM (FLOATING COMMAND BAR) -->
@@ -222,6 +277,18 @@
             </div>
             <div id="article">
               <!-- Paragraphs with .w word boxes will be injected here -->
+            </div>
+
+            <!-- FINISHED READING BAR AT BOTTOM OF ARTICLE -->
+            <div id="article-finished-bar" class="article-finished-bar" style="display: none;">
+              <div class="article-finished-text">
+                <span style="font-size: 1.4rem;">📖</span>
+                <span>Vous avez terminé votre lecture ?</span>
+              </div>
+              <div class="article-finished-actions">
+                <button type="button" id="btn-article-new" class="success-btn next-action-btn"><span>🎲</span> Nouvelle page</button>
+                <a id="article-finished-wiki-link" target="_blank" class="success-btn wiki-action-btn"><span>↗</span> Lire sur Wikipédia</a>
+              </div>
             </div>
           </div>
 
@@ -279,6 +346,11 @@
 
               <button type="button" id="btn-open-lobby" class="btn-open-lobby" style="display: none;" title="Ouvrir le salon d'attente">
                 <span>🎮</span> Salon d'attente
+              </button>
+
+              <button type="button" id="btn-side-spectator" class="btn-side-spectator" title="Passer en spectateur pour faire une pause">
+                <span id="side-spec-icon">👁️</span>
+                <span id="side-spec-text">Pause Spectateur</span>
               </button>
 
               <button type="button" id="btn-side-surrender" class="btn-side-surrender" style="display: none;" title="Proposer d'abandonner la partie en cours">
@@ -785,6 +857,37 @@
         </div>
       </div>
 
+      <!-- Difficulty Selection Box -->
+      <div class="lobby-difficulty-box">
+        <div class="difficulty-header">
+          <span class="difficulty-label">🎯 Difficulté de la page :</span>
+          <span class="mode-host-hint" id="lobby-difficulty-hint">(Configurable par l'Host 👑)</span>
+        </div>
+        <div class="lobby-difficulty-options" id="lobby-difficulty-options">
+          <button type="button" class="btn-diff-toggle" id="btn-lobby-diff-facile" data-diff="facile">
+            <span class="diff-opt-icon">🟢</span>
+            <div class="diff-opt-text">
+              <b>Facile</b>
+              <span>Très célèbre (≥ 45 langues, ≥ 20k vues)</span>
+            </div>
+          </button>
+          <button type="button" class="btn-diff-toggle active" id="btn-lobby-diff-moyen" data-diff="moyen">
+            <span class="diff-opt-icon">🟡</span>
+            <div class="diff-opt-text">
+              <b>Moyen</b>
+              <span>Culture générale (≥ 28 langues, ≥ 4k vues)</span>
+            </div>
+          </button>
+          <button type="button" class="btn-diff-toggle" id="btn-lobby-diff-difficile" data-diff="difficile">
+            <span class="diff-opt-icon">🔴</span>
+            <div class="diff-opt-text">
+              <b>Difficile</b>
+              <span>Pointu / Spécialisé (≥ 18 langues, ≥ 1.5k vues)</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
       <!-- Teams Roster Grid (Shown in team mode) -->
       <div class="lobby-teams-box" id="lobby-teams-box" style="display: none;">
         <div class="lobby-teams-header">
@@ -839,6 +942,11 @@
         <button type="button" id="btn-lobby-toggle-ready" class="btn-lobby-ready">
           <span id="lobby-ready-icon">⏳</span>
           <span id="lobby-ready-label">Je suis prêt !</span>
+        </button>
+
+        <button type="button" id="btn-lobby-spectator" class="btn-lobby-spectator" title="Passer en spectateur pour faire une pause">
+          <span id="lobby-spec-icon">👁️</span>
+          <span id="lobby-spec-label">Mode Spectateur (Pause)</span>
         </button>
 
         <button type="button" id="btn-lobby-start-game" class="btn-lobby-start" style="display: none;">
@@ -896,6 +1004,10 @@
             <button type="button" id="btn-round-ready" class="btn-lobby-ready">
               <span id="round-ready-icon">⏳</span>
               <span id="round-ready-label">Je suis prêt pour la suite !</span>
+            </button>
+            <button type="button" id="btn-round-spectator" class="btn-lobby-spectator" title="Passer en spectateur pour faire une pause">
+              <span id="round-spec-icon">👁️</span>
+              <span id="round-spec-label">Mode Spectateur (Pause)</span>
             </button>
             <button type="button" id="btn-round-next-game" class="btn-lobby-start" style="display: none;">
               <span>🎲</span> Lancer la manche suivante
