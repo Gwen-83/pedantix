@@ -1,4 +1,5 @@
 from __future__ import annotations
+import functools
 import unicodedata
 import re
 import os
@@ -14,6 +15,7 @@ try:
 except Exception:
     ENCHANT_DICT = None
 
+@functools.lru_cache(maxsize=32768)
 def normalize_text(text: str) -> str:
     """Lowercases and removes diacritics (accents) and extra spaces."""
     if not text:
@@ -403,6 +405,7 @@ PREFIX_LIST = (
     "co", "re", "de", "in", "im", "dis"
 )
 
+@functools.lru_cache(maxsize=16384)
 def strip_prefix(w: str) -> str:
     """Strips common Greek/Latin and grammatical prefixes for root comparison."""
     for p in PREFIX_LIST:
@@ -411,13 +414,19 @@ def strip_prefix(w: str) -> str:
     return w
 
 def clean_guess(word: str) -> str:
-    """Cleans a guess word, removing quotes and trailing elision apostrophes."""
+    """Cleans a guess word, removing quotes, punctuation and trailing/leading French elisions."""
     if not word:
         return ""
-    w = word.strip().strip('"«»“”')
+    w = word.strip().strip('"«»“”.,;:!?')
     if w.endswith(("'", "’")):
         w = w[:-1]
-    return w.strip()
+    # Traitement des élisions françaises initiales (ex: l'histoire -> histoire, d'or -> or)
+    elision_prefixes = ("l'", "d'", "c'", "s'", "j'", "m'", "t'", "n'", "qu'", "l’", "d’", "c’", "s’", "j’", "m’", "t’", "n’", "qu’")
+    for pref in elision_prefixes:
+        if w.lower().startswith(pref) and len(w) > len(pref):
+            w = w[len(pref):]
+            break
+    return w.strip().strip('"«»“”.,;:!?')
 
 STOPWORDS_EXACT: Set[str] = {
     # Articles
@@ -496,11 +505,12 @@ REGULAR_VERB_SUFFIXES = (
     "e", "i"
 )
 
-def get_singular_forms(w: str) -> Set[str]:
+@functools.lru_cache(maxsize=16384)
+def get_singular_forms(w: str) -> frozenset:
     """Generates normalized singular candidates from plural forms."""
     forms = {w}
     if w in NON_FLEXIBLE_WORDS or w in STOPWORDS_EXACT:
-        return forms
+        return frozenset(forms)
     if w in IRREGULAR_PLURALS:
         forms.add(IRREGULAR_PLURALS[w])
     if w.endswith("eaux") and len(w) > 4:
@@ -516,20 +526,22 @@ def get_singular_forms(w: str) -> Set[str]:
         forms.add(w[:-1])
     elif w.endswith("x") and len(w) > 3:
         forms.add(w[:-1])
-    return forms
+    return frozenset(forms)
 
-def get_verb_stems(w: str) -> Set[str]:
+@functools.lru_cache(maxsize=16384)
+def get_verb_stems(w: str) -> frozenset:
     """Extracts candidate regular verb stems for inflection matching."""
     stems = set()
     if w in NON_FLEXIBLE_WORDS or w in STOPWORDS_EXACT or len(w) <= 2:
-        return stems
+        return frozenset(stems)
     for suffix in REGULAR_VERB_SUFFIXES:
         if w.endswith(suffix):
             stem = w[:-len(suffix)]
             if len(stem) >= 2:
                 stems.add(stem)
-    return stems
+    return frozenset(stems)
 
+@functools.lru_cache(maxsize=32768)
 def check_match(guess: str, target: str) -> bool:
     """Checks if a player guess matches the target word under Pédantix rules.
     Matches exact words, verb conjugations, and singular/plural forms."""
@@ -568,6 +580,7 @@ def check_match(guess: str, target: str) -> bool:
 
     return False
 
+@functools.lru_cache(maxsize=16384)
 def stem_french(word: str) -> str:
     """Stems a normalized French word using rich morphological rules."""
     w = normalize_text(word)
@@ -1186,17 +1199,8 @@ for _fid, _words in ETYMOLOGICAL_FAMILIES.items():
             ETYMOLOGICAL_INDEX[_wn] = _fid
 
 
-def is_valid_french_word(word: str, article_words: Optional[Set[str]] = None) -> bool:
-    """Verifies whether a word is valid French, exists in dictionaries, is numeric, or is in the article."""
-    if not word:
-        return False
-    w_clean = clean_guess(word)
-    if not w_clean:
-        return False
-    w_norm = normalize_text(w_clean)
-    if not w_norm:
-        return False
-
+@functools.lru_cache(maxsize=32768)
+def _is_valid_word_cached(w_norm: str, w_clean: str) -> bool:
     # 1. Digits and numbers (e.g. 1945, 1889, 42)
     if w_norm.isdigit():
         return True
@@ -1208,11 +1212,6 @@ def is_valid_french_word(word: str, article_words: Optional[Set[str]] = None) ->
     # 3. Essential stopwords
     if w_norm in STOPWORDS_EXACT:
         return True
-
-    # 4. Context words in target article (permits proper names, places, foreign terms present in text)
-    if article_words:
-        if w_norm in article_words or w_clean.lower() in article_words:
-            return True
 
     # 5. Full French words dictionary + 80,000+ proper nouns
     if w_norm in FRENCH_DICTIONARY or w_clean.lower() in FRENCH_DICTIONARY:
@@ -1244,6 +1243,25 @@ def is_valid_french_word(word: str, article_words: Optional[Set[str]] = None) ->
         return True
 
     return False
+
+
+def is_valid_french_word(word: str, article_words: Optional[Set[str]] = None) -> bool:
+    """Verifies whether a word is valid French, exists in dictionaries, is numeric, or is in the article."""
+    if not word:
+        return False
+    w_clean = clean_guess(word)
+    if not w_clean:
+        return False
+    w_norm = normalize_text(w_clean)
+    if not w_norm:
+        return False
+
+    # 4. Context words in target article (permits proper names, places, foreign terms present in text)
+    if article_words:
+        if w_norm in article_words or w_clean.lower() in article_words:
+            return True
+
+    return _is_valid_word_cached(w_norm, w_clean)
 
 
 # Precomputed stems for WORD_ASSOCIATIONS
@@ -1493,20 +1511,8 @@ def calculate_numeric_proximity(g_val: int, t_val: int) -> float:
     return 0.0
 
 
-def calculate_proximity(guess: str, target: str, context_words: Optional[Set[str]] = None) -> float:
-    """
-    Calculates a continuous, organic semantic and morphological proximity score between 0.0 and 100.0.
-    100.0 = exact match
-    94-98 = curated high-confidence direct synonym / lexical equivalent
-    90-94 = standard thesaurus synonym or direct morphological family
-    82-92 = high-affinity domain association (e.g. football/ballon, table/chaise, medecin/hopital)
-    60-82 = shared 2nd-degree semantic overlap (Adamic-Adar specificity weighted)
-    < 48  = unrelated (returns 0.0)
-    """
-    g_clean = clean_guess(guess)
-    g_norm = normalize_text(g_clean)
-    t_norm = normalize_text(target)
-
+@functools.lru_cache(maxsize=65536)
+def _calculate_proximity_cached(g_norm: str, t_norm: str) -> float:
     if not g_norm or not t_norm:
         return 0.0
 
@@ -1633,3 +1639,25 @@ def calculate_proximity(guess: str, target: str, context_words: Optional[Set[str
             return 64.0
 
     return 0.0
+
+
+def calculate_proximity(guess: str, target: str, context_words: Optional[Set[str]] = None) -> float:
+    """
+    Calculates a continuous, organic semantic and morphological proximity score between 0.0 and 100.0.
+    100.0 = exact match
+    94-98 = curated high-confidence direct synonym / lexical equivalent
+    90-94 = standard thesaurus synonym or direct morphological family
+    82-92 = high-affinity domain association (e.g. football/ballon, table/chaise, medecin/hopital)
+    60-82 = shared 2nd-degree semantic overlap (Adamic-Adar specificity weighted)
+    < 48  = unrelated (returns 0.0)
+    """
+    if not guess or not target:
+        return 0.0
+    g_clean = clean_guess(guess)
+    g_norm = normalize_text(g_clean)
+    t_norm = normalize_text(target)
+
+    if not g_norm or not t_norm:
+        return 0.0
+
+    return _calculate_proximity_cached(g_norm, t_norm)

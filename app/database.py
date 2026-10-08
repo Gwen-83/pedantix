@@ -107,6 +107,8 @@ class DatabaseContext:
         self.conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute("PRAGMA cache_size=-16000")
         self.cursor = self.conn.cursor()
         return self
 

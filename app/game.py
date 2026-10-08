@@ -5,8 +5,11 @@ import os
 import json
 from typing import Dict, Any, List, Optional, Set
 
-from app.nlp import normalize_text, check_match, calculate_proximity, is_valid_french_word, normalize_letter, is_letter_revealed
-from app.synonym_api import SYNONYM_API
+from app.nlp import (
+    normalize_text, check_match, calculate_proximity, is_valid_french_word,
+    normalize_letter, is_letter_revealed, clean_guess
+)
+from app.synonyms_dict import EXPANDED_STOPWORDS
 from app.tokenizer import ArticleTokenizer
 from app.wiki import WikipediaClient, ALL_CURATED_TITLES
 from app.database import (
@@ -61,19 +64,20 @@ class GameSession:
         self.token_heat: Dict[int, int] = {}  # token_id -> highest proximity score (48-100)
         self.token_close_words: Dict[int, Dict[str, Any]] = {}  # token_id -> {"score": score_int, "word": clean_word}
 
-        # Precompute context vocabulary for semantic warmth
+        # Inverted index & unrevealed tracking for high-performance matching and proximity
+        self.word_to_token_ids: Dict[str, List[int]] = {}
         self.context_words: Set[str] = set()
         for t in self.tokens:
-            if t["is_word"] and t["normalized"]:
-                self.context_words.add(t["normalized"])
+            if t["is_word"]:
+                norm = t.get("normalized", "")
+                if norm:
+                    self.word_to_token_ids.setdefault(norm, []).append(t["id"])
+                    self.context_words.add(norm)
+                cleaned = clean_guess(t.get("text", "")).lower()
+                if cleaned:
+                    self.context_words.add(cleaned)
 
-        # Background prefetching of significant title words
-        title_words = [
-            t["normalized"] for t in self.tokens
-            if t["is_title"] and t["is_word"] and t["normalized"] and len(t["normalized"]) > 2
-        ]
-        if title_words:
-            SYNONYM_API.prefetch_words(title_words)
+        self.unrevealed_unique_words: Set[str] = set(self.word_to_token_ids.keys())
 
         self.is_won: bool = False
         self.is_surrendered: bool = False
@@ -92,7 +96,7 @@ class GameSession:
 
     def submit_guess(self, word: str) -> Dict[str, Any]:
         """Processes a player guess word."""
-        clean_word = word.strip()
+        clean_word = clean_guess(word)
         if not clean_word:
             return {"error": "Mot vide."}
 
@@ -106,23 +110,48 @@ class GameSession:
         norm_guess = normalize_text(clean_word)
         is_repeat = norm_guess in self.guessed_words
 
-        newly_revealed: Dict[int, str] = {}
-        all_matched_ids: List[int] = []
+        # Fast repeat exit
+        if is_repeat:
+            return {
+                "status": "already_guessed",
+                "is_repeat": True,
+                "message": "Déjà écrit",
+                "word": clean_word,
+                "attempt_number": self.attempts,
+                "matches_count": 0,
+                "score": 0,
+                "newly_revealed": {},
+                "close_tokens": [],
+                "is_won": self.is_won,
+                "is_surrendered": self.is_surrendered,
+                "revealed_words_count": len(self.revealed_word_ids),
+                "total_words": self.total_words,
+                "history": self.guesses_history
+            }
 
-        # Find exact or morphological matches
-        for t in self.tokens:
-            if t["is_word"]:
-                if check_match(clean_word, t["text"]):
-                    all_matched_ids.append(t["id"])
+        all_matched_ids: List[int] = []
+        newly_revealed: Dict[int, str] = {}
+        matched_norms: List[str] = []
+
+        # Find exact or morphological matches across unique words
+        for target_norm, tids in self.word_to_token_ids.items():
+            if check_match(clean_word, target_norm):
+                matched_norms.append(target_norm)
+                all_matched_ids.extend(tids)
+                for tid in tids:
+                    t = self.tokens_by_id[tid]
                     if not t["revealed"]:
                         t["revealed"] = True
-                        self.revealed_word_ids.add(t["id"])
-                        self.token_heat.pop(t["id"], None)
-                        self.token_close_words.pop(t["id"], None)
-                        newly_revealed[t["id"]] = t["text"]
+                        self.revealed_word_ids.add(tid)
+                        self.token_heat.pop(tid, None)
+                        self.token_close_words.pop(tid, None)
+                        newly_revealed[tid] = t["text"]
+
+        for mn in matched_norms:
+            self.unrevealed_unique_words.discard(mn)
 
         # If already written or all occurrences were already found
-        if is_repeat or (len(all_matched_ids) > 0 and len(newly_revealed) == 0):
+        if len(all_matched_ids) > 0 and len(newly_revealed) == 0:
             self.guessed_words.add(norm_guess)
             return {
                 "status": "already_guessed",
@@ -143,30 +172,37 @@ class GameSession:
 
         self.attempts += 1
         self.guessed_words.add(norm_guess)
-        if len(norm_guess) > 2:
-            SYNONYM_API.prefetch_words([norm_guess])
 
         close_tokens: List[Dict[str, Any]] = []
         max_score = 0
-        for t in self.tokens:
-            if t["is_word"] and not t["revealed"]:
-                prox = calculate_proximity(clean_word, t["text"], self.context_words)
-                if prox >= 48.0:
-                    score_int = round(prox)
-                    if score_int > max_score:
-                        max_score = score_int
-                    current_heat = self.token_heat.get(t["id"], 0)
-                    if score_int > current_heat:
-                        self.token_heat[t["id"]] = score_int
-                        self.token_close_words[t["id"]] = {
-                            "score": score_int,
-                            "word": clean_word
-                        }
-                        close_tokens.append({
-                            "id": t["id"],
-                            "score": score_int,
-                            "word": clean_word
-                        })
+        is_guess_digit = clean_word.isdigit()
+
+        for target_norm in self.unrevealed_unique_words:
+            if is_guess_digit != target_norm.isdigit():
+                continue
+            if not is_guess_digit and (target_norm in EXPANDED_STOPWORDS or len(target_norm) <= 1):
+                continue
+
+            prox = calculate_proximity(clean_word, target_norm)
+            if prox >= 48.0:
+                score_int = round(prox)
+                if score_int > max_score:
+                    max_score = score_int
+                for tid in self.word_to_token_ids.get(target_norm, []):
+                    t = self.tokens_by_id[tid]
+                    if not t["revealed"]:
+                        current_heat = self.token_heat.get(tid, 0)
+                        if score_int > current_heat:
+                            self.token_heat[tid] = score_int
+                            self.token_close_words[tid] = {
+                                "score": score_int,
+                                "word": clean_word
+                            }
+                            close_tokens.append({
+                                "id": tid,
+                                "score": score_int,
+                                "word": clean_word
+                            })
 
         if all_matched_ids:
             status = "match"
@@ -177,23 +213,22 @@ class GameSession:
 
         # Record guess in history
         matches_count = len(all_matched_ids)
-        if not is_repeat:
-            guess_record = {
-                "attempt": self.attempts,
-                "word": clean_word,
-                "status": status,
-                "count": matches_count,
-                "score": max_score if status == "close" else (100 if status == "match" else 0),
-                "timestamp": round(time.time() - self.created_at)
-            }
-            self.guesses_history.append(guess_record)
-            record_guess(
-                session_id=self.session_id,
-                attempt_num=self.attempts,
-                word=clean_word,
-                status=status,
-                matches_count=matches_count
-            )
+        guess_record = {
+            "attempt": self.attempts,
+            "word": clean_word,
+            "status": status,
+            "count": matches_count,
+            "score": max_score if status == "close" else (100 if status == "match" else 0),
+            "timestamp": round(time.time() - self.created_at)
+        }
+        self.guesses_history.append(guess_record)
+        record_guess(
+            session_id=self.session_id,
+            attempt_num=self.attempts,
+            word=clean_word,
+            status=status,
+            matches_count=matches_count
+        )
 
         # Check win condition (all significant title words revealed)
         if not self.is_won and not self.is_surrendered:
@@ -209,6 +244,9 @@ class GameSession:
                         t["revealed"] = True
                         self.revealed_word_ids.add(tid)
                         newly_revealed[tid] = t["text"]
+                        norm = t.get("normalized")
+                        if norm:
+                            self.unrevealed_unique_words.discard(norm)
 
                 elapsed = int(time.time() - self.created_at)
                 record_game_finish(
@@ -244,6 +282,7 @@ class GameSession:
         if not (self.is_won or self.is_surrendered):
             return {"error": "L'article ne peut être démasqué qu'une fois la manche terminée."}
 
+        self.unrevealed_unique_words.clear()
         tokens_map: Dict[str, str] = {}
         for t in self.tokens:
             t["revealed"] = True

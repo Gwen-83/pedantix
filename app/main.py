@@ -622,10 +622,8 @@ async def room_guess(req: RoomGuessRequest, request: Request):
     if "error" in res or res.get("is_repeat") or res.get("status") == "already_guessed":
         return res
 
-    if player and player.name:
-        record_user_guess_word(player.name, req.word)
-        if res.get("is_won"):
-            record_user_game_finish(player.name, won=True, attempts=res.get("attempt_number", player.attempts))
+    if player and player.name and res.get("is_won"):
+        record_user_game_finish(player.name, won=True, attempts=res.get("attempt_number", player.attempts))
 
     # Broadcast updated progress to everyone
     await room.broadcast({
