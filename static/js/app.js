@@ -142,8 +142,6 @@ class PedantixApp {
     this.setupNetworkUI();
     this.applyTheme(this.theme);
     this.updateSoundIcon();
-    this.checkAutomationEnvironment();
-    this.initOverlayWatchdog();
 
     // Setup pseudo input and fetch network IP
     if (this.dom.playerPseudoInput) this.dom.playerPseudoInput.value = this.playerName;
@@ -3796,24 +3794,6 @@ class PedantixApp {
       return;
     }
 
-    // Vérification de la saisie humaine réelle (bloque l'injection de input.value par scripts / extensions)
-    const isHumanTyped = (this.trustedKeystrokeCount >= 1 || this.lastTrustedPaste);
-    if (rawWord.length > 0 && !isHumanTyped) {
-      this.playTone('miss');
-      this.showToast('⚠️ Saisie automatisée par extension/script détectée. Veuillez saisir vos mots au clavier.');
-      this.dom.errorLabel.innerHTML = '⚠️ <b>Anti-Triche</b> : Saisie automatisée non autorisée.';
-      this.dom.guessInput.value = '';
-      this.trustedKeystrokeCount = 0;
-      this.lastTrustedPaste = false;
-      this.firstKeystrokeTime = 0;
-      return;
-    }
-
-    // Réinitialise la télémétrie pour le mot suivant
-    this.trustedKeystrokeCount = 0;
-    this.lastTrustedPaste = false;
-    this.firstKeystrokeTime = 0;
-
     if (this.roomStatus === 'lobby') {
       this.showToast('Attendez que l\'Host démarre la partie !');
       return;
@@ -3857,157 +3837,7 @@ class PedantixApp {
     }
   }
 
-  checkAutomationEnvironment() {
-    const isAutomated = !!(
-      navigator.webdriver ||
-      window.document.documentElement.getAttribute('webdriver') ||
-      window.cdc_adoQx080412CBWNTeNaNZlmsub3_ ||
-      window.document.$cdc_asdjflasutopfhvcZLmcfl_ ||
-      window.__puppeteer_evaluation_script__ ||
-      window.__playwright ||
-      window.__nightmare ||
-      window.callPhantom ||
-      window._phantom
-    );
 
-    if (isAutomated) {
-      console.warn('[Anti-Cheat] Automated WebDriver / Selenium environment detected.');
-      this.lockInputTemporarily(9999);
-      if (this.dom.guessInput) {
-        this.dom.guessInput.disabled = true;
-        this.dom.guessInput.placeholder = 'Navigateur automatisé interdit';
-      }
-      this.showToast('⛔ Navigateur automatisé détecté (Selenium/Puppeteer/WebDriver). Jeu verrouillé.');
-    }
-  }
-
-  triggerOverlayPenalty() {
-    this.playTone('miss');
-    this.lockInputTemporarily(15);
-    this.showToast('🛡️ Encart de triche ou extension en superposition neutralisé(e) !');
-    if (this.dom.errorLabel) {
-      this.dom.errorLabel.innerHTML = '🤖 <b>Anti-Triche</b> : Encart / extension en superposition bloqué(e) (suspension 15s).';
-    }
-    // Reporte l'incident au serveur pour avertir le salon
-    if (this.roomId && this.playerId && !this.roomId.startsWith('solo-')) {
-      fetch(this.getApiUrl('/api/room/cheat-report'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          room_id: this.roomId,
-          player_id: this.playerId,
-          reason: 'overlay_detected'
-        })
-      }).catch(() => {});
-    }
-  }
-
-  scanAndNukeOverlays() {
-    const knownModalIds = new Set([
-      'app', 'sidebar', 'main', 'rules-modal', 'faq-modal', 'themes-modal',
-      'stats-modal', 'auth-modal', 'round-over-modal', 'surrender-modal',
-      'rooms-modal', 'server-settings-modal', 'lobby-modal', 'countdown-overlay',
-      'toast', 'confetti-canvas', 'chat-floating-toast', 'guess-len-badge'
-    ]);
-
-    const checkNode = (node) => {
-      if (!node || node.nodeType !== 1) return;
-      if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE' || node.tagName === 'LINK') return;
-
-      const id = node.id || '';
-      const cls = typeof node.className === 'string' ? node.className : '';
-      const tag = node.tagName.toUpperCase();
-
-      if (id && knownModalIds.has(id)) return;
-      if (cls && (cls.includes('modal-overlay') || cls.includes('toast') || cls.includes('confetti') || cls.includes('chat-floating-toast') || cls.includes('sticky-pinned') || cls.includes('canary-trap'))) return;
-      if (node.closest && (node.closest('.modal-overlay') || node.closest('.sidebar-aside') || node.closest('.main-center') || node.closest('.comp-panel-aside'))) return;
-
-      // 1. Tags interdits : IFRAME, EMBED, OBJECT ou balises personnalisées d'extensions
-      if (tag === 'IFRAME' || tag === 'EMBED' || tag === 'OBJECT' || (tag.includes('-') && !tag.startsWith('PEDANTIX'))) {
-        console.warn('[Anti-Cheat] Balise étrangère ou iframe de superposition détruite:', tag, node);
-        try { node.remove(); } catch (e) {}
-        this.triggerOverlayPenalty();
-        return;
-      }
-
-      // 2. Mots-clés suspects dans la classe ou l'ID (helpers, solvers, bots, tampermonkey)
-      const lowerCls = cls.toLowerCase();
-      const lowerId = id.toLowerCase();
-      const isSuspicious = ['solver', 'helper', 'cheat', 'bot', 'overlay', 'suggest', 'tampermonkey', 'violentmonkey', 'greasemonkey', 'pedantix-helper'].some(kw => lowerCls.includes(kw) || lowerId.includes(kw));
-      if (isSuspicious) {
-        console.warn('[Anti-Cheat] Encart suspect détecté et détruit:', node);
-        try { node.remove(); } catch (e) {}
-        this.triggerOverlayPenalty();
-        return;
-      }
-
-      // 3. Position fixe ou absolue avec z-index élevé hors composants approuvés
-      const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
-      if (style) {
-        const isFixedOrAbs = style.position === 'fixed' || (style.position === 'absolute' && (node.parentElement === document.body || node.parentElement === document.documentElement));
-        const zIndex = parseInt(style.zIndex, 10) || 0;
-        if (isFixedOrAbs && zIndex >= 40) {
-          console.warn('[Anti-Cheat] Encart flottant non autorisé détecté et détruit:', node);
-          try { node.remove(); } catch (e) {}
-          this.triggerOverlayPenalty();
-        }
-      }
-    };
-
-    // Scan des enfants directs de html et body
-    if (document.documentElement) {
-      Array.from(document.documentElement.children).forEach(el => {
-        if (el !== document.head && el !== document.body) checkNode(el);
-      });
-    }
-    if (document.body) {
-      Array.from(document.body.children).forEach(el => {
-        if (el.id !== 'app' && !el.classList.contains('pedantix-app-root') && !knownModalIds.has(el.id)) {
-          checkNode(el);
-        }
-      });
-    }
-
-    // Scan des éléments à z-index élevé dans tout le document
-    const highZNodes = document.querySelectorAll('[style*="fixed"], [style*="absolute"], [style*="z-index"]');
-    highZNodes.forEach(checkNode);
-  }
-
-  initOverlayWatchdog() {
-    // Scan immédiat à l'initialisation
-    this.scanAndNukeOverlays();
-
-    // Surveillance temps réel des ajouts dans tout le DOM
-    try {
-      const observer = new MutationObserver((mutations) => {
-        for (const m of mutations) {
-          if (m.addedNodes) {
-            for (let i = 0; i < m.addedNodes.length; i++) {
-              const node = m.addedNodes[i];
-              if (node.nodeType === 1) {
-                const id = node.id || '';
-                const tag = node.tagName.toUpperCase();
-                const cls = typeof node.className === 'string' ? node.className : '';
-                if (tag === 'IFRAME' || tag === 'EMBED' || (tag.includes('-') && !tag.startsWith('PEDANTIX'))) {
-                  try { node.remove(); } catch (e) {}
-                  this.triggerOverlayPenalty();
-                } else if (node.parentElement === document.body || node.parentElement === document.documentElement) {
-                  if (id !== 'app' && !cls.includes('modal-overlay') && !cls.includes('toast') && !cls.includes('confetti') && !cls.includes('chat-floating-toast')) {
-                    try { node.remove(); } catch (e) {}
-                    this.triggerOverlayPenalty();
-                  }
-                }
-              }
-            }
-          }
-        }
-      });
-      observer.observe(document.documentElement, { childList: true, subtree: true });
-    } catch (e) {}
-
-    // Balayage périodique toutes les 350ms (neutralise les injections différées ou stylisées a posteriori)
-    setInterval(() => this.scanAndNukeOverlays(), 350);
-  }
 
   lockInputTemporarily(seconds) {
     if (this.inputLockTimeout) clearInterval(this.inputLockTimeout);

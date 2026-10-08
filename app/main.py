@@ -676,21 +676,8 @@ async def surrender_room(req: RoomSurrenderRequest):
 
 @app.post("/api/room/cheat-report")
 async def report_cheat(req: RoomCheatReportRequest):
-    """Signale une tentative d'injection d'encart de triche ou d'extension interceptée par le client."""
-    room = room_manager.get_or_create_room(req.room_id)
-    if room:
-        player = room.players.get(req.player_id)
-        p_name = player.name if player else "Un joueur"
-        identifier = f"{room.room_id}:{req.player_id}"
-        anti_bot_guard.trigger_cheat_penalty(identifier, duration=15.0)
-        await room.broadcast({
-            "type": "anti_cheat_alert",
-            "message": f"🛡️ Encart de triche ou extension neutralisé(e) pour {p_name} (suspension 15s).",
-            "player_id": req.player_id,
-            "player_name": p_name,
-            "penalty_seconds": 15
-        })
-    return {"status": "reported", "cooldown_seconds": 15}
+    """Point de terminaison télémétrie client (sans fausse pénalité automatique)."""
+    return {"status": "reported", "cooldown_seconds": 0}
 
 
 @app.post("/api/room/chat")

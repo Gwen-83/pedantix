@@ -38,14 +38,14 @@ class AntiBotGuard:
         # Tracking cadence par IP: ip -> deque([timestamps])
         self.ip_history: Dict[str, deque] = {}
         
-        # Paramètres anti-cadence
-        self.min_interval_seconds = 0.35      # 350ms minimum entre 2 mots
-        self.min_token_age_seconds = 0.0 if os.environ.get("PEDANTIX_TEST_MODE") == "1" else 0.15  # 150ms pour contrer les scripts super-rapides
-        self.max_in_2s = 3                    # Max 3 mots en 2s
-        self.max_in_10s = 10                  # Max 10 mots en 10s
-        self.max_in_30s = 22                  # Max 22 mots en 30s
-        self.max_ip_per_minute = 60           # Max 60 requêtes par minute par IP
-        self.penalty_duration = 15.0          # 15 secondes de pénalité en cas d'abus répété
+        # Paramètres anti-cadence adaptés aux humains et multi-joueurs sur même Wi-Fi
+        self.min_interval_seconds = 0.25      # 250ms minimum entre 2 mots
+        self.min_token_age_seconds = 0.0 if os.environ.get("PEDANTIX_TEST_MODE") == "1" else 0.05  # 50ms tolérant
+        self.max_in_2s = 4                    # Max 4 mots en 2s
+        self.max_in_10s = 15                  # Max 15 mots en 10s
+        self.max_in_30s = 35                  # Max 35 mots en 30s
+        self.max_ip_per_minute = 300          # Max 300 requêtes / minute par IP (autorise plusieurs amis sur même Wi-Fi)
+        self.penalty_duration = 15.0          # 15 secondes de pénalité en cas d'abus répété avéré
 
     def clean_old_records(self, now: float):
         """Nettoie les enregistrements inactifs depuis plus de 10 minutes."""
@@ -120,18 +120,11 @@ class AntiBotGuard:
         """Vérifie le jeton fourni par le client et le renouvelle."""
         p = self._get_or_create_player(identifier)
         current_token = p["token"]
-        issued_at = p["token_issued_at"]
-        now = time.time()
 
         # Si le client fournit un jeton erroné ou manquant
         if not client_token or client_token != current_token:
             new_token = self.rotate_token(identifier)
             return False, "Jeton de sécurité invalide ou expiré (Protection anti-bot).", new_token
-
-        # Vérification cadence surhumaine (un script qui répond en < 150ms du token)
-        if (now - issued_at) < self.min_token_age_seconds:
-            new_token = self.rotate_token(identifier)
-            return False, "Cadence surhumaine détectée ! Veuillez taper vos mots manuellement.", new_token
 
         # Tout est valide, on renouvelle le jeton pour le coup suivant
         new_token = self.rotate_token(identifier)
@@ -174,7 +167,7 @@ class AntiBotGuard:
         diff = now - last_t
         if last_t > 0 and diff < self.min_interval_seconds:
             p["rapid_strikes"] += 1
-            if p["rapid_strikes"] >= 4:
+            if p["rapid_strikes"] >= 6:
                 p["penalty_until"] = now + self.penalty_duration
                 return False, f"Cadence automatisée / bot détectée ! Vous êtes suspendu pendant {int(self.penalty_duration)} secondes.", {
                     "blocked": True,
@@ -198,7 +191,7 @@ class AntiBotGuard:
 
         if in_2s >= self.max_in_2s or in_10s >= self.max_in_10s or in_30s >= self.max_in_30s:
             p["rapid_strikes"] += 1
-            if p["rapid_strikes"] >= 4:
+            if p["rapid_strikes"] >= 6:
                 p["penalty_until"] = now + self.penalty_duration
                 return False, f"Spam massif de mots détecté ! Vous êtes suspendu pendant {int(self.penalty_duration)} secondes.", {
                     "blocked": True,
@@ -212,7 +205,7 @@ class AntiBotGuard:
             }
 
         # Tout est bon : on valide le coup
-        if diff > 4.0:
+        if diff > 1.5:
             p["rapid_strikes"] = max(0, p["rapid_strikes"] - 1)
 
         p["last_guess_time"] = now
