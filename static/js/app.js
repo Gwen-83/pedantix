@@ -707,6 +707,9 @@ class PedantixApp {
     this.dom.pinBtn.addEventListener('click', () => {
       this.isPinned = !this.isPinned;
       this.dom.pinBtn.textContent = this.isPinned ? '📌' : '📍';
+      const pinTitle = this.isPinned ? 'Désépingler la barre' : 'Épingler la barre';
+      this.dom.pinBtn.title = pinTitle;
+      this.dom.pinBtn.setAttribute('aria-label', pinTitle);
       if (this.isPinned) {
         this.dom.form.classList.add('sticky-pinned');
       } else {
