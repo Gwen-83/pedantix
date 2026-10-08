@@ -287,25 +287,94 @@ class Room:
         self.add_activity(f"👕 {player.name} a rejoint l'{team_name}", "team_change")
         return True
 
-    def set_difficulty(self, difficulty: str) -> bool:
+    def set_difficulty(self, difficulty: str, new_article: Optional[Dict[str, Any]] = None) -> bool:
         if difficulty not in ("facile", "moyen", "difficile"):
             return False
-        if self.difficulty == difficulty:
+
+        # In multiplayer, cannot change difficulty once game has started
+        if not self.room_id.startswith("solo-") and self.status != "lobby":
+            return False
+
+        # In multiplayer lobby, if difficulty is already set to this and article matches, nothing to do
+        if not self.room_id.startswith("solo-") and self.difficulty == difficulty and self.article_data.get("difficulty") == difficulty:
             return True
+
         self.difficulty = difficulty
-        if self.status == "lobby":
+
+        if self.room_id.startswith("solo-"):
+            # Solo mode: immediately load a fresh article with the requested difficulty
             try:
-                new_art = room_manager._fetch_random_article(difficulty=difficulty)
+                new_art = new_article or room_manager._fetch_random_article(difficulty=difficulty)
                 if new_art:
+                    new_art["difficulty"] = difficulty
+                    self.article_data = new_art
+                    self.seed = f"P-{random.randint(1000, 9999)}"
+                    self.status = "playing"
+                    self.winners = []
+                    self.first_winner_id = None
+                    self.first_winner_name = None
+                    self.first_winner_attempts = None
+                    self.surrender_in_progress = False
+                    self.surrender_initiator_id = None
+                    self.surrender_initiator_name = None
+                    self.surrender_votes = set()
+                    self.surrender_cooldowns.clear()
+                    self.revealed_letters = []
+                    self.next_letter_hint_time = time.time() + self.letter_hint_interval
+
+                    for p in self.players.values():
+                        session_id = str(uuid.uuid4())
+                        p.session = GameSession(
+                            session_id=session_id,
+                            seed=self.seed,
+                            title=self.article_data["title"],
+                            url=self.article_data.get("url", ""),
+                            image=self.article_data.get("image", ""),
+                            paragraphs=self.article_data["paragraphs"],
+                            mode="multiplayer",
+                            category=self.article_data.get("category", "general"),
+                            difficulty=self.difficulty,
+                            lang_count=self.article_data.get("lang_count", 0),
+                            pageviews_90d=self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5))
+                        )
+                        p.attempts = 0
+                        p.revealed_words_count = 0
+                        p.total_words = p.session.total_words
+                        p.pct = 0
+                        p.is_won = False
+                        p.won_at = None
+                        p.last_word = None
+                        p.last_status = None
+                        p.last_count = 0
+                        p.is_ready = True
+            except Exception as e:
+                logger.error(f"Error updating solo article on difficulty change: {e}")
+
+        elif self.status == "lobby":
+            # Multiplayer lobby: pre-fetch/update article for the new difficulty
+            try:
+                new_art = new_article or room_manager._fetch_random_article(difficulty=difficulty)
+                if new_art:
+                    new_art["difficulty"] = difficulty
                     self.article_data = new_art
                     if self.game_mode == "team":
                         self._init_team_sessions()
                         for p in self.players.values():
                             p.session = self.team_sessions.get(p.team)
+                            p.attempts = 0
+                            p.revealed_words_count = 0
+                            p.total_words = p.session.total_words if p.session else 0
+                            p.pct = 0
+                            p.is_won = False
+                            p.won_at = None
+                            p.last_word = None
+                            p.last_status = None
+                            p.last_count = 0
                     else:
                         for p in self.players.values():
+                            session_id = str(uuid.uuid4())
                             p.session = GameSession(
-                                session_id=str(uuid.uuid4()),
+                                session_id=session_id,
                                 seed=self.seed,
                                 title=self.article_data["title"],
                                 url=self.article_data.get("url", ""),
@@ -317,8 +386,18 @@ class Room:
                                 lang_count=self.article_data.get("lang_count", 0),
                                 pageviews_90d=self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5))
                             )
+                            p.attempts = 0
+                            p.revealed_words_count = 0
+                            p.total_words = p.session.total_words
+                            p.pct = 0
+                            p.is_won = False
+                            p.won_at = None
+                            p.last_word = None
+                            p.last_status = None
+                            p.last_count = 0
             except Exception as e:
-                logger.error(f"Error updating article on difficulty change: {e}")
+                logger.error(f"Error updating lobby article on difficulty change: {e}")
+
         diff_label = {"facile": "🟢 Facile", "moyen": "🟡 Moyen", "difficile": "🔴 Difficile"}.get(difficulty, difficulty.capitalize())
         self.add_activity(f"🎯 Difficulté configurée : {diff_label}", "difficulty")
         return True
@@ -496,12 +575,38 @@ class Room:
         if self.rounds_played > 0:
             return await self.start_new_round(player_id)
 
+        # Strictly guarantee the article corresponds to the lobby difficulty
+        if self.article_data.get("difficulty") != self.difficulty:
+            try:
+                new_art = await asyncio.to_thread(room_manager._fetch_random_article, self.difficulty)
+                if new_art:
+                    new_art["difficulty"] = self.difficulty
+                    self.article_data = new_art
+                    self.seed = f"P-{random.randint(1000, 9999)}"
+            except Exception as e:
+                logger.error(f"Error fetching difficulty article before start: {e}")
+
         if self.game_mode == "team":
-            if not self.team_sessions:
-                self._init_team_sessions()
+            self._init_team_sessions()
             for p in self.players.values():
                 if p.team in self.team_sessions:
                     p.session = self.team_sessions[p.team]
+        else:
+            for p in self.players.values():
+                session_id = str(uuid.uuid4())
+                p.session = GameSession(
+                    session_id=session_id,
+                    seed=self.seed,
+                    title=self.article_data["title"],
+                    url=self.article_data.get("url", ""),
+                    image=self.article_data.get("image", ""),
+                    paragraphs=self.article_data["paragraphs"],
+                    mode="multiplayer",
+                    category=self.article_data.get("category", "general"),
+                    difficulty=self.difficulty,
+                    lang_count=self.article_data.get("lang_count", 0),
+                    pageviews_90d=self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5))
+                )
 
         self.winners = []
         self.first_winner_id = None
@@ -522,6 +627,10 @@ class Room:
             "seconds": 5,
             "end_time": self.countdown_end,
             "status": self.status,
+            "difficulty": self.difficulty,
+            "article_difficulty": self.article_data.get("difficulty", self.difficulty),
+            "article_lang_count": self.article_data.get("lang_count", 0),
+            "article_pageviews_90d": self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5)),
             "leaderboard": self.get_leaderboard(),
             "activity": self.recent_activity
         })
@@ -888,10 +997,11 @@ class Room:
         self.next_letter_hint_time = None
 
         if not new_article:
-            new_article = room_manager._fetch_notable_article(difficulty=self.difficulty)
+            new_article = await asyncio.to_thread(room_manager._fetch_notable_article, self.difficulty)
         if not new_seed:
             new_seed = f"P-{random.randint(1000, 9999)}"
 
+        new_article["difficulty"] = self.difficulty
         self.article_data = new_article
         self.seed = new_seed
         self.status = "starting"
@@ -1371,41 +1481,54 @@ class RoomManager:
         self.rooms: Dict[str, Room] = {}
         self.wiki_client = WikipediaClient()
         self.game_manager = GameManager()
-        self._article_pool: List[Dict[str, Any]] = []
+        self._article_pools: Dict[str, List[Dict[str, Any]]] = {
+            "facile": [],
+            "moyen": [],
+            "difficile": []
+        }
         self._pool_lock = threading.Lock()
         self._refilling = False
 
-    # -- Pool d'articles préchargés : la création d'un salon devient instantanée
-    def prefetch_articles(self, target: int = 3):
-        """Remplit le pool en arrière-plan (thread) sans jamais bloquer la boucle asyncio."""
+    # -- Pool d'articles préchargés par niveau de difficulté
+    def prefetch_articles(self, target_per_diff: int = 2):
+        """Remplit le pool pour chaque difficulté en arrière-plan sans bloquer la boucle asyncio."""
         with self._pool_lock:
-            if self._refilling or len(self._article_pool) >= target:
+            if self._refilling:
+                return
+            needs_refill = any(len(self._article_pools.get(d, [])) < target_per_diff for d in ("facile", "moyen", "difficile"))
+            if not needs_refill:
                 return
             self._refilling = True
 
         def _worker():
             try:
-                for _ in range(target * 2):
+                for d in ("facile", "moyen", "difficile"):
                     with self._pool_lock:
-                        if len(self._article_pool) >= target:
+                        curr_len = len(self._article_pools.get(d, []))
+                    while curr_len < target_per_diff:
+                        try:
+                            art = self.wiki_client.fetch_random_wikipedia_article(difficulty=d)
+                        except Exception as e:
+                            logger.warning(f"prefetch article {d}: {e}")
+                            art = None
+                        if art:
+                            art["difficulty"] = d
+                            with self._pool_lock:
+                                self._article_pools[d].append(art)
+                                curr_len = len(self._article_pools[d])
+                        else:
                             break
-                    try:
-                        art = self.wiki_client.fetch_random_wikipedia_article()
-                    except Exception as e:
-                        logger.warning(f"prefetch article: {e}")
-                        art = None
-                    if art:
-                        with self._pool_lock:
-                            self._article_pool.append(art)
             finally:
                 with self._pool_lock:
                     self._refilling = False
 
         threading.Thread(target=_worker, daemon=True, name="pedantix-article-prefetch").start()
 
-    def _pop_pooled_article(self) -> Optional[Dict[str, Any]]:
+    def _pop_pooled_article(self, difficulty: str = "moyen") -> Optional[Dict[str, Any]]:
+        diff_key = difficulty.lower() if difficulty and difficulty.lower() in ("facile", "moyen", "difficile") else "moyen"
         with self._pool_lock:
-            art = self._article_pool.pop(0) if self._article_pool else None
+            pool = self._article_pools.get(diff_key, [])
+            art = pool.pop(0) if pool else None
         self.prefetch_articles()
         return art
 
@@ -1414,26 +1537,28 @@ class RoomManager:
         clean_id = (room_id or "").strip() or "default"
         if clean_id in self.rooms:
             return self.rooms[clean_id]
-        await asyncio.to_thread(self._ensure_article_ready)
+        await asyncio.to_thread(self._ensure_article_ready, difficulty)
         return self.get_or_create_room(clean_id, difficulty=difficulty)
 
     async def create_new_room_async(self, host_player_id: str, custom_id: Optional[str] = None, difficulty: str = "moyen") -> "Room":
-        await asyncio.to_thread(self._ensure_article_ready)
+        await asyncio.to_thread(self._ensure_article_ready, difficulty)
         return self.create_new_room(host_player_id, custom_id, difficulty=difficulty)
 
-    def _ensure_article_ready(self):
-        """Garantit qu'un article est disponible dans le pool (appelé hors boucle asyncio)."""
+    def _ensure_article_ready(self, difficulty: str = "moyen"):
+        """Garantit qu'un article est disponible dans le pool pour la difficulté demandée."""
+        diff_key = difficulty.lower() if difficulty and difficulty.lower() in ("facile", "moyen", "difficile") else "moyen"
         with self._pool_lock:
-            ready = bool(self._article_pool)
+            ready = bool(self._article_pools.get(diff_key))
         if not ready:
             try:
-                art = self.wiki_client.fetch_random_wikipedia_article()
+                art = self.wiki_client.fetch_random_wikipedia_article(difficulty=diff_key)
             except Exception as e:
                 logger.error(f"fetch article: {e}")
                 art = None
             if art:
+                art["difficulty"] = diff_key
                 with self._pool_lock:
-                    self._article_pool.append(art)
+                    self._article_pools[diff_key].append(art)
 
     def _fetch_random_article(self, difficulty: str = "moyen") -> Dict[str, Any]:
         """Fetches a random notable article from French Wikipedia for the given difficulty."""
@@ -1441,13 +1566,9 @@ class RoomManager:
         article = None
         # Check if pooled article matches requested difficulty
         with self._pool_lock:
-            for idx, a in enumerate(self._article_pool):
-                if a.get("difficulty") == diff_key:
-                    article = self._article_pool.pop(idx)
-                    break
-            else:
-                if diff_key == "moyen" and self._article_pool:
-                    article = self._article_pool.pop(0)
+            pool = self._article_pools.get(diff_key, [])
+            if pool:
+                article = pool.pop(0)
 
         self.prefetch_articles()
 
@@ -1457,25 +1578,33 @@ class RoomManager:
             except Exception as e:
                 logger.error(f"Error fetching random article: {e}")
 
+        if not article:
+            article = self.wiki_client.fetch_curated_article(difficulty=diff_key)
+
         if not article and self.game_manager.offline_curated:
-            article = dict(random.choice(list(self.game_manager.offline_curated.values())))
-            article["difficulty"] = diff_key
+            candidates = list(self.game_manager.offline_curated.values())
+            filtered = [c for c in candidates if CURATED_DIFFICULTY_MAP.get(c.get("title", "")) == diff_key]
+            if filtered:
+                candidates = filtered
+            article = dict(random.choice(candidates))
 
         if not article:
+            fallback_title = "Tour Eiffel" if diff_key == "facile" else ("Pont du Gard" if diff_key == "moyen" else "Alhambra (Grenade)")
             article = {
-                "title": "Tour Eiffel",
+                "title": fallback_title,
                 "paragraphs": [
                     "La tour Eiffel est une tour autoportante de fer puddlé de 330 m de hauteur située à Paris, à l’extrémité nord-ouest du parc du Champ-de-Mars en bordure de la Seine dans le 7e arrondissement.",
                     "Construite en deux ans par Gustave Eiffel et ses collaborateurs pour l'Exposition universelle de Paris de 1889, célébrant le centenaire de la Révolution française, elle est devenue le symbole emblématique de la capitale française et de la France entière.",
                     "D’une hauteur de 312 mètres à l’origine, la tour Eiffel est restée le monument le plus élevé du monde pendant quarante ans. Elle accueille chaque année plus de six millions de visiteurs du monde entier."
                 ],
                 "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg/500px-Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg",
-                "url": "https://fr.wikipedia.org/wiki/Tour_Eiffel",
-                "category": "monuments",
+                "url": f"https://fr.wikipedia.org/wiki/{fallback_title}",
+                "category": "culture",
                 "difficulty": diff_key,
-                "lang_count": 130,
-                "pageviews_90d": 75000
+                "lang_count": 80 if diff_key == "facile" else (35 if diff_key == "moyen" else 20),
+                "pageviews_90d": 40000 if diff_key == "facile" else (8000 if diff_key == "moyen" else 1500)
             }
+        article["difficulty"] = diff_key
         return article
 
     _fetch_notable_article = _fetch_random_article

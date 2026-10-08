@@ -307,7 +307,8 @@ async def join_room(req: RoomJoinRequest):
     diff = req.difficulty if req.difficulty in ("facile", "moyen", "difficile") else "moyen"
     room = room_manager.get_or_create_room(req.room_id, difficulty=diff)
     if req.room_id.startswith("solo-") and req.difficulty and req.difficulty != room.difficulty:
-        room.set_difficulty(req.difficulty)
+        new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty)
+        room.set_difficulty(req.difficulty, new_article=new_art)
     player = room.get_or_create_player(req.player_id, req.player_name)
 
     # Broadcast player joined to all active websockets in this room
@@ -339,6 +340,8 @@ async def join_room(req: RoomJoinRequest):
         "teams": room.get_teams_data(),
         "leaderboard": room.get_leaderboard(),
         "session": active_session.get_public_state(revealed_letters=room.revealed_letters),
+        "revealed_letters": room.revealed_letters,
+        "next_letter_hint_time": room.next_letter_hint_time,
         "activity": room.recent_activity,
         "status": room.status,
         "host_player_id": room.host_player_id,
@@ -501,31 +504,67 @@ async def set_room_difficulty(req: RoomDifficultyRequest):
         raise HTTPException(status_code=403, detail="Seul l'Host peut modifier la difficulté.")
     if req.difficulty not in ("facile", "moyen", "difficile"):
         raise HTTPException(status_code=400, detail="Difficulté invalide.")
-    success = room.set_difficulty(req.difficulty)
+
+    # Strictly disallow changing difficulty in multiplayer once game has started
+    if not room.room_id.startswith("solo-") and room.status != "lobby":
+        raise HTTPException(status_code=400, detail="Impossible de modifier la difficulté en cours de partie.")
+
+    new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty)
+    success = room.set_difficulty(req.difficulty, new_article=new_art)
     if not success:
         raise HTTPException(status_code=400, detail="Impossible de modifier la difficulté.")
-    await room.broadcast({
-        "type": "difficulty_changed",
+
+    active_session = room.team_sessions.get(player.team, player.session) if room.game_mode == "team" and room.team_sessions else player.session
+    public_session = active_session.get_public_state(revealed_letters=room.revealed_letters) if active_session else None
+
+    if room.room_id.startswith("solo-"):
+        await room.broadcast({
+            "type": "new_round",
+            "status": "playing",
+            "seed": room.seed,
+            "difficulty": room.difficulty,
+            "article_difficulty": room.article_data.get("difficulty", room.difficulty),
+            "article_lang_count": room.article_data.get("lang_count", 0),
+            "article_pageviews_90d": room.article_data.get("pageviews_90d", int(room.article_data.get("pageviews_60d", 0) * 1.5)),
+            "game_mode": room.game_mode,
+            "leaderboard": room.get_leaderboard(),
+            "activity": room.recent_activity
+        })
+    else:
+        await room.broadcast({
+            "type": "difficulty_changed",
+            "difficulty": room.difficulty,
+            "article_difficulty": room.article_data.get("difficulty", room.difficulty),
+            "article_lang_count": room.article_data.get("lang_count", 0),
+            "article_pageviews_90d": room.article_data.get("pageviews_90d", int(room.article_data.get("pageviews_60d", 0) * 1.5)),
+            "can_start": room.can_start(),
+            "activity": room.recent_activity
+        })
+
+    return {
+        "status": "ok",
         "difficulty": room.difficulty,
         "article_difficulty": room.article_data.get("difficulty", room.difficulty),
         "article_lang_count": room.article_data.get("lang_count", 0),
         "article_pageviews_90d": room.article_data.get("pageviews_90d", int(room.article_data.get("pageviews_60d", 0) * 1.5)),
-        "can_start": room.can_start(),
-        "activity": room.recent_activity
-    })
-    return {
-        "status": "ok",
-        "difficulty": room.difficulty,
-        "article_difficulty": room.article_data.get("difficulty", room.difficulty)
+        "seed": room.seed,
+        "revealed_letters": room.revealed_letters,
+        "next_letter_hint_time": room.next_letter_hint_time,
+        "session": public_session
     }
 
 
 @app.post("/api/room/next-round")
 async def next_round_room(req: RoomNextRoundRequest):
     room = room_manager.get_or_create_room(req.room_id)
-    if req.difficulty and req.difficulty in ("facile", "moyen", "difficile"):
-        room.set_difficulty(req.difficulty)
-    new_article = await asyncio.to_thread(room_manager._fetch_random_article, room.difficulty)
+    if not room.room_id.startswith("solo-") and room.status not in ("lobby", "round_over"):
+        raise HTTPException(status_code=400, detail="Impossible de lancer une nouvelle manche pendant une partie en cours.")
+    player = room.players.get(req.player_id)
+    if not room.room_id.startswith("solo-") and player and not player.is_host:
+        raise HTTPException(status_code=403, detail="Seul l'Host peut lancer la manche suivante.")
+    diff = req.difficulty if req.difficulty in ("facile", "moyen", "difficile") else room.difficulty
+    room.difficulty = diff
+    new_article = await asyncio.to_thread(room_manager._fetch_random_article, diff)
     seed_num = random.randint(1000, 9999)
     new_seed = f"P-{seed_num}"
     res = await room.start_new_round(req.player_id, new_article, new_seed)

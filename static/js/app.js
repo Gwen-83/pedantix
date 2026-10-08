@@ -2148,7 +2148,9 @@ class PedantixApp {
       if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
       this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
       this.showToast('🎲 Nouvelle partie lancée !');
-      this.joinRoom();
+      if (!this.isSoloMode || !this.sessionId || this.seed !== msg.seed) {
+        this.joinRoom();
+      }
 
     } else if (msg.type === 'letter_hint') {
       const letter = msg.letter || '';
@@ -2599,6 +2601,7 @@ class PedantixApp {
 
     // 3. Phase-specific view toggling
     if (this.isSoloMode) {
+      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
       this.closeModal(this.dom.lobbyModal);
       if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
       if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
@@ -2621,6 +2624,8 @@ class PedantixApp {
       }
       return;
     }
+
+    if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
 
     if (this.roomStatus === 'lobby') {
       if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
@@ -3014,7 +3019,7 @@ class PedantixApp {
     // 1. Header difficulty badge
     if (this.dom.difficultyBadge) {
       this.dom.difficultyBadge.textContent = badgeText;
-      this.dom.difficultyBadge.className = `difficulty-badge difficulty-${diff}`;
+      this.dom.difficultyBadge.className = `difficulty-badge diff-${diff} difficulty-${diff}`;
       this.dom.difficultyBadge.title = `Difficulté de la page : ${this.getDifficultyLabel(diff)}` +
         (this.articleLangCount ? ` (${this.articleLangCount} langues, ${this.formatNumber(this.articlePageviews90d)} vues 90j)` : '');
     }
@@ -3034,10 +3039,19 @@ class PedantixApp {
 
     // 4. Lobby selector buttons active state
     if (this.dom.btnLobbyDiffs) {
+      const isLobby = this.roomStatus === 'lobby';
       this.dom.btnLobbyDiffs.forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-diff') === this.currentDifficulty);
-        btn.disabled = !this.isHost;
+        btn.disabled = !this.isHost || !isLobby;
       });
+    }
+
+    if (this.dom.lobbyDifficultyHint) {
+      if (this.roomStatus !== 'lobby') {
+        this.dom.lobbyDifficultyHint.textContent = "(Verrouillé pendant la partie)";
+      } else {
+        this.dom.lobbyDifficultyHint.textContent = this.isHost ? "(Configuré par vous 👑)" : "(Choisi par l'Host 👑)";
+      }
     }
 
     // 5. Success diff row stats
@@ -3065,19 +3079,141 @@ class PedantixApp {
     }
   }
 
+  applyNewGameSession(data) {
+    if (!data || !data.session) return;
+    this.startTime = Date.now();
+    this.previousInputs = [];
+    this.prevInputIdx = -1;
+    this.isWon = false;
+    this.isAbandoned = false;
+
+    if (this.dom.successBox) this.dom.successBox.classList.remove('active');
+    if (this.dom.surrenderBanner) {
+      this.dom.surrenderBanner.style.display = 'none';
+      this.dom.surrenderBanner.classList.remove('active');
+    }
+    if (this.dom.articleFinishedBar) {
+      this.dom.articleFinishedBar.style.display = 'none';
+    }
+    if (this.dom.roundOverModal) {
+      this.closeModal(this.dom.roundOverModal);
+    }
+    if (this.dom.form) {
+      this.dom.form.style.display = 'flex';
+      this.dom.form.style.opacity = '1';
+      this.dom.form.style.pointerEvents = 'auto';
+    }
+    if (this.dom.guessInput) {
+      this.dom.guessInput.value = '';
+      this.dom.guessInput.disabled = false;
+    }
+    if (this.dom.guessBtn) {
+      this.dom.guessBtn.disabled = false;
+    }
+    this.dom.errorLabel.textContent = '';
+    this.dom.wikiImg.style.display = 'none';
+    this.hideOpponentWin();
+
+    this.sessionId = data.session.session_id;
+    this.seed = data.seed;
+    if (data.guess_token) this.guessToken = data.guess_token;
+    this.tokens = data.session.tokens || [];
+    this.tokensById = {};
+    this.tokens.forEach(t => {
+      t.is_word = (t.type === 'word' || !!t.is_word);
+      this.tokensById[t.id] = t;
+    });
+
+    this.history = data.session.history || [];
+    this.totalWords = data.session.total_words || 0;
+    this.revealedWordsCount = data.session.revealed_words_count || 0;
+    this.solution = data.session.solution || null;
+
+    this.currentDifficulty = data.difficulty || this.currentDifficulty;
+    this.articleDifficulty = data.article_difficulty || (data.session && data.session.difficulty) || this.currentDifficulty;
+    this.articleLangCount = data.article_lang_count || (data.session && data.session.lang_count) || 0;
+    this.articlePageviews90d = data.article_pageviews_90d || (data.session && data.session.pageviews_90d) || 0;
+    this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+
+    this.revealedLetters = data.revealed_letters || [];
+    this.nextLetterHintTime = data.next_letter_hint_time || (Date.now() / 1000 + 300);
+
+    this.updateBadges();
+    this.renderBoard();
+    this.updateDayMeter();
+    this.renderHistory();
+
+    if (this.isSoloMode) {
+      this.stopHintTimer();
+      this.startHintTimer(this.nextLetterHintTime);
+    }
+
+    if (this.dom.guessInput) {
+      this.dom.guessInput.focus();
+    }
+  }
+
   async setSoloDifficulty(diff) {
     if (!['facile', 'moyen', 'difficile'].includes(diff)) return;
-    if (this.currentDifficulty === diff) return;
+    if (!this.isSoloMode) return;
+    if (this.isLoadingSoloDiff) return;
+
     this.playTone('click');
+    this.isLoadingSoloDiff = true;
     this.currentDifficulty = diff;
     localStorage.setItem('pedantix_difficulty', diff);
-    this.updateDifficultyUI(diff);
-    this.showToast(`🎯 Difficulté réglée sur : ${this.getDifficultyLabel(diff)}. Nouvelle page en cours...`);
-    await this.requestNewRound();
+
+    if (this.dom.btnSoloDiffChoices) {
+      this.dom.btnSoloDiffChoices.forEach(b => {
+        b.disabled = true;
+        b.classList.toggle('active', b.getAttribute('data-diff') === diff);
+      });
+    }
+
+    this.showToast(`🎯 Chargement d'une nouvelle page (${this.getDifficultyLabel(diff)})...`);
+
+    try {
+      const resp = await fetch(this.getApiUrl('/api/room/difficulty'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: this.roomId,
+          player_id: this.playerId,
+          difficulty: diff
+        })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.error) {
+        this.showToast(data.detail || data.error || 'Erreur lors du changement de difficulté.');
+      } else {
+        if (data.session) {
+          this.applyNewGameSession(data);
+        } else {
+          await this.joinRoom();
+        }
+        this.showToast(`🎲 Nouvelle page chargée en niveau ${this.getDifficultyLabel(diff)} !`);
+      }
+    } catch (e) {
+      console.error(e);
+      this.showToast('Erreur de connexion au serveur.');
+    } finally {
+      this.isLoadingSoloDiff = false;
+      if (this.dom.btnSoloDiffChoices) {
+        this.dom.btnSoloDiffChoices.forEach(b => {
+          b.disabled = false;
+          b.classList.toggle('active', b.getAttribute('data-diff') === this.currentDifficulty);
+        });
+      }
+    }
   }
 
   async setRoomDifficulty(diff) {
     if (!['facile', 'moyen', 'difficile'].includes(diff)) return;
+    if (this.isSoloMode) return;
+    if (this.roomStatus !== 'lobby') {
+      this.showToast("La difficulté ne peut pas être modifiée en cours de partie.");
+      return;
+    }
     if (!this.isHost) {
       this.showToast("Seul l'Host 👑 peut modifier la difficulté du salon.");
       return;
@@ -3094,14 +3230,16 @@ class PedantixApp {
           difficulty: diff
         })
       });
-      const data = await resp.json();
+      const data = await resp.json().catch(() => ({}));
       if (!resp.ok || data.error) {
         this.showToast(data.detail || data.error || 'Erreur lors du changement de difficulté.');
         return;
       }
       this.currentDifficulty = diff;
       this.articleDifficulty = data.article_difficulty || diff;
-      this.updateDifficultyUI(this.articleDifficulty);
+      this.articleLangCount = data.article_lang_count || 0;
+      this.articlePageviews90d = data.article_pageviews_90d || 0;
+      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
       this.showToast(`🎯 Difficulté du salon réglée sur : ${this.getDifficultyLabel(diff)}`);
     } catch (e) {
       console.error(e);

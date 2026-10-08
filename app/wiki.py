@@ -32,43 +32,43 @@ DIFFICULTY_LEVELS = {
         "min_languages": 45,
         "min_pageviews_90d": 20000,
         "min_general_pageviews_60d": 13500,
-        "min_person_languages": 65,
+        "min_person_languages": 60,
         "min_person_languages_regional": 35,
         "min_person_pageviews_90d": 30000,
         "min_person_pageviews_60d": 20000,
-        "min_words": 90,
-        "curated_pool_prob": 0.75,
+        "min_words": 80,
+        "curated_pool_prob": 0.85,
         "description": "Sujets très célèbres et incontournables (≥ 45 langues, ≥ 20k vues)"
     },
     "moyen": {
         "id": "moyen",
         "name": "Moyen",
         "icon": "🟡",
-        "min_languages": 28,
-        "min_pageviews_90d": 4000,
-        "min_general_pageviews_60d": 2700,
-        "min_person_languages": 45,
-        "min_person_languages_regional": 28,
-        "min_person_pageviews_90d": 4500,
-        "min_person_pageviews_60d": 3000,
-        "min_words": 65,
-        "curated_pool_prob": 0.35,
-        "description": "Culture générale classique (≥ 28 langues, ≥ 4k vues)"
+        "min_languages": 25,
+        "min_pageviews_90d": 3500,
+        "min_general_pageviews_60d": 2300,
+        "min_person_languages": 32,
+        "min_person_languages_regional": 22,
+        "min_person_pageviews_90d": 4000,
+        "min_person_pageviews_60d": 2700,
+        "min_words": 60,
+        "curated_pool_prob": 0.50,
+        "description": "Culture générale classique (≥ 25 langues, ≥ 3.5k vues)"
     },
     "difficile": {
         "id": "difficile",
         "name": "Difficile",
         "icon": "🔴",
-        "min_languages": 18,
-        "min_pageviews_90d": 1500,
-        "min_general_pageviews_60d": 1000,
-        "min_person_languages": 30,
-        "min_person_languages_regional": 20,
-        "min_person_pageviews_90d": 2500,
-        "min_person_pageviews_60d": 1700,
+        "min_languages": 16,
+        "min_pageviews_90d": 1000,
+        "min_general_pageviews_60d": 700,
+        "min_person_languages": 18,
+        "min_person_languages_regional": 14,
+        "min_person_pageviews_90d": 1200,
+        "min_person_pageviews_60d": 800,
         "min_words": 50,
-        "curated_pool_prob": 0.0,
-        "description": "Sujets plus pointus ou spécialisés (≥ 18 langues, ≥ 1.5k vues)"
+        "curated_pool_prob": 0.50,
+        "description": "Sujets plus pointus ou spécialisés (≥ 16 langues, ≥ 1k vues)"
     }
 }
 DIFFICULTY_CONFIGS = DIFFICULTY_LEVELS
@@ -165,6 +165,83 @@ ALL_CURATED_TITLES = []
 for articles in THEMES_ARTICLES.values():
     ALL_CURATED_TITLES.extend(articles)
 ALL_CURATED_TITLES = list(dict.fromkeys(ALL_CURATED_TITLES))
+
+# Curated articles strictly partitioned by target difficulty
+CURATED_BY_DIFFICULTY: Dict[str, List[str]] = {
+    "facile": [
+        "Tour Eiffel", "Musée du Louvre", "Statue de la Liberté", "Pyramides de Gizeh", "Colisée",
+        "Grande Muraille", "Grande Muraille de Chine", "Big Ben", "Le Mont-Saint-Michel", "Mont-Saint-Michel",
+        "Tour de Pise", "Cathédrale Notre-Dame de Paris", "Château de Versailles", "Albert Einstein",
+        "Léonard de Vinci", "Napoléon Ier", "Louis XIV", "Charles de Gaulle", "Victor Hugo",
+        "Jules César", "Cléopâtre VII", "Wolfgang Amadeus Mozart", "William Shakespeare", "Michael Jackson",
+        "Zinédine Zidane", "Charlie Chaplin", "Jeanne d'Arc", "Molière", "Cinéma", "Harry Potter",
+        "Star Wars", "Titanic (film, 1997)", "Le Roi lion", "La Joconde", "Guitare", "Piano",
+        "Danse", "Théâtre", "Lion", "Éléphant", "Tigre", "Panda géant", "Grand dauphin", "Baleine bleue",
+        "Dinosauria", "Dinosaure", "Tyrannosaurus", "Tyrannosaure", "Girafe", "Chimpanzé", "Kangourou",
+        "Internet", "Ordinateur", "Football", "Jeux vidéo", "Téléphone mobile", "Automobile", "Avion",
+        "Jeux olympiques", "Tennis", "Nintendo", "France", "Italie", "Japon", "États-Unis", "Chine",
+        "Royaume-Uni", "Espagne", "Brésil", "Paris", "New York", "Londres", "Rome", "Soleil",
+        "Terre", "Lune", "Seconde Guerre mondiale", "Première Guerre mondiale", "Révolution française",
+        "Empire romain", "Moyen Âge", "Les Misérables", "Le Petit Prince", "Échecs"
+    ],
+    "moyen": [
+        "Chute du mur de Berlin", "Débarquement de Normandie", "Guerre froide", "Renaissance", "Égypte antique",
+        "Grèce antique", "Bataille de Waterloo", "Traité de Versailles", "Déclaration des droits de l'homme et du citoyen de 1789",
+        "Guerre de Cent Ans", "Pompéi", "Croisades", "Croisade", "Guerre du Viêt Nam", "Guerre de Troie",
+        "Empire ottoman", "Révolution russe", "Affaire Dreyfus", "Bataille de Verdun", "Chute de Constantinople",
+        "Arc de triomphe de l'Étoile", "Pont du Gard", "Acropole d'Athènes", "Machu Picchu", "Stonehenge",
+        "Parthénon", "Taj Mahal", "Sagrada Família", "Château de Chambord", "Empire State Building",
+        "Golden Gate Bridge", "Pont du Golden Gate", "Marie Curie", "Isaac Newton", "Charles Darwin", "Vincent van Gogh",
+        "Claude Monet", "Jules Verne", "Voltaire", "Sigmund Freud", "Martin Luther King", "Nelson Mandela",
+        "Louis Pasteur", "Jean Moulin", "Coluche", "Édith Piaf", "Jacques Brel", "Louis de Funès",
+        "Simone Veil", "Antoine de Saint-Exupéry", "Jean de La Fontaine", "Alexandre Dumas",
+        "Système solaire", "Trou noir", "Voie lactée", "Mars (planète)", "Big Bang", "Atome",
+        "Gravitation", "Radioactivité", "Tableau périodique des éléments", "Jupiter (planète)", "Génétique",
+        "Vaccin", "Pénicilline", "Énergie nucléaire", "Tectonique des plaques", "Astéroïde", "Comète",
+        "Électron", "Laser", "Abeille", "Loup gris", "Grand requin blanc", "Manchot empereur",
+        "Mammouth", "Séquoia géant", "Corail", "Chauve-souris", "Ours polaire", "Aigle royal",
+        "Guépard", "Gorille", "Koala", "Impressionnisme", "Jazz", "Rock", "Festival de Cannes",
+        "Guernica (Picasso)", "La Nuit étoilée", "Bande dessinée", "Photographie", "Sculpture",
+        "Opéra", "Violon", "Hayao Miyazaki", "Jeu d'échecs", "Imprimerie", "Microscope",
+        "Satellite artificiel", "Web", "World Wide Web", "Horloge", "Boussole", "Robotique",
+        "Intelligence artificielle", "Énergie solaire", "L'Étranger", "Odyssée", "Iliade", "Don Quichotte",
+        "Fables de La Fontaine", "Roméo et Juliette", "Madame Bovary", "Le Seigneur des anneaux", "Canada",
+        "Australie", "Inde", "Égypte", "Grèce", "Suisse", "Norvège", "Mexique", "Russie", "Berlin",
+        "Tokyo", "Venise", "Sahara", "Forêt amazonienne", "Himalaya", "Mont Blanc", "Nil",
+        "Mer Méditerranée", "Grand Canyon", "Antarctique", "Groenland", "Île de Pâques", "Mont Everest"
+    ],
+    "difficile": [
+        "Siècle des Lumières", "Révolution industrielle", "Guerre de Sécession", "Empire byzantin",
+        "Bataille de Marignan", "Prise de la Bastille", "Guerre des Gaules", "Guerre d'Espagne",
+        "Guerre de Corée", "Alhambra (Grenade)", "Angkor Wat", "Sainte-Sophie (Istanbul)",
+        "Basilique Saint-Pierre", "Opéra de Sydney", "Aristote", "Platon", "Socrate", "René Descartes",
+        "Galilée (savant)", "Jean-Jacques Rousseau", "Christophe Colomb", "Marco Polo", "Frida Kahlo",
+        "Stephen Hawking", "Nikola Tesla", "Archimède", "Michel-Ange", "Auguste Rodin", "Émile Zola",
+        "Albert Camus", "Gustave Flaubert", "Honoré de Balzac", "Arthur Rimbaud", "Charles Baudelaire",
+        "Théorie de la relativité", "Mécanique quantique", "Vitesse de la lumière", "Acide désoxyribonucléique",
+        "Photosynthèse", "Évolution (biologie)", "Cerveau humain", "James Webb (télescope spatial)",
+        "Télescope spatial James-Webb", "Étoile à neutrons", "Théorie du chaos", "Thermodynamique",
+        "Hexafluorure d'uranium", "Canis lupus", "Chiroptera", "Pieuvre", "Caméléon", "Architecture",
+        "Poterie", "Le Rouge et le Noir", "Germinal (roman)", "L'Avare", "Hamlet",
+        "Vingt Mille Lieues sous les mers", "Mythologie grecque", "Conte de fées", "Go (jeu)", "Jeu de go",
+        "Cryptographie", "Moteur à combustion interne", "Madagascar", "Islande", "Kilimandjaro",
+        "Océan Pacifique", "Océan Atlantique", "Fleuve Amazone", "Mer Rouge", "Bataille d'Austerlitz",
+        "Édit de Nantes", "Congrès de Vienne", "Serment du Jeu de paume", "Mur d'Hadrien", "Pierre de Rosette"
+    ]
+}
+
+CURATED_DIFFICULTY_MAP = {
+    title: diff for diff, titles in CURATED_BY_DIFFICULTY.items() for title in titles
+}
+CURATED_DIFFICULTY_MAP.update({
+    "Pont du Golden Gate": "moyen",
+    "Grand dauphin": "facile",
+    "Dauphin": "facile",
+    "Baleine à bosse": "facile",
+    "Gizeh": "facile",
+    "Pyramide de Khéops": "facile",
+    "Tour de Londres": "facile"
+})
 
 
 def clean_html_extract(html_text: str) -> List[str]:
@@ -327,13 +404,13 @@ def calculate_article_difficulty(
     - Moyen: classic general knowledge (>= 25 langs or >= 3 500 views / 90d).
     - Difficile: more specific or specialized (fewer translations/views, but still sufficiently notable).
     """
-    if title in ALL_CURATED_TITLES and (lang_count >= 35 or pageviews_90d >= 10000):
-        return "facile"
+    if title and title in CURATED_DIFFICULTY_MAP:
+        return CURATED_DIFFICULTY_MAP[title]
 
     if is_person:
-        if lang_count >= 65 or (lang_count >= 35 and pageviews_90d >= 30000):
+        if lang_count >= 60 or (lang_count >= 35 and pageviews_90d >= 30000):
             return "facile"
-        elif lang_count >= 38 or (lang_count >= 25 and pageviews_90d >= 4000):
+        elif lang_count >= 30 or (lang_count >= 20 and pageviews_90d >= 4000):
             return "moyen"
         else:
             return "difficile"
@@ -458,7 +535,8 @@ class WikipediaClient:
         total_pviews = sum(v for v in pviews.values() if v is not None) if pviews else 0
         pageviews_90d = int(total_pviews * 1.5)
         is_person = is_person_article(real_title, page.get("pageprops", {}), html_extract)
-        difficulty = calculate_article_difficulty(lang_count, pageviews_90d, is_person, real_title)
+        curated_diff = CURATED_DIFFICULTY_MAP.get(title) or CURATED_DIFFICULTY_MAP.get(real_title)
+        difficulty = curated_diff or calculate_article_difficulty(lang_count, pageviews_90d, is_person, real_title)
 
         return {
             "title": real_title,
@@ -598,7 +676,7 @@ class WikipediaClient:
         min_person_languages_regional: Optional[int] = None,
         min_person_pageviews: Optional[int] = None,
         min_general_pageviews: Optional[int] = None,
-        max_attempts: int = 6
+        max_attempts: int = 1
     ) -> Optional[Dict[str, Any]]:
         """
         Fetches a random article from French Wikipedia (fr.wikipedia.org) tailored to the requested difficulty level.
@@ -627,20 +705,24 @@ class WikipediaClient:
         if not self.pageviews_pool:
             self._get_pageviews_pool()
 
-        # In easy / medium mode, prioritize high pageviews / curated pool
-        if curated_prob > 0 and random.random() < curated_prob and (self.pageviews_pool or ALL_CURATED_TITLES):
-            pool = list(dict.fromkeys(list(ALL_CURATED_TITLES) + self.pageviews_pool))
-            sample_candidates = random.sample(pool, min(5, len(pool)))
-            for candidate in sample_candidates:
-                art = self.fetch_article_by_title(candidate)
-                if art and count_article_words(art.get("paragraphs", [])) >= min_words:
-                    art["difficulty"] = diff_key
-                    art["pageviews_90d"] = int(art.get("pageviews_60d", 0) * 1.5)
-                    logger.info(
-                        f"Accepted notable article from popular pool for difficulty '{diff_key}': '{art['title']}' "
-                        f"({art.get('lang_count', 0)} languages)"
-                    )
-                    return art
+        # In easy / medium / hard mode, prioritize curated pool matching requested difficulty
+        if curated_prob > 0 and random.random() < curated_prob:
+            target_pool = CURATED_BY_DIFFICULTY.get(diff_key, [])
+            if target_pool:
+                sample_candidates = random.sample(target_pool, min(5, len(target_pool)))
+                for candidate in sample_candidates:
+                    art = self.fetch_article_by_title(candidate)
+                    if art and count_article_words(art.get("paragraphs", [])) >= min_words:
+                        art["difficulty"] = diff_key
+                        if not art.get("lang_count"):
+                            art["lang_count"] = 75 if diff_key == "facile" else (35 if diff_key == "moyen" else 22)
+                        if not art.get("pageviews_90d"):
+                            art["pageviews_90d"] = 35000 if diff_key == "facile" else (8000 if diff_key == "moyen" else 2200)
+                        logger.info(
+                            f"Accepted notable article from curated pool for difficulty '{diff_key}': '{art['title']}' "
+                            f"({art.get('lang_count', 0)} languages)"
+                        )
+                        return art
 
         for attempt in range(max_attempts):
             params = {
@@ -694,11 +776,11 @@ class WikipediaClient:
                 total_pviews = sum(v for v in pviews.values() if v is not None) if pviews else 0
                 pageviews_90d = int(total_pviews * 1.5)
 
-                # For hard difficulty, prefer articles that are not overly trivial
-                if diff_key == "difficile" and langs_count > 90 and total_pviews > 40000:
+                is_person = is_person_article(title, page.get("pageprops", {}), raw_extract)
+                candidate_diff = calculate_article_difficulty(langs_count, pageviews_90d, is_person, title)
+                if candidate_diff != diff_key:
                     continue
 
-                is_person = is_person_article(title, page.get("pageprops", {}), raw_extract)
                 thumbnail = page.get("thumbnail", {}).get("source", "")
                 page_url = page.get("fullurl", f"https://fr.wikipedia.org/wiki/{urllib.parse.quote(title)}")
 
@@ -734,14 +816,20 @@ class WikipediaClient:
         fallback = self.fetch_curated_article(difficulty=diff_key)
         if fallback:
             fallback["difficulty"] = diff_key
-            fallback["pageviews_90d"] = int(fallback.get("pageviews_60d", 0) * 1.5) or 25000
+            if not fallback.get("lang_count"):
+                fallback["lang_count"] = 75 if diff_key == "facile" else (35 if diff_key == "moyen" else 22)
+            if not fallback.get("pageviews_90d"):
+                fallback["pageviews_90d"] = 35000 if diff_key == "facile" else (8000 if diff_key == "moyen" else 2200)
         return fallback
 
     fetch_notable_random_wikipedia_article = fetch_random_wikipedia_article
 
     def fetch_curated_article(self, category: Optional[str] = None, difficulty: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Picks a random article from the curated collections and fetches it."""
-        if category and category in THEMES_ARTICLES:
+        diff_key = difficulty.lower() if difficulty and difficulty.lower() in ("facile", "moyen", "difficile") else None
+        if diff_key and diff_key in CURATED_BY_DIFFICULTY:
+            titles_pool = CURATED_BY_DIFFICULTY[diff_key]
+        elif category and category in THEMES_ARTICLES:
             titles_pool = THEMES_ARTICLES[category]
         else:
             titles_pool = ALL_CURATED_TITLES
@@ -750,8 +838,12 @@ class WikipediaClient:
         for title in chosen_titles:
             article = self.fetch_article_by_title(title)
             if article and count_article_words(article.get("paragraphs", [])) >= 50:
-                if difficulty:
-                    article["difficulty"] = difficulty
+                if diff_key:
+                    article["difficulty"] = diff_key
+                    if not article.get("lang_count"):
+                        article["lang_count"] = 75 if diff_key == "facile" else (35 if diff_key == "moyen" else 22)
+                    if not article.get("pageviews_90d"):
+                        article["pageviews_90d"] = 35000 if diff_key == "facile" else (8000 if diff_key == "moyen" else 2200)
                 return article
 
         # Fallback to local curated_articles.json if network is unavailable
@@ -761,10 +853,17 @@ class WikipediaClient:
                 with open(json_path, "r", encoding="utf-8") as f:
                     local_curated = json.load(f)
                     if local_curated:
-                        chosen = dict(random.choice(list(local_curated.values())))
+                        candidates = list(local_curated.values())
+                        if diff_key:
+                            filtered = [c for c in candidates if CURATED_DIFFICULTY_MAP.get(c.get("title", "")) == diff_key]
+                            if filtered:
+                                candidates = filtered
+                        chosen = dict(random.choice(candidates))
                         if count_article_words(chosen.get("paragraphs", [])) >= 50:
-                            chosen["difficulty"] = difficulty or chosen.get("difficulty", "facile")
-                            chosen["pageviews_90d"] = chosen.get("pageviews_90d", 25000)
+                            chosen_diff = diff_key or CURATED_DIFFICULTY_MAP.get(chosen.get("title", ""), "moyen")
+                            chosen["difficulty"] = chosen_diff
+                            chosen["lang_count"] = chosen.get("lang_count") or (75 if chosen_diff == "facile" else (35 if chosen_diff == "moyen" else 22))
+                            chosen["pageviews_90d"] = chosen.get("pageviews_90d") or (35000 if chosen_diff == "facile" else (8000 if chosen_diff == "moyen" else 2200))
                             return chosen
         except Exception as e:
             logger.debug(f"Failed loading offline curated: {e}")
