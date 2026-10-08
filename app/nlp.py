@@ -1,10 +1,11 @@
+from __future__ import annotations
 import unicodedata
 import re
 import os
 import math
 import gzip
 import json
-from typing import Set, Dict, Optional, List
+from typing import Set, Dict, Optional, List, Tuple, Any
 from rapidfuzz import fuzz
 
 try:
