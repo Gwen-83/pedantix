@@ -45,6 +45,7 @@ class RoomPlayer:
         self.last_count: int = 0
         self.last_score: int = 0
         self.connected = True
+        self.disconnected_at: Optional[float] = None
         self.is_spectator = False
 
     def refresh_score(self):
@@ -68,7 +69,8 @@ class RoomPlayer:
             "last_status": self.last_status,
             "last_count": self.last_count,
             "last_score": self.last_score,
-            "connected": self.connected
+            "connected": self.connected,
+            "disconnected_at": self.disconnected_at
         }
 
 
@@ -497,6 +499,7 @@ class Room:
                 player.refresh_score()
                 self.add_activity(f"✏️ {old_name} s'appelle maintenant {player_name}", "rename")
             player.connected = True
+            player.disconnected_at = None
             player.refresh_score()
             # If no host exists, assign this player as host
             if not self.host_player_id or self.host_player_id not in self.players:
@@ -1310,6 +1313,7 @@ class Room:
             self.ws_player_map[ws] = player_id
             if player_id in self.players:
                 self.players[player_id].connected = True
+                self.players[player_id].disconnected_at = None
 
     def remove_websocket(self, ws: WebSocket):
         self.websockets.discard(ws)
@@ -1324,29 +1328,22 @@ class Room:
             if not has_other_ws:
                 player = self.players[pid]
                 player.connected = False
-                if self.status == "lobby":
-                    await self.remove_player(pid, reason="disconnect")
-                else:
-                    # In game: check if ALL players are disconnected
-                    any_connected = any(p.connected for p in self.players.values())
-                    if not any_connected and self.room_id != "default":
-                        room_manager.delete_room(self.room_id)
+                player.disconnected_at = time.time()
+
+                if self.surrender_in_progress:
+                    connected_pids = {p.player_id for p in self.players.values() if p.connected}
+                    if connected_pids and self.surrender_votes >= connected_pids:
+                        await self.execute_surrender()
                         return
 
-                    if self.surrender_in_progress:
-                        connected_pids = {p.player_id for p in self.players.values() if p.connected}
-                        if connected_pids and self.surrender_votes >= connected_pids:
-                            await self.execute_surrender()
-                            return
-
-                    await self.broadcast({
-                        "type": "player_disconnected",
-                        "player_id": pid,
-                        "player_name": player.name,
-                        "leaderboard": self.get_leaderboard(),
-                        "teams": self.get_teams_data(),
-                        "can_start": self.can_start()
-                    })
+                await self.broadcast({
+                    "type": "player_disconnected",
+                    "player_id": pid,
+                    "player_name": player.name,
+                    "leaderboard": self.get_leaderboard(),
+                    "teams": self.get_teams_data(),
+                    "can_start": self.can_start()
+                })
 
     async def remove_player(self, player_id: str, reason: str = "leave") -> bool:
         if player_id not in self.players:
@@ -1434,6 +1431,7 @@ class Room:
             self.ws_player_map[ws] = player_id
             if player_id in self.players:
                 self.players[player_id].connected = True
+                self.players[player_id].disconnected_at = None
 
     async def broadcast(self, message: Dict[str, Any]):
         to_remove = set()
@@ -1653,20 +1651,42 @@ class RoomManager:
             room.cleanup()
             logger.info(f"Room « {clean_id} » supprimée car vide.")
 
-    def list_active_rooms(self) -> List[Dict[str, Any]]:
-        """Returns a list of all active public rooms with player counts and statuses."""
+    def cleanup_abandoned_rooms(self):
+        """Cleans up inactive rooms safely without dropping rooms during temporary disconnects/refreshes."""
         now = time.time()
-        # Clean up any empty rooms (older than 30s)
-        empty_ids = [
-            rid for rid, r in list(self.rooms.items())
-            if rid != "default"
-            and (now - r.created_at > 30)
-            and (len(r.players) == 0 or not any(p.connected for p in r.players.values()))
-        ]
-        for rid in empty_ids:
+        to_delete = []
+        for rid, r in list(self.rooms.items()):
+            if rid == "default":
+                continue
+            # Solo rooms: delete after 30 min of total inactivity
+            if rid.startswith("solo-"):
+                if len(r.players) == 0 and (now - r.created_at > 1800):
+                    to_delete.append(rid)
+                elif len(r.players) > 0 and all(
+                    not p.connected and p.disconnected_at and (now - p.disconnected_at > 1800)
+                    for p in r.players.values()
+                ):
+                    to_delete.append(rid)
+                continue
+
+            # Multiplayer rooms: delete if 0 players for > 5 min, or all players disconnected for > 10 min
+            if len(r.players) == 0 and (now - r.created_at > 300):
+                to_delete.append(rid)
+            elif len(r.players) > 0 and all(
+                not p.connected and p.disconnected_at and (now - p.disconnected_at > 600)
+                for p in r.players.values()
+            ):
+                to_delete.append(rid)
+
+        for rid in to_delete:
             self.delete_room(rid)
 
+    def list_active_rooms(self) -> List[Dict[str, Any]]:
+        """Returns a list of all active public rooms with player counts and statuses."""
+        self.cleanup_abandoned_rooms()
+
         active = []
+        now = time.time()
         for r in list(self.rooms.values()):
             if r.room_id.startswith("solo-"):
                 continue  # Never expose private solo rooms
@@ -1674,9 +1694,11 @@ class RoomManager:
             for p in r.players.values():
                 if p.player_id in active_ws_pids:
                     p.connected = True
+                    p.disconnected_at = None
             connected_names = [p.name for p in r.players.values() if p.connected]
             active_count = len(connected_names)
-            if active_count == 0 and r.room_id != "default" and (now - r.created_at > 30):
+            # Only hide from browser list if 0 connected players AND created > 60s ago
+            if active_count == 0 and r.room_id != "default" and (now - r.created_at > 60):
                 continue
             active.append({
                 "room_id": r.room_id,

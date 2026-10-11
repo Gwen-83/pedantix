@@ -309,11 +309,13 @@ async def join_room(req: RoomJoinRequest):
     if req.room_id.startswith("solo-") and req.difficulty and req.difficulty != room.difficulty:
         new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty)
         room.set_difficulty(req.difficulty, new_article=new_art)
+    is_reconnect = req.player_id in room.players
     player = room.get_or_create_player(req.player_id, req.player_name)
 
     # Broadcast player joined to all active websockets in this room
     await room.broadcast({
         "type": "player_joined",
+        "is_reconnect": is_reconnect,
         "player": player.to_dict(),
         "game_mode": room.game_mode,
         "difficulty": room.difficulty,

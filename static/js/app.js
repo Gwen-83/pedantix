@@ -1715,6 +1715,40 @@ class PedantixApp {
       if (!resp.ok) throw new Error('Erreur de connexion');
       const data = await resp.json();
 
+      if (data.room_id) {
+        this.roomId = data.room_id;
+      }
+      if (this.dom.roomCodeDisplay) {
+        this.dom.roomCodeDisplay.textContent = this.roomId;
+      }
+      if (this.dom.lobbyRoomNameDisplay) {
+        this.dom.lobbyRoomNameDisplay.textContent = this.roomId;
+      }
+
+      // Synchronize play mode and room in URL and localStorage so reload never loses state
+      try {
+        const currentUrl = new URL(window.location.href);
+        if (this.isSoloMode) {
+          localStorage.setItem('pedantix_play_mode', 'solo');
+          localStorage.removeItem('pedantix_last_room');
+          if (currentUrl.searchParams.get('mode') !== 'solo' || currentUrl.searchParams.has('room')) {
+            currentUrl.searchParams.set('mode', 'solo');
+            currentUrl.searchParams.delete('room');
+            window.history.replaceState({}, '', currentUrl.toString());
+          }
+        } else if (this.roomId && !this.roomId.startsWith('solo-')) {
+          localStorage.setItem('pedantix_play_mode', 'multi');
+          localStorage.setItem('pedantix_last_room', this.roomId);
+          if (currentUrl.searchParams.get('room') !== this.roomId || currentUrl.searchParams.has('mode')) {
+            currentUrl.searchParams.delete('mode');
+            currentUrl.searchParams.set('room', this.roomId);
+            window.history.replaceState({}, '', currentUrl.toString());
+          }
+        }
+      } catch (e) {
+        console.warn('URL sync error:', e);
+      }
+
       this.sessionId = data.session.session_id;
       this.seed = data.seed;
       if (data.guess_token) this.guessToken = data.guess_token;
@@ -1758,7 +1792,12 @@ class PedantixApp {
       if (data.chat_messages) this.loadHistoricalChatMessages(data.chat_messages);
 
       this.updateModeUI();
+      this.renderTeamsRoster();
+      this.renderTeamConfrontation();
       this.syncRoomUI();
+      if (this.isWon) {
+        this.handleVictory();
+      }
       this.initWebSocket();
 
       // Check current phase
@@ -1997,6 +2036,12 @@ class PedantixApp {
         if (msg.is_spectator !== undefined) {
           this.isSpectator = !!msg.is_spectator;
           this.updateSpectatorUI();
+        }
+      }
+      if (msg.type === 'player_joined' && msg.player && msg.player.player_id !== this.playerId) {
+        if (!msg.is_reconnect) {
+          this.playTone('join');
+          this.showToast(`👋 ${msg.player.name} a rejoint le salon !`);
         }
       }
       if (msg.type === 'player_spectator_changed' && msg.player_id !== this.playerId && msg.player_name) {
