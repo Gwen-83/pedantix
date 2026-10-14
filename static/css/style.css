@@ -5870,6 +5870,48 @@ body.solo-mode #host-pill {
   color: #fca5a5;
 }
 
+.admin-users-panel {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 1.25rem;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+}
+
+.admin-users-panel h4,
+.admin-users-panel p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.admin-users-panel label {
+  color: #cbd5e1;
+  font-size: 0.88rem;
+}
+
+.admin-users-panel .auth-text-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.admin-users-panel p.error {
+  color: #fca5a5;
+}
+
+@media (max-width: 560px) {
+  .admin-users-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-users-panel h4,
+  .admin-users-panel p {
+    grid-column: auto;
+  }
+}
+
 .stats-fav-words-section {
   margin: 1.4rem 0 0.8rem;
 }

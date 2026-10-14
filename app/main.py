@@ -28,7 +28,9 @@ from app.database import (
     authenticate_user,
     record_user_guess_word,
     record_user_game_finish,
+    reset_user_password,
     get_user_stats,
+    get_all_usernames,
     record_played_article,
     get_recently_played_articles,
     is_valid_user_identifier,
@@ -148,6 +150,14 @@ class AuthRegisterRequest(BaseModel):
 class AuthLoginRequest(BaseModel):
     username: str
     password: str
+
+class AdminUsersRequest(BaseModel):
+    admin_username: str
+    admin_password: str
+
+class AdminPasswordResetRequest(AdminUsersRequest):
+    target_username: str
+    new_password: str
 
 class HintRequest(BaseModel):
     session_id: str
@@ -1104,6 +1114,8 @@ async def check_user_exists(req: CheckUsernameRequest):
 
 @app.post("/api/auth/register")
 async def register_account(req: AuthRegisterRequest):
+    if req.username.strip().casefold() == "gwen" and not user_exists("Gwen"):
+        raise HTTPException(status_code=403, detail="Le compte administrateur Gwen est réservé.")
     res = create_user(req.username, req.password)
     if "error" in res:
         raise HTTPException(status_code=400, detail=res["error"])
@@ -1116,6 +1128,39 @@ async def login_account(req: AuthLoginRequest):
     if "error" in res:
         raise HTTPException(status_code=401, detail=res["error"])
     return res
+
+
+def _verify_admin_credentials(username: str, password: str) -> bool:
+    if username.strip() != "Gwen":
+        return False
+    result = authenticate_user(username, password)
+    return result.get("status") == "ok" and result.get("username") == "Gwen"
+
+
+@app.post("/api/admin/users")
+async def list_users_for_admin(req: AdminUsersRequest):
+    if not _verify_admin_credentials(req.admin_username, req.admin_password):
+        raise HTTPException(status_code=403, detail="Accès réservé au compte administrateur Gwen.")
+    try:
+        return {"users": get_all_usernames()}
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/admin/reset-password")
+async def admin_reset_password(req: AdminPasswordResetRequest):
+    if not _verify_admin_credentials(req.admin_username, req.admin_password):
+        raise HTTPException(status_code=403, detail="Accès réservé au compte administrateur Gwen.")
+    if not req.target_username.strip():
+        raise HTTPException(status_code=400, detail="Sélectionnez un compte utilisateur.")
+    if len(req.new_password) < 3:
+        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit contenir au moins 3 caractères.")
+    try:
+        if not reset_user_password(req.target_username, req.new_password):
+            raise HTTPException(status_code=404, detail="Compte utilisateur introuvable.")
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"status": "ok", "username": req.target_username.strip()}
 
 
 @app.get("/api/user/stats")

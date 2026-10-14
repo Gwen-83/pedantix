@@ -444,6 +444,14 @@ class PedantixApp {
       statsUserName: document.getElementById('stats-user-name'),
       statsUserScore: document.getElementById('stats-user-score'),
       btnAuthLogout: document.getElementById('btn-auth-logout'),
+      btnAdminUsers: document.getElementById('btn-admin-users'),
+      adminUsersPanel: document.getElementById('admin-users-panel'),
+      adminCurrentPassword: document.getElementById('admin-current-password'),
+      btnAdminLoadUsers: document.getElementById('btn-admin-load-users'),
+      adminTargetUser: document.getElementById('admin-target-user'),
+      adminNewPassword: document.getElementById('admin-new-password'),
+      btnAdminResetPassword: document.getElementById('btn-admin-reset-password'),
+      adminUsersMessage: document.getElementById('admin-users-message'),
       sPlayed: document.getElementById('s-played'),
       sWon: document.getElementById('s-won'),
       sWinRate: document.getElementById('s-winrate'),
@@ -802,6 +810,30 @@ class PedantixApp {
     if (this.dom.btnAuthLogout) {
       this.dom.btnAuthLogout.addEventListener('click', () => this.handleAuthLogout());
     }
+    if (this.dom.btnAdminUsers) {
+      this.dom.btnAdminUsers.addEventListener('click', () => {
+        const panel = this.dom.adminUsersPanel;
+        if (panel) {
+          const isOpen = panel.style.display === 'grid';
+          panel.style.display = isOpen ? 'none' : 'grid';
+          if (isOpen) {
+            if (this.dom.adminCurrentPassword) this.dom.adminCurrentPassword.value = '';
+            if (this.dom.adminNewPassword) this.dom.adminNewPassword.value = '';
+            if (this.dom.adminTargetUser) {
+              this.dom.adminTargetUser.replaceChildren(new Option('Chargez d’abord les comptes', ''));
+              this.dom.adminTargetUser.disabled = true;
+            }
+            this.setAdminUsersMessage('');
+          }
+        }
+      });
+    }
+    if (this.dom.btnAdminLoadUsers) {
+      this.dom.btnAdminLoadUsers.addEventListener('click', () => this.loadAdminUsers());
+    }
+    if (this.dom.btnAdminResetPassword) {
+      this.dom.btnAdminResetPassword.addEventListener('click', () => this.adminResetPassword());
+    }
 
     // Surrender buttons
     const handleSurrender = () => this.handleSurrenderClick();
@@ -986,6 +1018,7 @@ class PedantixApp {
         const id = e.currentTarget.getAttribute('data-close');
         if (id) {
           if (id === 'lobby-modal') this.lobbyMinimized = true;
+          if (id === 'stats-modal') this.clearAdminUsersPanel();
           this.closeModal(document.getElementById(id));
         } else {
           const overlay = e.currentTarget.closest('.modal-overlay');
@@ -1002,6 +1035,7 @@ class PedantixApp {
         if (e.target === overlay) {
           if (overlay === this.dom.authModal && !this.authUser) return;
           if (overlay === this.dom.lobbyModal) this.lobbyMinimized = true;
+          if (overlay === this.dom.statsModal) this.clearAdminUsersPanel();
           this.closeModal(overlay);
         }
       });
@@ -4888,6 +4922,11 @@ class PedantixApp {
   // =========================================================================
 
   async refreshStatsModal() {
+    if (this.dom.btnAdminUsers) {
+      this.dom.btnAdminUsers.style.display = this.authUser && this.authUser.trim() === 'Gwen'
+        ? 'inline-flex'
+        : 'none';
+    }
     const formatAverage = value => value === null || value === undefined ? '—' : Number(value).toFixed(1);
     const formatDuration = value => {
       if (value === null || value === undefined) return '—';
@@ -4968,6 +5007,78 @@ class PedantixApp {
         this.dom.statsRecentList.innerHTML = '<tr><td colspan="6" style="text-align:center; opacity:0.6;">Statistiques momentanément indisponibles</td></tr>';
       }
     }
+  }
+
+  async loadAdminUsers() {
+    const password = this.dom.adminCurrentPassword ? this.dom.adminCurrentPassword.value : '';
+    if (!password) {
+      this.setAdminUsersMessage('Saisissez le mot de passe actuel de Gwen.', true);
+      return;
+    }
+    try {
+      const resp = await fetch(this.getApiUrl('/api/admin/users'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_username: this.authUser, admin_password: password })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Impossible de charger les comptes.');
+      const select = this.dom.adminTargetUser;
+      if (!select) return;
+      select.replaceChildren(new Option('Sélectionner un compte', ''));
+      data.users.forEach(username => select.add(new Option(username, username)));
+      select.disabled = false;
+      this.setAdminUsersMessage(`${data.users.length} compte(s) chargé(s).`);
+    } catch (error) {
+      this.setAdminUsersMessage(error.message || 'Erreur lors du chargement des comptes.', true);
+    }
+  }
+
+  async adminResetPassword() {
+    const adminPassword = this.dom.adminCurrentPassword ? this.dom.adminCurrentPassword.value : '';
+    const targetUsername = this.dom.adminTargetUser ? this.dom.adminTargetUser.value : '';
+    const newPassword = this.dom.adminNewPassword ? this.dom.adminNewPassword.value : '';
+    if (!adminPassword || !targetUsername || !newPassword) {
+      this.setAdminUsersMessage('Saisissez le mot de passe de Gwen, sélectionnez un compte et entrez le nouveau mot de passe.', true);
+      return;
+    }
+    if (!confirm(`Réinitialiser le mot de passe de « ${targetUsername} » ?`)) return;
+    try {
+      const resp = await fetch(this.getApiUrl('/api/admin/reset-password'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admin_username: this.authUser,
+          admin_password: adminPassword,
+          target_username: targetUsername,
+          new_password: newPassword
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'La réinitialisation a échoué.');
+      if (this.dom.adminNewPassword) this.dom.adminNewPassword.value = '';
+      this.setAdminUsersMessage(`Mot de passe de « ${data.username} » réinitialisé.`);
+    } catch (error) {
+      this.setAdminUsersMessage(error.message || 'Erreur lors de la réinitialisation.', true);
+    }
+  }
+
+  setAdminUsersMessage(message, isError = false) {
+    const element = this.dom.adminUsersMessage;
+    if (!element) return;
+    element.textContent = message;
+    element.classList.toggle('error', isError);
+  }
+
+  clearAdminUsersPanel() {
+    if (this.dom.adminCurrentPassword) this.dom.adminCurrentPassword.value = '';
+    if (this.dom.adminNewPassword) this.dom.adminNewPassword.value = '';
+    if (this.dom.adminTargetUser) {
+      this.dom.adminTargetUser.replaceChildren(new Option('Chargez d’abord les comptes', ''));
+      this.dom.adminTargetUser.disabled = true;
+    }
+    if (this.dom.adminUsersPanel) this.dom.adminUsersPanel.style.display = 'none';
+    this.setAdminUsersMessage('');
   }
 
   // =========================================================================
@@ -5168,6 +5279,7 @@ class PedantixApp {
   }
 
   handleAuthLogout() {
+    this.clearAdminUsersPanel();
     localStorage.removeItem('pedantix_auth_user');
     localStorage.removeItem('pedantix_auth_token');
     this.authUser = null;

@@ -805,6 +805,34 @@ def authenticate_user(username: str, password: str) -> Dict[str, Any]:
         return {"error": "Erreur de connexion."}
 
 
+def get_all_usernames() -> List[str]:
+    try:
+        with DatabaseContext() as db:
+            db.execute("SELECT username FROM users ORDER BY LOWER(username)")
+            return [row["username"] for row in db.fetchall()]
+    except Exception as e:
+        logger.error(f"get_all_usernames: {e}")
+        raise RuntimeError("Impossible de charger les comptes utilisateurs.") from e
+
+
+def reset_user_password(username: str, password: str) -> bool:
+    name = username.strip()
+    try:
+        with DatabaseContext() as db:
+            db.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(?)", (name,))
+            row = db.fetchone()
+            if not row:
+                return False
+            db.execute(
+                "UPDATE users SET password_hash = ? WHERE username = ?",
+                (hash_password(password), row["username"]),
+            )
+        return True
+    except Exception as e:
+        logger.error(f"reset_user_password: {e}")
+        raise RuntimeError("Impossible de réinitialiser le mot de passe.") from e
+
+
 def _record_user_guess_word_sync(username: str, word: str):
     if not username or not word:
         return

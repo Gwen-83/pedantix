@@ -645,7 +645,25 @@
           <button type="button" id="btn-auth-logout" class="btn-logout-small" title="Changer de compte utilisateur">
             🚪 Changer de compte
           </button>
+          <button type="button" id="btn-admin-users" class="btn-logout-small" style="display: none;">
+            🔐 Gérer les mots de passe
+          </button>
         </div>
+
+        <section id="admin-users-panel" class="admin-users-panel" style="display: none;">
+          <h4>Réinitialiser un mot de passe</h4>
+          <label for="admin-current-password">Mot de passe actuel du compte Gwen</label>
+          <input type="password" id="admin-current-password" class="auth-text-input" autocomplete="current-password">
+          <button type="button" id="btn-admin-load-users" class="btn-auth-primary">Charger les comptes</button>
+          <label for="admin-target-user">Compte utilisateur</label>
+          <select id="admin-target-user" class="auth-text-input" disabled>
+            <option value="">Chargez d’abord les comptes</option>
+          </select>
+          <label for="admin-new-password">Nouveau mot de passe</label>
+          <input type="password" id="admin-new-password" class="auth-text-input" minlength="3" autocomplete="new-password">
+          <button type="button" id="btn-admin-reset-password" class="btn-auth-primary">Réinitialiser le mot de passe</button>
+          <p id="admin-users-message" role="status" aria-live="polite"></p>
+        </section>
 
         <div class="stats-row">
           <div class="stat-box">
