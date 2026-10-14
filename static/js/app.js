@@ -35,7 +35,7 @@ class PedantixApp {
     const roomParam = urlParams.get('room');
 
     // Default mode is Solo unless explicitly invited to a room with ?room or requested
-    this.isSoloMode = modeParam === 'solo' || (!roomParam && localStorage.getItem('pedantix_play_mode') !== 'multi');
+    this.isSoloMode = modeParam === 'solo' || (modeParam !== 'multi' && !roomParam && localStorage.getItem('pedantix_play_mode') !== 'multi');
 
     this.playerId = localStorage.getItem('pedantix_player_id');
     if (!this.playerId) {
@@ -43,14 +43,12 @@ class PedantixApp {
       localStorage.setItem('pedantix_player_id', this.playerId);
     }
 
-    const savedLastRoom = localStorage.getItem('pedantix_last_room');
-    const validSavedRoom = (savedLastRoom && !savedLastRoom.startsWith('solo-')) ? savedLastRoom : null;
     const validRoomParam = (roomParam && !roomParam.startsWith('solo-')) ? roomParam : null;
 
     if (this.isSoloMode) {
       this.roomId = `solo-${this.playerId}`;
     } else {
-      this.roomId = validRoomParam || validSavedRoom || `salon-${Math.floor(Math.random() * 899 + 100)}`;
+      this.roomId = validRoomParam || '';
     }
 
     this.authUser = localStorage.getItem('pedantix_auth_user') || null;
@@ -162,8 +160,12 @@ class PedantixApp {
     }
     this.updateDifficultyUI(this.currentDifficulty);
 
-    // Connect to room & start game
-    this.joinRoom();
+    // Only join multiplayer rooms selected explicitly or opened through an invitation.
+    if (this.isSoloMode || this.roomId) {
+      this.joinRoom();
+    } else {
+      this.openMultiplayerChoice();
+    }
 
     // Check user authentication
     this.checkAuthOnLoad();
@@ -256,6 +258,9 @@ class PedantixApp {
 
       // Rooms Browser Modal
       roomsModal: document.getElementById('rooms-modal'),
+      multiplayerChoiceModal: document.getElementById('multiplayer-choice-modal'),
+      btnChoiceJoinRoom: document.getElementById('btn-choice-join-room'),
+      btnChoiceCreateRoom: document.getElementById('btn-choice-create-room'),
       btnModalCreateRoom: document.getElementById('btn-modal-create-room'),
       inputJoinCode: document.getElementById('input-join-code'),
       btnModalJoinCode: document.getElementById('btn-modal-join-code'),
@@ -672,6 +677,18 @@ class PedantixApp {
     }
     if (this.dom.btnModalCreateRoom) {
       this.dom.btnModalCreateRoom.addEventListener('click', () => this.createNewRoom());
+    }
+    if (this.dom.btnChoiceJoinRoom) {
+      this.dom.btnChoiceJoinRoom.addEventListener('click', () => {
+        this.closeModal(this.dom.multiplayerChoiceModal);
+        this.openRoomsBrowser();
+      });
+    }
+    if (this.dom.btnChoiceCreateRoom) {
+      this.dom.btnChoiceCreateRoom.addEventListener('click', () => {
+        this.closeModal(this.dom.multiplayerChoiceModal);
+        this.createMultiplayerRoom();
+      });
     }
     if (this.dom.btnRefreshRooms) {
       this.dom.btnRefreshRooms.addEventListener('click', () => this.fetchRoomsList());
@@ -1339,6 +1356,7 @@ class PedantixApp {
     if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
 
     this.closeModal(this.dom.roomsModal);
+    this.closeModal(this.dom.multiplayerChoiceModal);
     this.showToast(`Salon « ${cleanId} » rejoint 🌐`);
     this.fetchNetworkInfo();
     this.joinRoom();
@@ -1347,10 +1365,14 @@ class PedantixApp {
   async openRoomsBrowser() {
     this.playTone('click');
     if (this.dom.currentRoomNameText) {
-      this.dom.currentRoomNameText.textContent = this.isSoloMode ? '(Mode Solo)' : this.roomId;
+      this.dom.currentRoomNameText.textContent = this.isSoloMode ? '(Mode Solo)' : (this.roomId || 'Aucun salon sélectionné');
     }
     this.openModal(this.dom.roomsModal);
     await this.fetchRoomsList();
+  }
+
+  openMultiplayerChoice() {
+    this.openModal(this.dom.multiplayerChoiceModal);
   }
 
   async fetchRoomsList() {
@@ -1490,6 +1512,7 @@ class PedantixApp {
       if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
 
       this.closeModal(this.dom.roomsModal);
+      this.closeModal(this.dom.multiplayerChoiceModal);
       this.showToast(`Salon « ${this.roomId} » créé ! Vous êtes l'Host 👑`);
       this.fetchNetworkInfo();
       await this.joinRoom();
@@ -1757,6 +1780,10 @@ class PedantixApp {
   }
 
   async joinRoom() {
+    if (!this.roomId) {
+      this.openMultiplayerChoice();
+      return;
+    }
     this.startTime = Date.now();
     this.previousInputs = [];
     this.prevInputIdx = -1;
@@ -2952,7 +2979,10 @@ class PedantixApp {
 
   async switchPlayMode(mode) {
     const isSolo = mode === 'solo';
-    if (isSolo === this.isSoloMode) return;
+    if (isSolo === this.isSoloMode) {
+      if (!isSolo && !this.roomId) this.openMultiplayerChoice();
+      return;
+    }
     this.playTone('click');
 
     const previousRoomId = this.roomId;
@@ -3000,7 +3030,11 @@ class PedantixApp {
         window.history.replaceState({}, '', url.toString());
         await this.joinRoom();
       } else {
-        await this.createMultiplayerRoom();
+        this.roomId = '';
+        url.searchParams.delete('room');
+        url.searchParams.delete('mode');
+        window.history.replaceState({}, '', url.toString());
+        this.openMultiplayerChoice();
       }
     }
   }

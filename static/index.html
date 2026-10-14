@@ -121,7 +121,7 @@
 
               <span class="mode-badge" id="mode-badge" style="display: none;">Concours Réseau</span>
 
-              <span class="room-badge" id="room-badge" title="Cliquez pour voir les salons disponibles">Salon : <b id="room-code-display">default</b></span>
+              <span class="room-badge" id="room-badge" title="Cliquez pour voir les salons disponibles">Salon : <b id="room-code-display">Aucun</b></span>
               <button type="button" id="btn-browse-rooms" class="btn-browse-rooms" title="Voir les salons multijoueur disponibles">🔍 Trouver une partie</button>
               <button type="button" id="btn-create-room" class="btn-create-room" title="Créer un nouveau salon">➕ Créer</button>
               <button type="button" id="btn-header-leave-room" class="btn-header-leave" style="display: none;" title="Quitter ce salon et revenir en mode solo">🚪 Quitter</button>
@@ -1080,6 +1080,32 @@
     </div>
   </div>
 
+  <!-- MODAL: CHOIX MULTIJOUEUR -->
+  <div class="modal-overlay" id="multiplayer-choice-modal">
+    <div class="modal multiplayer-choice-content" role="dialog" aria-modal="true" aria-labelledby="multiplayer-choice-title">
+      <button class="modal-close" data-close="multiplayer-choice-modal" aria-label="Fermer">&times;</button>
+      <div class="modal-header">
+        <span class="modal-header-icon">🌐</span>
+        <div class="modal-title-col">
+          <h3 id="multiplayer-choice-title">Mode multijoueur</h3>
+          <p class="modal-subtitle">Que souhaitez-vous faire ?</p>
+        </div>
+      </div>
+      <div class="multiplayer-choice-options">
+        <button type="button" id="btn-choice-join-room" class="multiplayer-choice-card">
+          <span class="multiplayer-choice-icon">🔍</span>
+          <span class="multiplayer-choice-title">Rejoindre un salon</span>
+          <span class="multiplayer-choice-description">Trouver une partie publique ou rejoindre avec un code.</span>
+        </button>
+        <button type="button" id="btn-choice-create-room" class="multiplayer-choice-card create">
+          <span class="multiplayer-choice-icon">➕</span>
+          <span class="multiplayer-choice-title">Créer un salon</span>
+          <span class="multiplayer-choice-description">Ouvrir un nouveau salon et inviter vos amis.</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: SALONS MULTIJOUEUR (ROOM BROWSER & DISCOVERY) -->
   <div class="modal-overlay" id="rooms-modal">
     <div class="modal modal-wide rooms-modal-content">
@@ -1110,7 +1136,7 @@
 
         <!-- Current Room Info Bar -->
         <div class="current-room-bar">
-          <span>Vous êtes dans le salon : <strong id="current-room-name-text">default</strong></span>
+          <span>Vous êtes dans le salon : <strong id="current-room-name-text">Aucun salon sélectionné</strong></span>
           <button type="button" id="btn-copy-current-link" class="btn-copy-small">📋 Copier le lien d'invitation</button>
         </div>
 
