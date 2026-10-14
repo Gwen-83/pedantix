@@ -127,7 +127,7 @@
               <button type="button" id="btn-header-leave-room" class="btn-header-leave" style="display: none;" title="Quitter ce salon et revenir en mode solo">🚪 Quitter</button>
               <button type="button" id="btn-header-invite" class="btn-header-invite" title="Copier le lien d'invitation pour vos amis">🔗 Inviter</button>
               <button type="button" id="btn-surrender-room" class="btn-surrender-room" style="display: none;" title="Proposer d'abandonner la partie en cours">🏳️ Abandonner</button>
-              <span class="hint-timer-badge" id="hint-timer-badge" style="display: none;" title="Un indice lettre est révélé toutes les 5 minutes si personne n'a trouvé !">💡 Lettre dans <b id="hint-timer-val">5:00</b></span>
+              <span class="word-hint-timer-badge" id="word-hint-timer-badge" style="display: none;" title="Un mot est révélé après 5 minutes, puis toutes les 90 secondes.">💡 Mot dans <b id="word-hint-timer-val">5:00</b></span>
               <span class="host-pill" id="host-pill" style="display: none;">👑 Host</span>
             </div>
           </div>
@@ -513,7 +513,7 @@
           <b>💡 Astuce Pédantix :</b> Cliquez sur n'importe quel bloc masqué dans l'article pour afficher son nombre exact de lettres en cyan lumineux pendant 2 secondes !
         </div>
         <div class="rule-card hint-card">
-          <b>⏱️ Indice automatique des 5 min :</b> Toutes les 5 minutes, si aucun joueur ni équipe n'a trouvé, une lettre est révélée partout où elle se trouve dans l'article (sans afficher le reste du mot) pour vous débloquer !
+          <b>⏱️ Indice automatique :</b> Après les 5 premières minutes, un mot encore masqué est dévoilé toutes les 90 secondes. En multijoueur, il doit être masqué pour toutes les équipes ou tous les joueurs actifs ; en solo, pour vous.
         </div>
         
         <h4 style="margin: 1.2rem 0 0.5rem; font-size: 1.05rem;">Code couleur des propositions :</h4>
@@ -629,7 +629,7 @@
         <span class="modal-header-icon">📊</span>
         <div class="modal-title-col">
           <h3>Statistiques & Performances</h3>
-          <p class="modal-subtitle">Progression enregistrée sur votre compte</p>
+          <p class="modal-subtitle">Progression associée à ce pseudo</p>
         </div>
       </div>
       <div class="modal-body">
@@ -650,24 +650,59 @@
         <div class="stats-row">
           <div class="stat-box">
             <div class="stat-number" id="s-played">0</div>
-            <div class="stat-desc">Parties jouées</div>
+            <div class="stat-desc">Manches suivies</div>
           </div>
           <div class="stat-box victory-stat-box">
             <div class="stat-number" id="s-won">0</div>
-            <div class="stat-desc">Victoires</div>
+            <div class="stat-desc">Titres trouvés</div>
           </div>
           <div class="stat-box">
             <div class="stat-number" id="s-winrate">0%</div>
-            <div class="stat-desc">Taux de victoire</div>
+            <div class="stat-desc">Réussite globale</div>
           </div>
           <div class="stat-box">
             <div class="stat-number" id="s-avg">0</div>
-            <div class="stat-desc">Moyenne de coups</div>
+            <div class="stat-desc">Tentatives / manche</div>
           </div>
           <div class="stat-box">
             <div class="stat-number" id="s-best">-</div>
-            <div class="stat-desc">Meilleure partie</div>
+            <div class="stat-desc">Meilleur résultat (coups)</div>
           </div>
+        </div>
+
+        <p class="stats-tracking-note">
+          Les statistiques solo et multijoueur sont calculées à partir des manches suivies séparément. Les anciennes manches ne peuvent pas être réparties rétroactivement.
+        </p>
+
+        <div class="stats-mode-grid">
+          <section class="stats-mode-card">
+            <h4>🎯 Mode solo</h4>
+            <div class="stats-mode-metrics">
+              <div><b id="stats-solo-games">0</b><span>Manches</span></div>
+              <div><b id="stats-solo-wins">0</b><span>Titres trouvés</span></div>
+              <div><b id="stats-solo-win-rate">0%</b><span>Réussite</span></div>
+              <div><b id="stats-solo-avg-attempts">—</b><span>Tentatives / manche</span></div>
+              <div><b id="stats-solo-winning-attempts">—</b><span>Tentatives avant réussite</span></div>
+              <div><b id="stats-solo-best-attempts">—</b><span>Meilleur résultat</span></div>
+              <div><b id="stats-solo-time">—</b><span>Durée moyenne</span></div>
+              <div><b id="stats-solo-revealed">—</b><span>Article révélé en moyenne</span></div>
+              <div><b id="stats-solo-points">0</b><span>Points gagnés</span></div>
+            </div>
+          </section>
+          <section class="stats-mode-card">
+            <h4>🌐 Mode multijoueur</h4>
+            <div class="stats-mode-metrics">
+              <div><b id="stats-multiplayer-games">0</b><span>Manches</span></div>
+              <div><b id="stats-multiplayer-wins">0</b><span>Titres trouvés</span></div>
+              <div><b id="stats-multiplayer-win-rate">0%</b><span>Réussite</span></div>
+              <div><b id="stats-multiplayer-avg-attempts">—</b><span>Tentatives / manche</span></div>
+              <div><b id="stats-multiplayer-winning-attempts">—</b><span>Tentatives avant réussite</span></div>
+              <div><b id="stats-multiplayer-best-attempts">—</b><span>Meilleur résultat</span></div>
+              <div><b id="stats-multiplayer-time">—</b><span>Durée moyenne</span></div>
+              <div><b id="stats-multiplayer-revealed">—</b><span>Article révélé en moyenne</span></div>
+              <div><b id="stats-multiplayer-points">0</b><span>Points gagnés</span></div>
+            </div>
+          </section>
         </div>
 
         <!-- Favorite words section -->
@@ -678,13 +713,16 @@
           </div>
         </div>
 
-        <h4 style="margin: 1.5rem 0 0.6rem; font-size: 0.95rem;">Dernières victoires :</h4>
+        <h4 style="margin: 1.5rem 0 0.6rem; font-size: 0.95rem;">Dernières manches :</h4>
         <div class="stats-table-wrapper">
           <table class="recent-table">
             <thead>
               <tr>
                 <th>Page secrète</th>
+                <th>Mode</th>
+                <th>Résultat</th>
                 <th style="text-align: center;">Coups</th>
+                <th style="text-align: right;">Points</th>
                 <th style="text-align: right;">Date</th>
               </tr>
             </thead>
@@ -704,7 +742,7 @@
         <span class="modal-header-icon">👤</span>
         <div class="modal-title-col">
           <h3 id="auth-modal-title">Compte Joueur & Statistiques</h3>
-          <p class="modal-subtitle">Enregistrez vos victoires, parties et mots préférés</p>
+          <p class="modal-subtitle">Suivez vos parties, résultats, points et mots préférés</p>
         </div>
       </div>
       <div class="modal-body">
@@ -1076,32 +1114,6 @@
             <span>↩️</span> Annuler ma demande
           </button>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: CHOIX MULTIJOUEUR -->
-  <div class="modal-overlay" id="multiplayer-choice-modal">
-    <div class="modal multiplayer-choice-content" role="dialog" aria-modal="true" aria-labelledby="multiplayer-choice-title">
-      <button class="modal-close" data-close="multiplayer-choice-modal" aria-label="Fermer">&times;</button>
-      <div class="modal-header">
-        <span class="modal-header-icon">🌐</span>
-        <div class="modal-title-col">
-          <h3 id="multiplayer-choice-title">Mode multijoueur</h3>
-          <p class="modal-subtitle">Que souhaitez-vous faire ?</p>
-        </div>
-      </div>
-      <div class="multiplayer-choice-options">
-        <button type="button" id="btn-choice-join-room" class="multiplayer-choice-card">
-          <span class="multiplayer-choice-icon">🔍</span>
-          <span class="multiplayer-choice-title">Rejoindre un salon</span>
-          <span class="multiplayer-choice-description">Trouver une partie publique ou rejoindre avec un code.</span>
-        </button>
-        <button type="button" id="btn-choice-create-room" class="multiplayer-choice-card create">
-          <span class="multiplayer-choice-icon">➕</span>
-          <span class="multiplayer-choice-title">Créer un salon</span>
-          <span class="multiplayer-choice-description">Ouvrir un nouveau salon et inviter vos amis.</span>
-        </button>
       </div>
     </div>
   </div>

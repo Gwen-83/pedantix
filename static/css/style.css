@@ -1219,36 +1219,21 @@ table.guessable td.word {
   50% { box-shadow: 0 0 14px rgba(249, 115, 22, 0.9); }
 }
 
-/* Letter hint revealed (5 min automatic hint): luminous golden letters with subtle masked placeholders */
-.w.has-hint:not(.revealed) {
+/* Automatically revealed words are distinct from words found by guessing. */
+.w.hint-word:not(.revealed) {
+  color: #fef08a !important;
+  font-weight: 800;
+  background: rgba(245, 158, 11, 0.12) !important;
   border-color: rgba(245, 158, 11, 0.6) !important;
   box-shadow: 0 0 7px rgba(245, 158, 11, 0.28) !important;
 }
 
-.w.has-hint:not(.revealed):hover {
+.w.hint-word:not(.revealed):hover {
   border-color: #fbbf24 !important;
   box-shadow: 0 0 12px rgba(245, 158, 11, 0.5) !important;
 }
 
-.w .hint-char {
-  color: #fef08a !important;
-  font-weight: 800;
-  display: inline-block;
-  padding: 0 1px;
-  text-shadow: 0 0 6px rgba(245, 158, 11, 0.8), 0 0 12px rgba(217, 119, 6, 0.4);
-  letter-spacing: 0.5px;
-}
-
-.w .hint-blank {
-  color: rgba(255, 255, 255, 0.28) !important;
-  font-weight: 600;
-  display: inline-block;
-  padding: 0 0.5px;
-  user-select: none;
-  letter-spacing: 0.5px;
-}
-
-/* Flash pulse when a new letter hint is broadcast */
+/* Flash pulse when a new word hint is broadcast */
 .w.hint-pulse {
   animation: hintRevealPulse 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
   z-index: 5;
@@ -1320,7 +1305,7 @@ table.guessable td.word {
 }
 
 .success.active {
-  max-height: 600px;
+  max-height: 1000px;
   opacity: 1;
   padding: 1.5rem 1.75rem;
 }
@@ -1339,7 +1324,10 @@ table.guessable td.word {
 }
 
 .solution-display {
-  font-size: 1.85rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: clamp(2.25rem, 6vw, 3.5rem);
+  line-height: 1.15;
   font-weight: 800;
   font-family: 'Newsreader', Georgia, serif;
   background-color: rgba(0, 0, 0, 0.28);
@@ -1349,6 +1337,7 @@ table.guessable td.word {
   display: inline-block;
   margin: 0.5rem 0 0.75rem;
   letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
@@ -1845,7 +1834,8 @@ table.guessable td.word {
 
 .stats-table-wrapper {
   max-height: 220px;
-  overflow-y: auto;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.04);
@@ -1853,6 +1843,7 @@ table.guessable td.word {
 
 .recent-table {
   width: 100%;
+  min-width: 620px;
   border-collapse: collapse;
   font-size: 0.88rem;
 }
@@ -2988,7 +2979,7 @@ footer a {
   color: var(--text-color, #e2e8f0);
 }
 
-.hint-timer-badge {
+.word-hint-timer-badge {
   font-size: 0.78rem;
   font-weight: 700;
   padding: 0.28rem 0.7rem;
@@ -3004,7 +2995,7 @@ footer a {
   user-select: none;
 }
 
-.hint-timer-badge.hint-urgent {
+.word-hint-timer-badge.hint-urgent {
   background: rgba(239, 68, 68, 0.2);
   border-color: rgba(239, 68, 68, 0.6);
   color: #fca5a5;
@@ -3916,10 +3907,12 @@ footer a {
 
 .solution-text {
   font-family: 'Newsreader', Georgia, serif;
-  font-size: 1.65rem;
+  font-size: clamp(2.2rem, 5vw, 3rem);
+  line-height: 1.15;
   font-weight: 700;
   color: #f8fafc;
   margin-bottom: 0.55rem;
+  overflow-wrap: anywhere;
 }
 
 .solution-wiki-btn {
@@ -5158,64 +5151,6 @@ body.solo-mode #host-pill {
 }
 
 /* Room Browser Modal Styles */
-.multiplayer-choice-content {
-  max-width: 560px !important;
-}
-
-.multiplayer-choice-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem;
-  margin-top: 1.4rem;
-}
-
-.multiplayer-choice-card {
-  display: flex;
-  min-height: 175px;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.55rem;
-  padding: 1.1rem;
-  border: 1px solid rgba(59, 130, 246, 0.35);
-  border-radius: 14px;
-  background: rgba(59, 130, 246, 0.1);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-}
-
-.multiplayer-choice-card:hover {
-  transform: translateY(-2px);
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.17);
-}
-
-.multiplayer-choice-card.create {
-  border-color: rgba(16, 185, 129, 0.35);
-  background: rgba(16, 185, 129, 0.1);
-}
-
-.multiplayer-choice-card.create:hover {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.17);
-}
-
-.multiplayer-choice-icon {
-  font-size: 1.5rem;
-}
-
-.multiplayer-choice-title {
-  font-size: 1rem;
-  font-weight: 800;
-}
-
-.multiplayer-choice-description {
-  font-size: 0.84rem;
-  line-height: 1.45;
-  opacity: 0.78;
-}
-
 .rooms-modal-content {
   max-width: 780px !important;
   width: 95% !important;
@@ -5940,6 +5875,65 @@ body.solo-mode #host-pill {
   margin: 1.4rem 0 0.8rem;
 }
 
+.stats-tracking-note {
+  margin: 0 0 1rem;
+  color: #94a3b8;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.stats-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.stats-mode-card {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.stats-mode-card h4 {
+  margin: 0 0 0.8rem;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.stats-mode-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.stats-mode-metrics > div {
+  min-width: 0;
+  padding: 0.65rem 0.45rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  text-align: center;
+}
+
+.stats-mode-metrics b,
+.stats-mode-metrics span {
+  display: block;
+}
+
+.stats-mode-metrics b {
+  color: #f8fafc;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.stats-mode-metrics span {
+  margin-top: 0.25rem;
+  color: #94a3b8;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
 .stats-fav-words-section h4 {
   font-size: 0.95rem;
   margin: 0 0 0.6rem;
@@ -5994,6 +5988,12 @@ body.solo-mode #host-pill {
 
 .stat-box {
   min-width: 90px;
+}
+
+@media (max-width: 640px) {
+  .stats-mode-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -6764,14 +6764,6 @@ button, input, select, .w, .pin-button, .nav-icon {
    SMARTPHONE PORTRAIT BREAKPOINT (< 600px)
    -------------------------------------------------------------------------- */
 @media (max-width: 600px) {
-  .multiplayer-choice-options {
-    grid-template-columns: 1fr;
-  }
-
-  .multiplayer-choice-card {
-    min-height: 145px;
-  }
-
   article.game-container {
     padding: 0.35rem 0.5rem 2rem;
     gap: 0.75rem;
@@ -6839,7 +6831,7 @@ button, input, select, .w, .pin-button, .nav-icon {
   .btn-create-room,
   .btn-header-invite,
   .btn-surrender-room,
-  .hint-timer-badge {
+  .word-hint-timer-badge {
     font-size: 0.72rem;
     padding: 0.22rem 0.5rem;
   }
@@ -7156,9 +7148,13 @@ button, input, select, .w, .pin-button, .nav-icon {
     border-radius: 14px;
   }
 
-  .round-over-solution-text {
-    font-size: 1.25rem;
-    word-break: break-word;
+  .solution-display {
+    font-size: clamp(1.85rem, 8vw, 2.5rem);
+    padding: 0.55rem 0.85rem;
+  }
+
+  .solution-text {
+    font-size: clamp(1.8rem, 7vw, 2.4rem);
   }
 
   .solution-wiki-btn {

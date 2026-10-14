@@ -330,15 +330,17 @@ async def join_room(req: RoomJoinRequest):
         player_id=req.player_id,
         player_name=req.player_name
     )
-    if req.room_id.startswith("solo-") and req.difficulty and req.difficulty != room.difficulty:
+    is_reconnect = req.player_id in room.players
+    if not is_reconnect and req.room_id.startswith("solo-") and req.difficulty and req.difficulty != room.difficulty:
         excluded = room.get_recently_played_titles(days=15)
         new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty, exclude_titles=excluded)
         room.set_difficulty(req.difficulty, new_article=new_art)
-    is_reconnect = req.player_id in room.players
     player = room.get_or_create_player(req.player_id, req.player_name)
+    if room.room_id.startswith("solo-"):
+        room.start_word_hint_timer()
 
     # In multiplayer lobby, verify if current article was played in last 15 days by any player in room
-    if not room.room_id.startswith("solo-") and room.status == "lobby":
+    if not is_reconnect and not room.room_id.startswith("solo-") and room.status == "lobby":
         excluded_titles = room.get_recently_played_titles(days=15)
         exclude_norm = {normalize_wiki_title(t) for t in excluded_titles if t}
         curr_title = room.article_data.get("title", "")
@@ -363,7 +365,7 @@ async def join_room(req: RoomJoinRequest):
                             url=room.article_data.get("url", ""),
                             image=room.article_data.get("image", ""),
                             paragraphs=room.article_data["paragraphs"],
-                            mode="multiplayer",
+                            mode=room.session_mode,
                             category=room.article_data.get("category", "general"),
                             difficulty=room.difficulty,
                             lang_count=room.article_data.get("lang_count", 0),
@@ -399,9 +401,8 @@ async def join_room(req: RoomJoinRequest):
         "player": player.to_dict(),
         "teams": room.get_teams_data(),
         "leaderboard": room.get_leaderboard(),
-        "session": active_session.get_public_state(revealed_letters=room.revealed_letters),
-        "revealed_letters": room.revealed_letters,
-        "next_letter_hint_time": room.next_letter_hint_time,
+        "session": active_session.get_public_state(hinted_word_ids=room.hinted_word_ids),
+        "next_word_hint_time": room.next_word_hint_time,
         "activity": room.recent_activity,
         "status": room.status,
         "host_player_id": room.host_player_id,
@@ -412,8 +413,7 @@ async def join_room(req: RoomJoinRequest):
         "first_winner_attempts": room.first_winner_attempts,
         "last_round": room.last_round_results,
         "rounds_played": room.rounds_played,
-        "revealed_letters": room.revealed_letters,
-        "next_letter_hint_time": room.next_letter_hint_time,
+        "next_word_hint_time": room.next_word_hint_time,
         "surrender_in_progress": room.surrender_in_progress,
         "surrender_initiator_id": room.surrender_initiator_id,
         "surrender_initiator_name": room.surrender_initiator_name,
@@ -576,9 +576,10 @@ async def set_room_difficulty(req: RoomDifficultyRequest):
         raise HTTPException(status_code=400, detail="Impossible de modifier la difficulté.")
 
     active_session = room.team_sessions.get(player.team, player.session) if room.game_mode == "team" and room.team_sessions else player.session
-    public_session = active_session.get_public_state(revealed_letters=room.revealed_letters) if active_session else None
+    public_session = active_session.get_public_state(hinted_word_ids=room.hinted_word_ids) if active_session else None
 
     if room.room_id.startswith("solo-"):
+        room.start_word_hint_timer()
         await room.broadcast({
             "type": "new_round",
             "status": "playing",
@@ -589,7 +590,8 @@ async def set_room_difficulty(req: RoomDifficultyRequest):
             "article_pageviews_90d": room.article_data.get("pageviews_90d", int(room.article_data.get("pageviews_60d", 0) * 1.5)),
             "game_mode": room.game_mode,
             "leaderboard": room.get_leaderboard(),
-            "activity": room.recent_activity
+            "activity": room.recent_activity,
+            "next_word_hint_time": room.next_word_hint_time
         })
     else:
         await room.broadcast({
@@ -609,8 +611,7 @@ async def set_room_difficulty(req: RoomDifficultyRequest):
         "article_lang_count": room.article_data.get("lang_count", 0),
         "article_pageviews_90d": room.article_data.get("pageviews_90d", int(room.article_data.get("pageviews_60d", 0) * 1.5)),
         "seed": room.seed,
-        "revealed_letters": room.revealed_letters,
-        "next_letter_hint_time": room.next_letter_hint_time,
+        "next_word_hint_time": room.next_word_hint_time,
         "session": public_session
     }
 
@@ -803,9 +804,9 @@ async def get_room_state(room_id: str, player_id: Optional[str] = None):
         guess_token = anti_bot_guard.get_or_issue_token(f"{room.room_id}:{player_id}")
         if room.game_mode == "team":
             team_sess = room.team_sessions.get(p.team, p.session)
-            session_data = team_sess.get_public_state(revealed_letters=room.revealed_letters)
+            session_data = team_sess.get_public_state(hinted_word_ids=room.hinted_word_ids)
         else:
-            session_data = p.session.get_public_state(revealed_letters=room.revealed_letters)
+            session_data = p.session.get_public_state(hinted_word_ids=room.hinted_word_ids)
 
     return {
         "room_id": room.room_id,
@@ -831,8 +832,7 @@ async def get_room_state(room_id: str, player_id: Optional[str] = None):
         "session": session_data,
         "last_round": room.last_round_results,
         "rounds_played": room.rounds_played,
-        "revealed_letters": room.revealed_letters,
-        "next_letter_hint_time": room.next_letter_hint_time,
+        "next_word_hint_time": room.next_word_hint_time,
         "surrender_in_progress": room.surrender_in_progress,
         "surrender_initiator_id": room.surrender_initiator_id,
         "surrender_initiator_name": room.surrender_initiator_name,
@@ -874,8 +874,7 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
             "first_winner_attempts": room.first_winner_attempts,
             "last_round": room.last_round_results,
             "rounds_played": room.rounds_played,
-            "revealed_letters": room.revealed_letters,
-            "next_letter_hint_time": room.next_letter_hint_time
+            "next_word_hint_time": room.next_word_hint_time
         }))
 
         while True:
@@ -1023,7 +1022,18 @@ async def submit_guess(req: GuessRequest, request: Request):
         record_user_guess_word(req.player_name, req.word)
         if result.get("is_won"):
             increment_player_score(req.player_name, 1)
-            record_user_game_finish(req.player_name, won=True, attempts=result.get("attempt_number", 1), points=1)
+            record_user_game_finish(
+                req.player_name,
+                won=True,
+                attempts=result.get("attempt_number", 1),
+                points=1,
+                session_id=session.session_id,
+                mode="solo",
+                title=session.title,
+                duration_seconds=int(time.time() - session.created_at),
+                revealed_words=len(session.revealed_word_ids),
+                total_words=session.total_words,
+            )
     return result
 
 

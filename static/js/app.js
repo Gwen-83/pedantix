@@ -80,9 +80,8 @@ class PedantixApp {
     this.countdownTimer = null;
     this.sprintInterval = null;
     this.lastRound = null;
-    this.revealedLetters = [];
-    this.nextLetterHintTime = null;
-    this.hintInterval = null;
+    this.nextWordHintTime = null;
+    this.wordHintInterval = null;
     this.surrenderCooldownTimer = null;
     this.surrenderCooldownRemaining = 0;
 
@@ -164,14 +163,12 @@ class PedantixApp {
     if (this.isSoloMode || this.roomId) {
       this.joinRoom();
     } else {
-      this.openMultiplayerChoice();
+      this.openRoomsBrowser();
     }
 
     // Check user authentication
     this.checkAuthOnLoad();
 
-    // Setup page unload handlers (leave room on page close)
-    this.setupPageUnloadHandlers();
   }
 
   getBackendUrl() {
@@ -251,16 +248,13 @@ class PedantixApp {
       btnHeaderLeaveRoom: document.getElementById('btn-header-leave-room'),
       btnHeaderInvite: document.getElementById('btn-header-invite'),
       hostPill: document.getElementById('host-pill'),
-      hintTimerBadge: document.getElementById('hint-timer-badge'),
-      hintTimerVal: document.getElementById('hint-timer-val'),
+      wordHintTimerBadge: document.getElementById('word-hint-timer-badge'),
+      wordHintTimerVal: document.getElementById('word-hint-timer-val'),
       navRoomsBtn: document.getElementById('nav-rooms-button'),
       navConfigBtn: document.getElementById('nav-config-button'),
 
       // Rooms Browser Modal
       roomsModal: document.getElementById('rooms-modal'),
-      multiplayerChoiceModal: document.getElementById('multiplayer-choice-modal'),
-      btnChoiceJoinRoom: document.getElementById('btn-choice-join-room'),
-      btnChoiceCreateRoom: document.getElementById('btn-choice-create-room'),
       btnModalCreateRoom: document.getElementById('btn-modal-create-room'),
       inputJoinCode: document.getElementById('input-join-code'),
       btnModalJoinCode: document.getElementById('btn-modal-join-code'),
@@ -677,18 +671,6 @@ class PedantixApp {
     }
     if (this.dom.btnModalCreateRoom) {
       this.dom.btnModalCreateRoom.addEventListener('click', () => this.createNewRoom());
-    }
-    if (this.dom.btnChoiceJoinRoom) {
-      this.dom.btnChoiceJoinRoom.addEventListener('click', () => {
-        this.closeModal(this.dom.multiplayerChoiceModal);
-        this.openRoomsBrowser();
-      });
-    }
-    if (this.dom.btnChoiceCreateRoom) {
-      this.dom.btnChoiceCreateRoom.addEventListener('click', () => {
-        this.closeModal(this.dom.multiplayerChoiceModal);
-        this.createMultiplayerRoom();
-      });
     }
     if (this.dom.btnRefreshRooms) {
       this.dom.btnRefreshRooms.addEventListener('click', () => this.fetchRoomsList());
@@ -1290,40 +1272,6 @@ class PedantixApp {
     }
   }
 
-  setupPageUnloadHandlers() {
-    const handleUnloadLeave = () => {
-      if (this.roomId && !this.roomId.startsWith('solo-') && this.playerId) {
-        const payload = JSON.stringify({
-          room_id: this.roomId,
-          player_id: this.playerId
-        });
-        const leaveUrl = this.getApiUrl('/api/room/leave');
-        if (navigator.sendBeacon) {
-          try {
-            const blob = new Blob([payload], { type: 'application/json' });
-            navigator.sendBeacon(leaveUrl, blob);
-          } catch (e) {
-            fetch(leaveUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: payload,
-              keepalive: true
-            }).catch(() => {});
-          }
-        } else {
-          fetch(leaveUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: payload,
-            keepalive: true
-          }).catch(() => {});
-        }
-      }
-    };
-    window.addEventListener('pagehide', handleUnloadLeave);
-    window.addEventListener('beforeunload', handleUnloadLeave);
-  }
-
   async switchRoom(newRoomId) {
     const cleanId = (newRoomId || '').trim();
     if (!cleanId) return;
@@ -1356,7 +1304,6 @@ class PedantixApp {
     if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
 
     this.closeModal(this.dom.roomsModal);
-    this.closeModal(this.dom.multiplayerChoiceModal);
     this.showToast(`Salon « ${cleanId} » rejoint 🌐`);
     this.fetchNetworkInfo();
     this.joinRoom();
@@ -1369,10 +1316,6 @@ class PedantixApp {
     }
     this.openModal(this.dom.roomsModal);
     await this.fetchRoomsList();
-  }
-
-  openMultiplayerChoice() {
-    this.openModal(this.dom.multiplayerChoiceModal);
   }
 
   async fetchRoomsList() {
@@ -1512,7 +1455,6 @@ class PedantixApp {
       if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
 
       this.closeModal(this.dom.roomsModal);
-      this.closeModal(this.dom.multiplayerChoiceModal);
       this.showToast(`Salon « ${this.roomId} » créé ! Vous êtes l'Host 👑`);
       this.fetchNetworkInfo();
       await this.joinRoom();
@@ -1781,7 +1723,7 @@ class PedantixApp {
 
   async joinRoom() {
     if (!this.roomId) {
-      this.openMultiplayerChoice();
+      this.openRoomsBrowser();
       return;
     }
     this.startTime = Date.now();
@@ -1914,21 +1856,20 @@ class PedantixApp {
       this.initWebSocket();
 
       // Check current phase
-      if (data.revealed_letters) this.revealedLetters = data.revealed_letters;
-      if (data.next_letter_hint_time) this.nextLetterHintTime = data.next_letter_hint_time;
+      this.nextWordHintTime = data.next_word_hint_time || null;
 
       if (this.roomStatus === 'starting' && data.countdown_end) {
-        this.stopHintTimer();
+        this.stopWordHintTimer();
         const left = Math.max(1, Math.ceil(data.countdown_end - (Date.now() / 1000)));
         this.startCountdown(left);
       } else if (this.roomStatus === 'ending' && data.timer_30s_end) {
-        this.stopHintTimer();
+        this.stopWordHintTimer();
         const left = Math.max(1, Math.ceil(data.timer_30s_end - (Date.now() / 1000)));
         this.startSprintTimer(data.first_winner_name || 'Un joueur', left, data.timer_30s_end);
-      } else if (this.roomStatus === 'playing' && this.nextLetterHintTime && !this.isWon) {
-        this.startHintTimer(this.nextLetterHintTime);
+      } else if (this.roomStatus === 'playing' && this.nextWordHintTime && !this.isWon) {
+        this.startWordHintTimer(this.nextWordHintTime);
       } else {
-        this.stopHintTimer();
+        this.stopWordHintTimer();
       }
 
     } catch (err) {
@@ -1972,12 +1913,11 @@ class PedantixApp {
         this.renderHistory();
         this.updateModeUI();
 
-        if (data.revealed_letters) this.revealedLetters = data.revealed_letters;
-        if (data.next_letter_hint_time) this.nextLetterHintTime = data.next_letter_hint_time;
-        if (this.roomStatus === 'playing' && this.nextLetterHintTime && !this.isWon) {
-          this.startHintTimer(this.nextLetterHintTime);
+        this.nextWordHintTime = data.next_word_hint_time || null;
+        if (this.roomStatus === 'playing' && this.nextWordHintTime && !this.isWon) {
+          this.startWordHintTimer(this.nextWordHintTime);
         } else {
-          this.stopHintTimer();
+          this.stopWordHintTimer();
         }
       }
     } catch (e) {
@@ -2050,8 +1990,7 @@ class PedantixApp {
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
       if (msg.activity) this.updateActivity(msg.activity);
       if (msg.chat_messages) this.loadHistoricalChatMessages(msg.chat_messages);
-      if (msg.revealed_letters) this.revealedLetters = msg.revealed_letters;
-      if (msg.next_letter_hint_time) this.nextLetterHintTime = msg.next_letter_hint_time;
+      this.nextWordHintTime = msg.next_word_hint_time || null;
       this.roomStatus = msg.status || this.roomStatus;
       this.canStart = msg.can_start || this.canStart;
       this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
@@ -2062,10 +2001,10 @@ class PedantixApp {
         this.startSurrenderCooldown(msg.surrender_cooldowns[this.playerId]);
       }
 
-      if (this.roomStatus === 'playing' && this.nextLetterHintTime && !this.isWon) {
-        this.startHintTimer(this.nextLetterHintTime);
+      if (this.roomStatus === 'playing' && this.nextWordHintTime && !this.isWon) {
+        this.startWordHintTimer(this.nextWordHintTime);
       } else {
-        this.stopHintTimer();
+        this.stopWordHintTimer();
       }
 
     } else if (msg.type === 'anti_cheat_alert') {
@@ -2184,7 +2123,7 @@ class PedantixApp {
     } else if (msg.type === 'countdown_started') {
       this.clearSurrenderCooldown();
       this.roomStatus = 'starting';
-      this.stopHintTimer();
+      this.stopWordHintTimer();
       if (msg.game_mode) this.gameMode = msg.game_mode;
       if (msg.difficulty) this.currentDifficulty = msg.difficulty;
       if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;
@@ -2202,10 +2141,9 @@ class PedantixApp {
       if (this.gameMode === 'team') {
         this.renderTeamConfrontation();
       }
-      if (msg.revealed_letters) this.revealedLetters = msg.revealed_letters;
-      if (msg.next_letter_hint_time) this.nextLetterHintTime = msg.next_letter_hint_time;
-      if (this.nextLetterHintTime && !this.isWon) {
-        this.startHintTimer(this.nextLetterHintTime);
+      this.nextWordHintTime = msg.next_word_hint_time || null;
+      if (this.nextWordHintTime && !this.isWon) {
+        this.startWordHintTimer(this.nextWordHintTime);
       }
       this.syncRoomUI();
       this.showToast('🚀 C\'est parti ! Trouvez le titre en premier !');
@@ -2267,14 +2205,14 @@ class PedantixApp {
 
     } else if (msg.type === 'first_winner') {
       this.roomStatus = 'ending';
-      this.stopHintTimer();
+      this.stopWordHintTimer();
       this.hideOpponentWin();
       this.startSprintTimer(msg.winner_name, msg.seconds || 30, msg.end_time);
       this.showToast(`🏆 ${msg.winner_name} a trouvé le titre ! Il vous reste 30 secondes pour trouver (+2 pt au 2e, +1 pt au 3e) !`);
 
     } else if (msg.type === 'round_over' || msg.type === 'round_over_to_lobby') {
       this.clearSurrenderCooldown();
-      this.stopHintTimer();
+      this.stopWordHintTimer();
       if (this.sprintInterval) clearInterval(this.sprintInterval);
       if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
       this.roomStatus = 'lobby';
@@ -2296,7 +2234,9 @@ class PedantixApp {
 
     } else if (msg.type === 'new_round') {
       this.clearSurrenderCooldown();
-      this.stopHintTimer();
+      this.stopWordHintTimer();
+      this.roomStatus = msg.status || 'playing';
+      this.nextWordHintTime = msg.next_word_hint_time || null;
       this.hideOpponentWin();
       this.resetUnmaskButton();
       this.closeModal(this.dom.roundOverModal);
@@ -2306,41 +2246,39 @@ class PedantixApp {
       if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
       if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
       this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+      if (this.nextWordHintTime) this.startWordHintTimer(this.nextWordHintTime);
       this.showToast('🎲 Nouvelle partie lancée !');
       if (!this.isSoloMode || !this.sessionId || this.seed !== msg.seed) {
         this.joinRoom();
       }
 
-    } else if (msg.type === 'letter_hint') {
-      const letter = msg.letter || '';
-      if (msg.revealed_letters) this.revealedLetters = msg.revealed_letters;
-      if (msg.next_letter_hint_time) this.nextLetterHintTime = msg.next_letter_hint_time;
+    } else if (msg.type === 'word_hint_unavailable') {
+      this.nextWordHintTime = null;
+      this.stopWordHintTimer();
+
+    } else if (msg.type === 'word_hint') {
+      const token = this.tokensById[msg.token_id];
+      if (token && !token.revealed) {
+        token.hint_revealed = true;
+        token.text = msg.word;
+        delete token.heat;
+        delete token.close_word;
+        const el = document.getElementById(`token-${msg.token_id}`);
+        if (el) {
+          this.renderTokenContent(token, el);
+          el.classList.add('hint-pulse');
+          setTimeout(() => el.classList.remove('hint-pulse'), 1200);
+        }
+      }
+      this.nextWordHintTime = msg.next_word_hint_time || null;
 
       this.playTone('hint');
-      this.showToast(`💡 Indice (5 min) : La lettre « ${letter} » a été dévoilée partout dans l'article !`);
+      this.showToast(msg.message || `💡 Indice : le mot « ${msg.word || ''} » a été dévoilé !`);
 
-      const patterns = msg.token_patterns || msg.token_hints;
-      if (patterns) {
-        Object.entries(patterns).forEach(([tid, pattern]) => {
-          const token = this.tokensById[tid];
-          if (token && !token.revealed) {
-            token.hint_pattern = pattern;
-            const el = document.getElementById(`token-${tid}`);
-            if (el) {
-              this.renderTokenContent(token, el);
-              el.classList.add('hint-pulse');
-              setTimeout(() => {
-                el.classList.remove('hint-pulse');
-              }, 1200);
-            }
-          }
-        });
-      }
-
-      if (this.roomStatus === 'playing' && !this.isWon && this.nextLetterHintTime) {
-        this.startHintTimer(this.nextLetterHintTime);
+      if (this.roomStatus === 'playing' && !this.isWon && this.nextWordHintTime) {
+        this.startWordHintTimer(this.nextWordHintTime);
       } else {
-        this.stopHintTimer();
+        this.stopWordHintTimer();
       }
 
     } else if (msg.type === 'surrender_update') {
@@ -2542,7 +2480,7 @@ class PedantixApp {
       } else {
         this.resetUnmaskButton();
         if (this.isSoloMode) {
-          this.stopHintTimer();
+          this.stopWordHintTimer();
           this.hideOpponentWin();
           this.closeModal(this.dom.roundOverModal);
           if (this.dom.successBox) this.dom.successBox.classList.remove('active');
@@ -2633,18 +2571,18 @@ class PedantixApp {
     }, 150);
   }
 
-  startHintTimer(targetEpoch) {
-    this.stopHintTimer();
+  startWordHintTimer(targetEpoch) {
+    this.stopWordHintTimer();
     if (!targetEpoch || this.roomStatus !== 'playing' || this.isWon) {
-      if (this.dom.hintTimerBadge) this.dom.hintTimerBadge.style.display = 'none';
+      if (this.dom.wordHintTimerBadge) this.dom.wordHintTimerBadge.style.display = 'none';
       return;
     }
 
-    if (this.dom.hintTimerBadge) this.dom.hintTimerBadge.style.display = 'inline-flex';
+    if (this.dom.wordHintTimerBadge) this.dom.wordHintTimerBadge.style.display = 'inline-flex';
 
     const update = () => {
       if (this.roomStatus !== 'playing' || this.isWon) {
-        this.stopHintTimer();
+        this.stopWordHintTimer();
         return;
       }
       const now = Date.now() / 1000;
@@ -2652,30 +2590,30 @@ class PedantixApp {
       const mins = Math.floor(left / 60);
       const secs = left % 60;
       const formatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-      if (this.dom.hintTimerVal) {
-        this.dom.hintTimerVal.textContent = formatted;
+      if (this.dom.wordHintTimerVal) {
+        this.dom.wordHintTimerVal.textContent = formatted;
       }
-      if (this.dom.hintTimerBadge) {
+      if (this.dom.wordHintTimerBadge) {
         if (left <= 30 && left > 0) {
-          this.dom.hintTimerBadge.classList.add('hint-urgent');
+          this.dom.wordHintTimerBadge.classList.add('hint-urgent');
         } else {
-          this.dom.hintTimerBadge.classList.remove('hint-urgent');
+          this.dom.wordHintTimerBadge.classList.remove('hint-urgent');
         }
       }
     };
 
     update();
-    this.hintInterval = setInterval(update, 1000);
+    this.wordHintInterval = setInterval(update, 1000);
   }
 
-  stopHintTimer() {
-    if (this.hintInterval) {
-      clearInterval(this.hintInterval);
-      this.hintInterval = null;
+  stopWordHintTimer() {
+    if (this.wordHintInterval) {
+      clearInterval(this.wordHintInterval);
+      this.wordHintInterval = null;
     }
-    if (this.dom.hintTimerBadge) {
-      this.dom.hintTimerBadge.style.display = 'none';
-      this.dom.hintTimerBadge.classList.remove('hint-urgent');
+    if (this.dom.wordHintTimerBadge) {
+      this.dom.wordHintTimerBadge.style.display = 'none';
+      this.dom.wordHintTimerBadge.classList.remove('hint-urgent');
     }
   }
 
@@ -2985,7 +2923,7 @@ class PedantixApp {
   async switchPlayMode(mode) {
     const isSolo = mode === 'solo';
     if (isSolo === this.isSoloMode) {
-      if (!isSolo && !this.roomId) this.openMultiplayerChoice();
+      if (!isSolo && !this.roomId) this.openRoomsBrowser();
       return;
     }
     this.playTone('click');
@@ -3039,7 +2977,7 @@ class PedantixApp {
         url.searchParams.delete('room');
         url.searchParams.delete('mode');
         window.history.replaceState({}, '', url.toString());
-        this.openMultiplayerChoice();
+        this.openRoomsBrowser();
       }
     }
   }
@@ -3307,8 +3245,7 @@ class PedantixApp {
     this.articlePageviews90d = data.article_pageviews_90d || (data.session && data.session.pageviews_90d) || 0;
     this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
 
-    this.revealedLetters = data.revealed_letters || [];
-    this.nextLetterHintTime = data.next_letter_hint_time || (Date.now() / 1000 + 300);
+    this.nextWordHintTime = data.next_word_hint_time || null;
 
     this.updateBadges();
     this.renderBoard();
@@ -3316,8 +3253,8 @@ class PedantixApp {
     this.renderHistory();
 
     if (this.isSoloMode) {
-      this.stopHintTimer();
-      this.startHintTimer(this.nextLetterHintTime);
+      this.stopWordHintTimer();
+      this.startWordHintTimer(this.nextWordHintTime);
     }
 
     if (this.dom.guessInput) {
@@ -3579,11 +3516,11 @@ class PedantixApp {
         token.text = text;
         delete token.heat;
         delete token.close_word;
-        delete token.hint_pattern;
+        delete token.hint_revealed;
       }
       const el = document.getElementById(`token-${tid}`);
       if (el) {
-        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'has-hint', 'hint-pulse');
+        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
         el.style.backgroundColor = '';
         el.style.borderColor = '';
         el.style.color = '';
@@ -3602,6 +3539,7 @@ class PedantixApp {
       const score = Number(item.score || 50);
       const closeWord = item.word || fallbackWord;
       const token = this.tokensById[item.id];
+      if (token && token.hint_revealed) return;
       if (token && !token.revealed) {
         const currentHeat = Number(token.heat || 0);
         if (score >= currentHeat) {
@@ -3616,27 +3554,23 @@ class PedantixApp {
         if (score >= currentHeat) {
           el.dataset.heat = score;
           el.dataset.word = closeWord;
-          if (token && token.hint_pattern && token.hint_pattern.replace(/_/g, '').length > 0) {
-            this.renderTokenContent(token, el);
-          } else {
-            el.innerHTML = `&nbsp;${this.escapeHtml(closeWord)}&nbsp;`;
-            el.classList.remove('close-heat');
-            el.classList.add('close-heat-grey');
-            el.style.backgroundColor = '#222222';
-            el.title = `Proximité : ${score}% (proche de « ${closeWord} »)`;
+          el.innerHTML = `&nbsp;${this.escapeHtml(closeWord)}&nbsp;`;
+          el.classList.remove('close-heat');
+          el.classList.add('close-heat-grey');
+          el.style.backgroundColor = '#222222';
+          el.title = `Proximité : ${score}% (proche de « ${closeWord} »)`;
 
-            const grey = this.getGreyColor(score);
-            const flash = this.getFlashColor(score);
+          const grey = this.getGreyColor(score);
+          const flash = this.getFlashColor(score);
 
-            el.classList.add('heat-flash');
-            el.style.color = flash;
-            setTimeout(() => {
-              if (!el.classList.contains('revealed') && !el.classList.contains('showing-len')) {
-                el.classList.remove('heat-flash');
-                el.style.color = grey;
-              }
-            }, 1200);
-          }
+          el.classList.add('heat-flash');
+          el.style.color = flash;
+          setTimeout(() => {
+            if (!el.classList.contains('revealed') && !el.classList.contains('showing-len')) {
+              el.classList.remove('heat-flash');
+              el.style.color = grey;
+            }
+          }, 1200);
         }
       }
     });
@@ -3749,7 +3683,7 @@ class PedantixApp {
               ${p.is_host ? '<span class="host-pill" style="font-size:0.68rem;padding:0.1rem 0.45rem;">👑 Host</span>' : ''}
             </div>
             <div class="lobby-card-score">
-              🏆 <b>${p.score || 0}</b> victoire${(p.score || 0) > 1 ? 's' : ''}
+              ⭐ <b>${p.score || 0}</b> point${(p.score || 0) > 1 ? 's' : ''}
             </div>
           </div>
           <div class="lobby-card-state ${p.is_spectator ? 'state-spec' : (p.is_ready ? 'state-ready' : 'state-wait')}">
@@ -3958,7 +3892,7 @@ class PedantixApp {
   renderTokenContent(token, span) {
     if (token.revealed) {
       span.classList.add('revealed');
-      span.classList.remove('has-hint', 'close-heat-grey', 'hint-pulse', 'showing-len');
+      span.classList.remove('hint-word', 'close-heat-grey', 'hint-pulse', 'showing-len');
       span.textContent = token.text;
       span.style.color = '';
       span.style.backgroundColor = '';
@@ -3970,39 +3904,18 @@ class PedantixApp {
     }
 
     // Not revealed yet
-    span.classList.remove('revealed');
+    span.classList.remove('revealed', 'hint-word', 'close-heat', 'close-heat-grey', 'heat-flash');
 
-    // Check if token has revealed letters from 5-min hint
-    const hasHintLetter = token.hint_pattern && token.hint_pattern.replace(/_/g, '').length > 0;
-
-    if (hasHintLetter) {
-      span.classList.add('has-hint');
-      let html = '';
-      for (let i = 0; i < token.hint_pattern.length; i++) {
-        const ch = token.hint_pattern[i];
-        if (ch === '_') {
-          html += '<span class="hint-blank">·</span>';
-        } else {
-          html += `<span class="hint-char">${this.escapeHtml(ch)}</span>`;
-        }
-      }
-      span.innerHTML = html;
-
-      if (token.close_word && token.heat) {
-        span.dataset.heat = token.heat;
-        span.dataset.word = token.close_word;
-        span.classList.add('close-heat-grey');
-        span.style.backgroundColor = '#222222';
-        span.style.color = '';
-        span.title = `Proximité : ${token.heat}% (proche de « ${token.close_word} ») | Indice actif (${token.length} lettres)`;
-      } else {
-        span.classList.remove('close-heat-grey');
-        span.style.backgroundColor = '';
-        span.style.color = '';
-        span.title = `Indice actif (${token.length} lettres)`;
-      }
+    if (token.hint_revealed) {
+      span.classList.add('hint-word');
+      span.textContent = token.text;
+      span.style.color = '';
+      span.style.backgroundColor = '';
+      span.style.borderColor = '';
+      span.title = 'Mot dévoilé automatiquement comme indice';
+      delete span.dataset.heat;
+      delete span.dataset.word;
     } else if (token.close_word && token.heat) {
-      span.classList.remove('has-hint');
       span.dataset.heat = token.heat;
       span.dataset.word = token.close_word;
       span.classList.add('close-heat-grey');
@@ -4011,7 +3924,7 @@ class PedantixApp {
       span.style.backgroundColor = '#222222';
       span.title = `Proximité : ${token.heat}% (proche de « ${token.close_word} »)`;
     } else {
-      span.classList.remove('has-hint', 'close-heat-grey');
+      span.classList.remove('hint-word', 'close-heat-grey');
       span.innerHTML = '&nbsp;'.repeat(Math.max(1, token.length));
       span.style.color = '';
       span.style.backgroundColor = '';
@@ -4348,7 +4261,7 @@ class PedantixApp {
   handleVictory() {
     this.isWon = true;
     this.isAbandoned = false;
-    this.stopHintTimer();
+    this.stopWordHintTimer();
     this.playTone('win');
     try {
       if (this.confetti) {
@@ -4401,7 +4314,6 @@ class PedantixApp {
       this.dom.articleFinishedBar.style.display = 'flex';
     }
 
-    this.recordWinStats(title, this.history.length);
     this.updateYesterdayLink(title, this.dom.solutionLink.href);
 
     this.syncRoomUI();
@@ -4468,7 +4380,7 @@ class PedantixApp {
         }
         const el = document.getElementById(`token-${tid}`);
         if (el) {
-          el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'has-hint', 'hint-pulse');
+          el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
           el.style.backgroundColor = '';
           el.style.borderColor = '';
           el.style.color = '';
@@ -4485,7 +4397,7 @@ class PedantixApp {
       this.tokens.forEach(t => {
         const el = document.getElementById(`token-${t.id}`);
         if (el && (t.type === 'word' || t.is_word)) {
-          el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'has-hint', 'hint-pulse');
+          el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
           el.style.backgroundColor = '';
           el.style.borderColor = '';
           el.style.color = '';
@@ -4527,7 +4439,7 @@ class PedantixApp {
       }
       const el = document.getElementById(`token-${tid}`);
       if (el) {
-        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'has-hint', 'hint-pulse');
+        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
         el.style.backgroundColor = '';
         el.style.borderColor = '';
         el.style.color = '';
@@ -4542,7 +4454,7 @@ class PedantixApp {
     this.tokens.forEach(t => {
       const el = document.getElementById(`token-${t.id}`);
       if (el && (t.type === 'word' || t.is_word)) {
-        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'has-hint', 'hint-pulse');
+        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
         el.style.backgroundColor = '';
         el.style.borderColor = '';
         el.style.color = '';
@@ -4727,7 +4639,7 @@ class PedantixApp {
 
   handleSurrenderPassed(msg) {
     this.closeModal(this.dom.surrenderModal);
-    this.stopHintTimer();
+    this.stopWordHintTimer();
     if (this.sprintInterval) clearInterval(this.sprintInterval);
     if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
     this.hideOpponentWin();
@@ -4833,84 +4745,86 @@ class PedantixApp {
   // STATS STORAGE
   // =========================================================================
 
-  recordWinStats(title, attempts) {
-    const raw = localStorage.getItem('pedantix_user_stats');
-    let stats = raw ? JSON.parse(raw) : { played: 0, won: 0, total_attempts: 0, recent: [] };
-
-    stats.played += 1;
-    stats.won += 1;
-    stats.total_attempts += attempts;
-    stats.recent.unshift({
-      title: title,
-      attempts: attempts,
-      date: new Date().toLocaleDateString('fr-FR')
-    });
-    if (stats.recent.length > 15) stats.recent.pop();
-
-    localStorage.setItem('pedantix_user_stats', JSON.stringify(stats));
-  }
-
   async refreshStatsModal() {
-    const raw = localStorage.getItem('pedantix_user_stats');
-    let localStats = raw ? JSON.parse(raw) : { played: 0, won: 0, total_attempts: 0, recent: [] };
+    const formatAverage = value => value === null || value === undefined ? '—' : Number(value).toFixed(1);
+    const formatDuration = value => {
+      if (value === null || value === undefined) return '—';
+      const seconds = Math.round(Number(value));
+      return seconds >= 60
+        ? `${Math.floor(seconds / 60)} min ${seconds % 60} s`
+        : `${seconds} s`;
+    };
 
-    // Initial render from local cache
-    if (this.dom.statsUserName) this.dom.statsUserName.textContent = this.playerName || 'Mon Compte';
-    if (this.dom.statsUserScore) this.dom.statsUserScore.textContent = `${this.myScore} pt${this.myScore > 1 ? 's' : ''}`;
-    if (this.dom.sPlayed) this.dom.sPlayed.textContent = localStats.played;
-    if (this.dom.sWon) this.dom.sWon.textContent = localStats.won;
-    const localAvg = localStats.won > 0 ? Math.round(localStats.total_attempts / localStats.won) : 0;
-    if (this.dom.sAvg) this.dom.sAvg.textContent = localAvg;
-    if (this.dom.sWinRate) {
-      const wr = localStats.played > 0 ? Math.round((localStats.won / localStats.played) * 100) : 0;
-      this.dom.sWinRate.textContent = `${wr}%`;
-    }
-    if (this.dom.sBest) this.dom.sBest.textContent = '-';
-
-    this.dom.statsRecentList.innerHTML = '';
-    if (localStats.recent.length === 0) {
-      this.dom.statsRecentList.innerHTML = '<tr><td colspan="3" style="text-align:center; opacity:0.6;">Aucune victoire enregistrée</td></tr>';
-    } else {
-      localStats.recent.forEach(r => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><b>${this.escapeHtml(r.title)}</b></td>
-          <td style="text-align: center;">${r.attempts}</td>
-          <td style="text-align: right;">${r.date}</td>
-        `;
-        this.dom.statsRecentList.appendChild(tr);
-      });
-    }
-
-    // Fetch persistent stats from database
     try {
       const resp = await fetch(this.getApiUrl(`/api/user/stats?username=${encodeURIComponent(this.playerName)}`));
-      if (resp.ok) {
-        const data = await resp.json();
-        if (this.dom.statsUserName) this.dom.statsUserName.textContent = data.username || this.playerName;
-        if (this.dom.statsUserScore) this.dom.statsUserScore.textContent = `${data.score} pt${data.score > 1 ? 's' : ''}`;
-        if (this.dom.sPlayed) this.dom.sPlayed.textContent = data.games_played;
-        if (this.dom.sWon) this.dom.sWon.textContent = data.wins;
-        if (this.dom.sWinRate) this.dom.sWinRate.textContent = `${data.win_rate}%`;
-        if (this.dom.sAvg) this.dom.sAvg.textContent = data.avg_attempts;
-        if (this.dom.sBest) this.dom.sBest.textContent = (data.best_attempts !== null && data.best_attempts !== undefined) ? data.best_attempts : '-';
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (this.dom.statsUserName) this.dom.statsUserName.textContent = data.username || this.playerName;
+      if (this.dom.statsUserScore) this.dom.statsUserScore.textContent = `${data.score || 0} pt${data.score === 1 ? '' : 's'}`;
+      if (this.dom.sPlayed) this.dom.sPlayed.textContent = data.games_played || 0;
+      if (this.dom.sWon) this.dom.sWon.textContent = data.wins || 0;
+      if (this.dom.sWinRate) this.dom.sWinRate.textContent = `${data.win_rate || 0}%`;
+      if (this.dom.sAvg) this.dom.sAvg.textContent = formatAverage(data.avg_attempts) || '—';
+      if (this.dom.sBest) this.dom.sBest.textContent = data.best_attempts ?? '—';
 
-        // Favorite words
-        if (this.dom.statsFavWordsList) {
-          if (data.favorite_words && data.favorite_words.length > 0) {
-            this.dom.statsFavWordsList.innerHTML = data.favorite_words.map(fw => `
+      ['solo', 'multiplayer'].forEach(mode => {
+        const stats = data[mode] || {};
+        const values = {
+          games: stats.games_played || 0,
+          wins: stats.wins || 0,
+          'win-rate': `${stats.win_rate || 0}%`,
+          'avg-attempts': formatAverage(stats.avg_attempts),
+          'winning-attempts': formatAverage(stats.avg_winning_attempts),
+          'best-attempts': stats.best_attempts ?? '—',
+          time: formatDuration(stats.avg_time_seconds),
+          revealed: stats.avg_revealed_pct === null || stats.avg_revealed_pct === undefined
+            ? '—'
+            : `${Number(stats.avg_revealed_pct).toFixed(1)}%`,
+          points: stats.points || 0,
+        };
+        Object.entries(values).forEach(([metric, value]) => {
+          const element = document.getElementById(`stats-${mode}-${metric}`);
+          if (element) element.textContent = value;
+        });
+      });
+
+      if (this.dom.statsFavWordsList) {
+        const words = data.favorite_words || [];
+        this.dom.statsFavWordsList.innerHTML = words.length
+          ? words.map(fw => `
               <span class="fav-word-badge" title="${fw.count} fois joué">
                 <span class="fav-word-text">${this.escapeHtml(fw.word)}</span>
                 <span class="fav-word-count">${fw.count}</span>
               </span>
-            `).join('');
-          } else {
-            this.dom.statsFavWordsList.innerHTML = '<span class="empty-fav-hint">Jouez des mots pour découvrir vos mots fétiches !</span>';
-          }
-        }
+            `).join('')
+          : '<span class="empty-fav-hint">Jouez des mots pour découvrir vos mots fétiches !</span>';
+      }
+
+      if (this.dom.statsRecentList) {
+        const recentGames = data.recent_games || [];
+        this.dom.statsRecentList.innerHTML = recentGames.length
+          ? recentGames.map(game => {
+              const date = game.finished_at ? new Date(game.finished_at).toLocaleDateString('fr-FR') : '—';
+              const result = game.won ? 'Titre trouvé' : (game.surrendered ? 'Abandon' : 'Non trouvé');
+              const mode = game.mode === 'solo' ? 'Solo' : 'Multijoueur';
+              return `
+                <tr>
+                  <td><b>${this.escapeHtml(game.title)}</b></td>
+                  <td>${mode}</td>
+                  <td>${result}</td>
+                  <td style="text-align: center;">${game.attempts}</td>
+                  <td style="text-align: right;">${game.points}</td>
+                  <td style="text-align: right;">${date}</td>
+                </tr>
+              `;
+            }).join('')
+          : '<tr><td colspan="6" style="text-align:center; opacity:0.6;">Aucune manche suivie pour le moment</td></tr>';
       }
     } catch (e) {
       console.warn('Erreur chargement statistiques utilisateur :', e);
+      if (this.dom.statsRecentList) {
+        this.dom.statsRecentList.innerHTML = '<tr><td colspan="6" style="text-align:center; opacity:0.6;">Statistiques momentanément indisponibles</td></tr>';
+      }
     }
   }
 

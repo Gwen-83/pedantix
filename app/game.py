@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional, Set
 
 from app.nlp import (
     normalize_text, check_match, calculate_proximity, is_valid_french_word,
-    normalize_letter, is_letter_revealed, clean_guess, normalize_wiki_title
+    clean_guess, normalize_wiki_title
 )
 from app.synonyms_dict import EXPANDED_STOPWORDS
 from app.tokenizer import ArticleTokenizer
@@ -298,10 +298,10 @@ class GameSession:
             "total_words": self.total_words
         }
 
-    def get_public_state(self, revealed_letters: Optional[List[str]] = None) -> Dict[str, Any]:
+    def get_public_state(self, hinted_word_ids: Optional[Set[int]] = None) -> Dict[str, Any]:
         """Returns the masked board representation safe for the client."""
         client_tokens = []
-        rev_set = set(revealed_letters or [])
+        hinted_ids = hinted_word_ids or set()
 
         for t in self.tokens:
             if t["type"] in ("space", "punct") or t["revealed"]:
@@ -311,6 +311,18 @@ class GameSession:
                     "text": t["text"],
                     "revealed": True,
                     "is_word": t.get("is_word", False),
+                    "is_title": t["is_title"],
+                    "paragraph_idx": t["paragraph_idx"]
+                })
+            elif t["id"] in hinted_ids:
+                client_tokens.append({
+                    "id": t["id"],
+                    "type": "word",
+                    "text": t["text"],
+                    "length": t["length"],
+                    "revealed": False,
+                    "hint_revealed": True,
+                    "is_word": True,
                     "is_title": t["is_title"],
                     "paragraph_idx": t["paragraph_idx"]
                 })
@@ -324,12 +336,6 @@ class GameSession:
                     "is_title": t["is_title"],
                     "paragraph_idx": t["paragraph_idx"]
                 }
-                if rev_set:
-                    tok_text = t.get("text", "")
-                    tok_dict["hint_pattern"] = "".join(
-                        ch if is_letter_revealed(ch, rev_set) else "_"
-                        for ch in tok_text
-                    )
                 if t["id"] in self.token_close_words:
                     tok_dict["heat"] = self.token_close_words[t["id"]]["score"]
                     tok_dict["close_word"] = self.token_close_words[t["id"]]["word"]

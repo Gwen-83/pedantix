@@ -6,18 +6,17 @@ import random
 import time
 import math
 import uuid
-from collections import Counter
 from typing import Dict, List, Optional, Set, Any
 from fastapi import WebSocket
 
 from app.game import GameSession, GameManager
 from app.wiki import ALL_CURATED_TITLES, WikipediaClient, CURATED_DIFFICULTY_MAP
 from app.database import (
-    get_player_score, increment_player_score, record_user_game_finish, record_user_guess_word,
+    get_player_score, increment_player_score, record_game_finish, record_user_game_finish, record_user_guess_word,
     record_played_article, get_recently_played_articles, is_valid_user_identifier,
     get_random_cached_article, cache_article
 )
-from app.nlp import normalize_letter, is_letter_revealed, normalize_wiki_title
+from app.nlp import normalize_wiki_title
 
 logger = logging.getLogger("pedantix.room")
 
@@ -28,6 +27,7 @@ TEAM_METADATA = {
     "yellow": {"name": "Équipe Jaune", "short": "Jaune", "icon": "🟡", "color": "#eab308"},
 }
 ALL_TEAMS = ["blue", "red", "green", "yellow"]
+PLAYER_DISCONNECT_GRACE_SECONDS = 60.0
 
 class RoomPlayer:
     def __init__(self, player_id: str, name: str, session: GameSession, is_host: bool = False, team: str = "blue"):
@@ -81,6 +81,7 @@ class RoomPlayer:
 class Room:
     def __init__(self, room_id: str, article_data: Dict[str, Any], seed: str, difficulty: str = "moyen"):
         self.room_id = room_id
+        self.session_mode = "solo" if room_id.startswith("solo-") else "multiplayer"
         self.article_data = article_data
         self.seed = seed
         self.difficulty: str = difficulty or article_data.get("difficulty", "moyen")
@@ -105,10 +106,11 @@ class Room:
         self.winning_team: Optional[str] = None
         self._countdown_task: Optional[asyncio.Task] = None
         self._timer_30s_task: Optional[asyncio.Task] = None
-        self.revealed_letters: List[str] = []
-        self._letter_hint_task: Optional[asyncio.Task] = None
-        self.letter_hint_interval: float = 300.0  # 5 minutes = 300 seconds
-        self.next_letter_hint_time: Optional[float] = None
+        self.hinted_word_ids: Set[int] = set()
+        self._word_hint_task: Optional[asyncio.Task] = None
+        self.word_hint_initial_delay: float = 300.0
+        self.word_hint_interval: float = 90.0
+        self.next_word_hint_time: Optional[float] = None
         self.surrender_in_progress: bool = False
         self.surrender_initiator_id: Optional[str] = None
         self.surrender_initiator_name: Optional[str] = None
@@ -147,96 +149,85 @@ class Room:
         if idents:
             record_played_article(idents, title)
 
-    def _pick_next_hint_letter(self) -> Optional[str]:
-        """
-        Picks an unrevealed letter from the secret article.
-        Prioritizes letters appearing in the title, ordered by overall frequency in the text.
-        """
-        rev_set = set(self.revealed_letters)
-        title = self.article_data.get("title", "")
-        paragraphs = self.article_data.get("paragraphs", [])
-        full_text = title + " " + " ".join(paragraphs)
+    def _get_word_hint_sessions(self) -> List[GameSession]:
+        if self.game_mode == "team":
+            active_teams = {
+                player.team for player in self.players.values()
+                if not player.is_spectator
+            }
+            sessions = [
+                self.team_sessions[team]
+                for team in active_teams
+                if team in self.team_sessions
+            ]
+        else:
+            sessions = [
+                player.session for player in self.players.values()
+                if not player.is_spectator
+            ]
+        return list({session.session_id: session for session in sessions}.values())
 
-        letter_counts = Counter()
-        for ch in full_text:
-            norm = normalize_letter(ch)
-            for single_char in norm:
-                if single_char and single_char not in rev_set:
-                    letter_counts[single_char] += 1
-
-        if not letter_counts:
+    def _pick_next_hint_word_id(self) -> Optional[int]:
+        sessions = self._get_word_hint_sessions()
+        if not sessions:
             return None
 
-        # Check unrevealed title letters
-        title_letters = set()
-        for ch in title:
-            norm = normalize_letter(ch)
-            for single_char in norm:
-                if single_char and single_char not in rev_set:
-                    title_letters.add(single_char)
+        available_ids: Optional[Set[int]] = None
+        for session in sessions:
+            hidden_word_ids = {
+                token["id"] for token in session.tokens
+                if token.get("is_word")
+                and not token.get("revealed")
+                and token["id"] not in self.hinted_word_ids
+            }
+            available_ids = (
+                hidden_word_ids if available_ids is None
+                else available_ids & hidden_word_ids
+            )
 
-        if title_letters:
-            return max(title_letters, key=lambda l: letter_counts[l])
+        candidates = sorted(available_ids or set())
+        return random.choice(candidates) if candidates else None
 
-        # Otherwise pick the most common letter remaining in the body
-        return letter_counts.most_common(1)[0][0]
+    def start_word_hint_timer(self):
+        if self.status != "playing":
+            return
+        if self._word_hint_task and not self._word_hint_task.done():
+            if not self._word_hint_task.cancelling():
+                return
+        if self.next_word_hint_time is None:
+            self.next_word_hint_time = time.time() + self.word_hint_initial_delay
+        self._word_hint_task = asyncio.create_task(self._run_word_hint_loop())
 
-    def get_tokens_hint_patterns(self) -> Dict[str, str]:
-        """
-        Returns a mapping of token_id (str) -> hint_pattern for all unrevealed tokens,
-        based on currently revealed letters (self.revealed_letters).
-        """
-        if not self.revealed_letters:
-            return {}
-
-        rev_set = set(self.revealed_letters)
-        sess = None
-        if self.game_mode == "team" and self.team_sessions:
-            sess = next(iter(self.team_sessions.values()), None)
-        elif self.players:
-            sess = next(iter(self.players.values())).session
-
-        if not sess:
-            return {}
-
-        hints = {}
-        for t in sess.tokens:
-            if t.get("is_word") and not t.get("revealed"):
-                tok_text = t.get("text", "")
-                pat = "".join(
-                    ch if is_letter_revealed(ch, rev_set) else "_"
-                    for ch in tok_text
-                )
-                if any(c != "_" for c in pat):
-                    hints[str(t["id"])] = pat
-        return hints
-
-    async def _run_letter_hint_loop(self):
+    async def _run_word_hint_loop(self):
         try:
             while self.status == "playing" and not self.first_winner_id:
-                await asyncio.sleep(self.letter_hint_interval)
+                delay = max(0.0, (self.next_word_hint_time or time.time()) - time.time())
+                await asyncio.sleep(delay)
                 if self.status != "playing" or self.first_winner_id:
                     break
 
-                next_letter = self._pick_next_hint_letter()
-                if not next_letter:
+                token_id = self._pick_next_hint_word_id()
+                if token_id is None:
+                    self.next_word_hint_time = None
+                    await self.broadcast({"type": "word_hint_unavailable"})
                     break
 
-                self.revealed_letters.append(next_letter)
-                self.next_letter_hint_time = time.time() + self.letter_hint_interval
-                mins = len(self.revealed_letters) * 5
-                hint_msg = f"💡 Indice des {mins} min : la lettre « {next_letter.upper()} » a été dévoilée partout !"
+                sessions = self._get_word_hint_sessions()
+                if not sessions:
+                    self.next_word_hint_time = None
+                    await self.broadcast({"type": "word_hint_unavailable"})
+                    break
+                word = sessions[0].tokens_by_id[token_id].get("text", "")
+                self.hinted_word_ids.add(token_id)
+                self.next_word_hint_time = time.time() + self.word_hint_interval
+                hint_msg = f"💡 Indice : le mot « {word} » a été dévoilé !"
                 self.add_activity(hint_msg, "hint")
 
-                token_hints = self.get_tokens_hint_patterns()
                 await self.broadcast({
-                    "type": "letter_hint",
-                    "letter": next_letter.upper(),
-                    "revealed_letters": self.revealed_letters,
-                    "token_hints": token_hints,
-                    "token_patterns": token_hints,
-                    "next_letter_hint_time": self.next_letter_hint_time,
-                    "next_hint_time": self.next_letter_hint_time,
+                    "type": "word_hint",
+                    "token_id": token_id,
+                    "word": word,
+                    "next_word_hint_time": self.next_word_hint_time,
                     "message": hint_msg
                 })
         except asyncio.CancelledError:
@@ -358,8 +349,10 @@ class Room:
                     self.surrender_initiator_name = None
                     self.surrender_votes = set()
                     self.surrender_cooldowns.clear()
-                    self.revealed_letters = []
-                    self.next_letter_hint_time = time.time() + self.letter_hint_interval
+                    self.hinted_word_ids.clear()
+                    self.next_word_hint_time = None
+                    if self._word_hint_task and not self._word_hint_task.done():
+                        self._word_hint_task.cancel()
 
                     for p in self.players.values():
                         session_id = str(uuid.uuid4())
@@ -370,7 +363,7 @@ class Room:
                             url=self.article_data.get("url", ""),
                             image=self.article_data.get("image", ""),
                             paragraphs=self.article_data["paragraphs"],
-                            mode="multiplayer",
+                            mode=self.session_mode,
                             category=self.article_data.get("category", "general"),
                             difficulty=self.difficulty,
                             lang_count=self.article_data.get("lang_count", 0),
@@ -422,7 +415,7 @@ class Room:
                                 url=self.article_data.get("url", ""),
                                 image=self.article_data.get("image", ""),
                                 paragraphs=self.article_data["paragraphs"],
-                                mode="multiplayer",
+                                mode=self.session_mode,
                                 category=self.article_data.get("category", "general"),
                                 difficulty=self.difficulty,
                                 lang_count=self.article_data.get("lang_count", 0),
@@ -572,7 +565,7 @@ class Room:
                 url=self.article_data.get("url", f"https://fr.wikipedia.org/wiki/{self.article_data['title']}"),
                 image=self.article_data.get("image", ""),
                 paragraphs=self.article_data["paragraphs"],
-                mode="multiplayer",
+                mode=self.session_mode,
                 category=self.article_data.get("category", "general"),
                 difficulty=self.difficulty,
                 lang_count=self.article_data.get("lang_count", 0),
@@ -662,7 +655,7 @@ class Room:
                     url=self.article_data.get("url", ""),
                     image=self.article_data.get("image", ""),
                     paragraphs=self.article_data["paragraphs"],
-                    mode="multiplayer",
+                    mode=self.session_mode,
                     category=self.article_data.get("category", "general"),
                     difficulty=self.difficulty,
                     lang_count=self.article_data.get("lang_count", 0),
@@ -711,21 +704,20 @@ class Room:
             await asyncio.sleep(5.0)
             self.status = "playing"
             self.countdown_end = None
-            self.revealed_letters = []
-            self.next_letter_hint_time = time.time() + self.letter_hint_interval
+            self.hinted_word_ids.clear()
+            self.next_word_hint_time = time.time() + self.word_hint_initial_delay
             self.add_activity("🚀 La partie a commencé ! Bonne chance à tous !", "start")
 
-            if self._letter_hint_task and not self._letter_hint_task.done():
-                self._letter_hint_task.cancel()
-            self._letter_hint_task = asyncio.create_task(self._run_letter_hint_loop())
+            if self._word_hint_task and not self._word_hint_task.done():
+                self._word_hint_task.cancel()
+            self._word_hint_task = asyncio.create_task(self._run_word_hint_loop())
 
             await self.broadcast({
                 "type": "game_started",
                 "status": "playing",
                 "leaderboard": self.get_leaderboard(),
                 "activity": self.recent_activity,
-                "next_letter_hint_time": self.next_letter_hint_time,
-                "revealed_letters": self.revealed_letters
+                "next_word_hint_time": self.next_word_hint_time
             })
         except asyncio.CancelledError:
             pass
@@ -818,9 +810,9 @@ class Room:
 
                     self.add_activity(f"🏆 {team_name} a découvert le titre en {attempts} coups ! 30s pour les autres équipes !", "win")
 
-                    if self._letter_hint_task and not self._letter_hint_task.done():
-                        self._letter_hint_task.cancel()
-                    self.next_letter_hint_time = None
+                    if self._word_hint_task and not self._word_hint_task.done():
+                        self._word_hint_task.cancel()
+                    self.next_word_hint_time = None
 
                     if self._timer_30s_task and not self._timer_30s_task.done():
                         self._timer_30s_task.cancel()
@@ -862,9 +854,9 @@ class Room:
                         self.first_winner_attempts = player.attempts
                         self.status = "ending"
 
-                        if self._letter_hint_task and not self._letter_hint_task.done():
-                            self._letter_hint_task.cancel()
-                        self.next_letter_hint_time = None
+                        if self._word_hint_task and not self._word_hint_task.done():
+                            self._word_hint_task.cancel()
+                        self.next_word_hint_time = None
                         if self._timer_30s_task and not self._timer_30s_task.done():
                             self._timer_30s_task.cancel()
 
@@ -922,10 +914,9 @@ class Room:
         self.rounds_played += 1
         self.timer_30s_end = None
 
-        if self._letter_hint_task and not self._letter_hint_task.done():
-            self._letter_hint_task.cancel()
-        self.revealed_letters = []
-        self.next_letter_hint_time = None
+        if self._word_hint_task and not self._word_hint_task.done():
+            self._word_hint_task.cancel()
+        self.next_word_hint_time = None
 
         round_podium = []
         if self.game_mode == "team":
@@ -987,12 +978,44 @@ class Room:
                     })
 
         # Refresh all player scores from DB, record game finish stats, and reset ready status
+        finished_sessions = set()
         for p in self.players.values():
-            if p.is_won:
-                pts = next((item["points"] for item in round_podium if item.get("player_id") == p.player_id), 0)
-                record_user_game_finish(p.name, won=True, attempts=p.attempts, points=pts)
-            else:
-                record_user_game_finish(p.name, won=False, attempts=p.attempts, points=0)
+            if not p.is_spectator:
+                stats_session = (
+                    self.team_sessions.get(p.team, p.session)
+                    if self.game_mode == "team" else p.session
+                )
+                if stats_session and stats_session.session_id not in finished_sessions:
+                    record_game_finish(
+                        stats_session.session_id,
+                        won=stats_session.is_won,
+                        surrendered=False,
+                        attempts=stats_session.attempts,
+                        revealed_words=len(stats_session.revealed_word_ids),
+                        elapsed_time=int(time.time() - stats_session.created_at),
+                    )
+                    finished_sessions.add(stats_session.session_id)
+                pts = next(
+                    (item["points"] for item in round_podium if item.get("player_id") == p.player_id),
+                    0,
+                )
+                if stats_session:
+                    record_user_game_finish(
+                        p.name,
+                        won=p.is_won,
+                        attempts=p.attempts,
+                        points=pts,
+                        session_id=stats_session.session_id,
+                        mode=(
+                            "solo" if self.room_id.startswith("solo-")
+                            else "team" if self.game_mode == "team"
+                            else "multiplayer"
+                        ),
+                        title=self.article_data["title"],
+                        duration_seconds=int(time.time() - stats_session.created_at),
+                        revealed_words=len(stats_session.revealed_word_ids),
+                        total_words=stats_session.total_words,
+                    )
             p.refresh_score()
             p.is_ready = True if self.room_id.startswith("solo-") else False
             if p.session:
@@ -1057,10 +1080,10 @@ class Room:
             self._timer_30s_task.cancel()
         if self._countdown_task and not self._countdown_task.done():
             self._countdown_task.cancel()
-        if self._letter_hint_task and not self._letter_hint_task.done():
-            self._letter_hint_task.cancel()
-        self.revealed_letters = []
-        self.next_letter_hint_time = None
+        if self._word_hint_task and not self._word_hint_task.done():
+            self._word_hint_task.cancel()
+        self.hinted_word_ids.clear()
+        self.next_word_hint_time = None
 
         excluded_titles = self.get_recently_played_titles(days=15)
         exclude_norm = {normalize_wiki_title(t) for t in excluded_titles if t}
@@ -1125,7 +1148,7 @@ class Room:
                     url=self.article_data.get("url", ""),
                     image=self.article_data.get("image", ""),
                     paragraphs=self.article_data["paragraphs"],
-                    mode="multiplayer",
+                    mode=self.session_mode,
                     category=self.article_data.get("category", "general"),
                     difficulty=self.difficulty,
                     lang_count=self.article_data.get("lang_count", 0),
@@ -1148,6 +1171,8 @@ class Room:
             for p in self.players.values():
                 p.is_ready = True
             self.add_activity("🎲 Nouvelle partie solo lancée !", "new_round")
+            self.next_word_hint_time = time.time() + self.word_hint_initial_delay
+            self.start_word_hint_timer()
             await self.broadcast({
                 "type": "new_round",
                 "status": "playing",
@@ -1159,7 +1184,8 @@ class Room:
                 "game_mode": self.game_mode,
                 "teams": self.get_teams_data(),
                 "leaderboard": self.get_leaderboard(),
-                "activity": self.recent_activity
+                "activity": self.recent_activity,
+                "next_word_hint_time": self.next_word_hint_time
             })
             return {"status": "playing", "seed": self.seed, "difficulty": self.difficulty}
 
@@ -1311,14 +1337,47 @@ class Room:
             self._countdown_task.cancel()
         if self._timer_30s_task and not self._timer_30s_task.done():
             self._timer_30s_task.cancel()
-        if self._letter_hint_task and not self._letter_hint_task.done():
-            self._letter_hint_task.cancel()
-        self.revealed_letters = []
-        self.next_letter_hint_time = None
+        if self._word_hint_task and not self._word_hint_task.done():
+            self._word_hint_task.cancel()
+        self.hinted_word_ids.clear()
+        self.next_word_hint_time = None
 
-        # Reset ready status for everyone and ensure NO points are awarded
+        # Reset ready status for active players and ensure NO points are awarded
+        finished_sessions = set()
         for p in self.players.values():
-            record_user_game_finish(p.name, won=False, attempts=p.attempts, points=0)
+            if not p.is_spectator:
+                stats_session = (
+                    self.team_sessions.get(p.team, p.session)
+                    if self.game_mode == "team" else p.session
+                )
+                if stats_session:
+                    if stats_session.session_id not in finished_sessions:
+                        record_game_finish(
+                            stats_session.session_id,
+                            won=False,
+                            surrendered=True,
+                            attempts=stats_session.attempts,
+                            revealed_words=len(stats_session.revealed_word_ids),
+                            elapsed_time=int(time.time() - stats_session.created_at),
+                        )
+                        finished_sessions.add(stats_session.session_id)
+                    record_user_game_finish(
+                        p.name,
+                        won=False,
+                        attempts=p.attempts,
+                        points=0,
+                        session_id=stats_session.session_id,
+                        mode=(
+                            "solo" if self.room_id.startswith("solo-")
+                            else "team" if self.game_mode == "team"
+                            else "multiplayer"
+                        ),
+                        title=self.article_data["title"],
+                        surrendered=True,
+                        duration_seconds=int(time.time() - stats_session.created_at),
+                        revealed_words=len(stats_session.revealed_word_ids),
+                        total_words=stats_session.total_words,
+                    )
             p.refresh_score()
             p.is_ready = True if self.room_id.startswith("solo-") else False
 
@@ -1376,8 +1435,8 @@ class Room:
             self._countdown_task.cancel()
         if self._timer_30s_task and not self._timer_30s_task.done():
             self._timer_30s_task.cancel()
-        if self._letter_hint_task and not self._letter_hint_task.done():
-            self._letter_hint_task.cancel()
+        if self._word_hint_task and not self._word_hint_task.done():
+            self._word_hint_task.cancel()
         for task in self._disconnect_tasks.values():
             if not task.done():
                 task.cancel()
@@ -1411,30 +1470,16 @@ class Room:
         if pid and pid in self.players:
             has_other_ws = any(p_id == pid for p_id in self.ws_player_map.values())
             if not has_other_ws:
-                player = self.players[pid]
-                player.connected = False
-                player.disconnected_at = time.time()
-
-                if self.surrender_in_progress:
-                    connected_pids = {p.player_id for p in self.players.values() if p.connected}
-                    if connected_pids and self.surrender_votes >= connected_pids:
-                        await self.execute_surrender()
-                        return
-
-                await self.broadcast({
-                    "type": "player_disconnected",
-                    "player_id": pid,
-                    "player_name": player.name,
-                    "leaderboard": self.get_leaderboard(),
-                    "teams": self.get_teams_data(),
-                    "can_start": self.can_start()
-                })
-
-                # Schedule automatic removal after a short grace period (4 seconds for page reload)
+                # Keep the player unchanged while a page reload or reconnect is in progress.
                 existing_task = self._disconnect_tasks.pop(pid, None)
                 if existing_task and not existing_task.done():
                     existing_task.cancel()
-                self._disconnect_tasks[pid] = asyncio.create_task(self._delayed_remove_player(pid, delay=4.0))
+                self._disconnect_tasks[pid] = asyncio.create_task(
+                    self._delayed_remove_player(
+                        pid,
+                        delay=PLAYER_DISCONNECT_GRACE_SECONDS,
+                    )
+                )
 
     async def _delayed_remove_player(self, player_id: str, delay: float = 4.0):
         try:
@@ -1442,18 +1487,20 @@ class Room:
             has_active_ws = any(p_id == player_id for p_id in self.ws_player_map.values())
             if not has_active_ws and player_id in self.players:
                 player = self.players[player_id]
-                if not player.connected:
-                    logger.info(f"Joueur « {player.name} » ({player_id}) déconnecté depuis {delay}s du salon {self.room_id} -> Retrait définitif.")
-                    await self.remove_player(player_id, reason="disconnect")
+                player.connected = False
+                player.disconnected_at = time.time()
+                logger.info(f"Joueur « {player.name} » ({player_id}) déconnecté depuis {delay}s du salon {self.room_id} -> Retrait définitif.")
+                await self.remove_player(player_id, reason="disconnect")
         except asyncio.CancelledError:
             pass
         finally:
-            self._disconnect_tasks.pop(player_id, None)
+            if self._disconnect_tasks.get(player_id) is asyncio.current_task():
+                self._disconnect_tasks.pop(player_id, None)
 
     async def remove_player(self, player_id: str, reason: str = "leave") -> bool:
         # Cancel any pending disconnect task
         task = self._disconnect_tasks.pop(player_id, None)
-        if task and not task.done():
+        if task and task is not asyncio.current_task() and not task.done():
             task.cancel()
 
         if player_id not in self.players:

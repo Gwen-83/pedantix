@@ -49,24 +49,6 @@ def normalize_wiki_title(title: str) -> str:
     return normalize_text(cleaned)
 
 
-def normalize_letter(c: str) -> str:
-    """Normalizes a character to lowercase ASCII a-z without accents (e.g. 'é' -> 'e', 'œ' -> 'oe')."""
-    if not c:
-        return ""
-    norm = normalize_text(c)
-    letters = [ch for ch in norm if "a" <= ch <= "z"]
-    return "".join(letters)
-
-
-def is_letter_revealed(c: str, revealed_letters) -> bool:
-    """Returns True if character c is revealed under revealed_letters (or is non-alpha)."""
-    if not c.isalpha():
-        return True
-    norm = normalize_letter(c)
-    if not norm:
-        return True
-    return any(l in revealed_letters for l in norm)
-
 from app.synonyms_dict import (
     GENERIC_BRIDGE_WORDS,
     EXPANDED_STOPWORDS,
