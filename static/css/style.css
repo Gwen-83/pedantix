@@ -1221,16 +1221,16 @@ table.guessable td.word {
 
 /* Automatically revealed words are distinct from words found by guessing. */
 .w.hint-word:not(.revealed) {
-  color: #fef08a !important;
+  color: #713f12 !important;
   font-weight: 800;
-  background: rgba(245, 158, 11, 0.12) !important;
-  border-color: rgba(245, 158, 11, 0.6) !important;
-  box-shadow: 0 0 7px rgba(245, 158, 11, 0.28) !important;
+  background: #fcd34d !important;
+  border-color: #b45309 !important;
+  box-shadow: 0 0 7px rgba(180, 83, 9, 0.35) !important;
 }
 
 .w.hint-word:not(.revealed):hover {
-  border-color: #fbbf24 !important;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.5) !important;
+  border-color: #92400e !important;
+  box-shadow: 0 0 12px rgba(180, 83, 9, 0.55) !important;
 }
 
 /* Flash pulse when a new word hint is broadcast */
