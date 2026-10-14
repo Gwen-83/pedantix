@@ -342,6 +342,40 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
         # And P1's session in the room must also match the new article
         self.assertEqual(room.players[p1].session.title, room.article_data["title"])
 
+    async def test_game_count_is_recorded_once_when_round_finishes(self):
+        from types import SimpleNamespace
+
+        room = Room(
+            room_id="test_game_count",
+            article_data={"title": "Article de test", "url": ""},
+            seed="test-seed"
+        )
+        player = SimpleNamespace(
+            player_id="test_game_count_player",
+            name="test_game_count_user",
+            team="blue",
+            score=0,
+            is_won=True,
+            attempts=3,
+            is_ready=False,
+            session=None,
+            refresh_score=lambda: None
+        )
+        room.players[player.player_id] = player
+        room.winners = [player.player_id]
+        room.status = "ending"
+        room.get_leaderboard = lambda: []
+        room.get_teams_data = lambda: {}
+        room.can_start = lambda: True
+
+        with patch("app.room.record_user_game_finish") as record_finish:
+            await room._finish_round()
+            await room._finish_round()
+
+        record_finish.assert_called_once_with(
+            player.name, won=True, attempts=player.attempts, points=3
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

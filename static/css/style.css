@@ -2033,7 +2033,9 @@ footer a {
   flex-direction: column;
   gap: 1rem;
   max-height: calc(100vh - 2rem);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   position: relative;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -7401,4 +7403,3 @@ iframe, embed, object {
   color: #f87171 !important;
   font-weight: 700 !important;
 }
-

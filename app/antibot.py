@@ -39,11 +39,11 @@ class AntiBotGuard:
         self.ip_history: Dict[str, deque] = {}
         
         # Paramètres anti-cadence adaptés aux humains et multi-joueurs sur même Wi-Fi
-        self.min_interval_seconds = 0.25      # 250ms minimum entre 2 mots
+        self.min_interval_seconds = 0.10      # 100ms minimum entre 2 mots
         self.min_token_age_seconds = 0.0 if os.environ.get("PEDANTIX_TEST_MODE") == "1" else 0.05  # 50ms tolérant
-        self.max_in_2s = 4                    # Max 4 mots en 2s
-        self.max_in_10s = 15                  # Max 15 mots en 10s
-        self.max_in_30s = 35                  # Max 35 mots en 30s
+        self.max_in_2s = 12                   # Autorise les séries de propositions rapides
+        self.max_in_10s = 40                  # Max 40 mots en 10s
+        self.max_in_30s = 90                  # Max 90 mots en 30s
         self.max_ip_per_minute = 300          # Max 300 requêtes / minute par IP (autorise plusieurs amis sur même Wi-Fi)
         self.penalty_duration = 15.0          # 15 secondes de pénalité en cas d'abus répété avéré
 
@@ -162,7 +162,7 @@ class AntiBotGuard:
                 }
             ip_q.append(now)
 
-        # 3. Vérification cadence inter-mots (< 350ms)
+        # 3. Vérification cadence inter-mots (< 100ms)
         last_t = p["last_guess_time"]
         diff = now - last_t
         if last_t > 0 and diff < self.min_interval_seconds:
@@ -205,8 +205,8 @@ class AntiBotGuard:
             }
 
         # Tout est bon : on valide le coup
-        if diff > 1.5:
-            p["rapid_strikes"] = max(0, p["rapid_strikes"] - 1)
+        if p["rapid_strikes"]:
+            p["rapid_strikes"] -= 1
 
         p["last_guess_time"] = now
         hist.append(now)

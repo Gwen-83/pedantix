@@ -916,6 +916,8 @@ class Room:
 
     async def _finish_round(self):
         """Timer expired or all players found: award points (+3 for 1st, +2 for 2nd, +1 for 3rd) and return to lobby."""
+        if self.status == "lobby":
+            return
         self.status = "lobby"
         self.rounds_played += 1
         self.timer_30s_end = None
@@ -1316,6 +1318,7 @@ class Room:
 
         # Reset ready status for everyone and ensure NO points are awarded
         for p in self.players.values():
+            record_user_game_finish(p.name, won=False, attempts=p.attempts, points=0)
             p.refresh_score()
             p.is_ready = True if self.room_id.startswith("solo-") else False
 

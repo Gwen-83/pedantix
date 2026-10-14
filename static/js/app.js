@@ -1828,6 +1828,9 @@ class PedantixApp {
       if (data.room_id) {
         this.roomId = data.room_id;
       }
+      if (data.seed !== this.seed || data.session.session_id !== this.sessionId) {
+        this.resetUnmaskButton();
+      }
       if (this.dom.roomCodeDisplay) {
         this.dom.roomCodeDisplay.textContent = this.roomId;
       }
@@ -2295,6 +2298,7 @@ class PedantixApp {
       this.clearSurrenderCooldown();
       this.stopHintTimer();
       this.hideOpponentWin();
+      this.resetUnmaskButton();
       this.closeModal(this.dom.roundOverModal);
       this.dom.successBox.classList.remove('active');
       if (msg.difficulty) this.currentDifficulty = msg.difficulty;
@@ -2536,6 +2540,7 @@ class PedantixApp {
       } else if (data.error) {
         this.showToast(data.error);
       } else {
+        this.resetUnmaskButton();
         if (this.isSoloMode) {
           this.stopHintTimer();
           this.hideOpponentWin();
@@ -3247,6 +3252,7 @@ class PedantixApp {
 
   applyNewGameSession(data) {
     if (!data || !data.session) return;
+    this.resetUnmaskButton();
     this.startTime = Date.now();
     this.previousInputs = [];
     this.prevInputIdx = -1;
@@ -4495,18 +4501,21 @@ class PedantixApp {
       });
 
       if (this.dom.seeFullPageBtn) {
-        this.dom.seeFullPageBtn.disabled = false;
+        this.dom.seeFullPageBtn.disabled = true;
         this.dom.seeFullPageBtn.innerHTML = '<span>✅</span> Article démasqué';
       }
       this.showToast('Article entièrement démasqué 📖');
     } catch (err) {
       console.error('Erreur démasquage complet:', err);
-      if (this.dom.seeFullPageBtn) {
-        this.dom.seeFullPageBtn.disabled = false;
-        this.dom.seeFullPageBtn.innerHTML = '<span>👁️</span> Voir tout démasqué';
-      }
+      this.resetUnmaskButton();
       this.showToast('Erreur lors du démasquage de l\'article.');
     }
+  }
+
+  resetUnmaskButton() {
+    if (!this.dom.seeFullPageBtn) return;
+    this.dom.seeFullPageBtn.disabled = false;
+    this.dom.seeFullPageBtn.innerHTML = '<span>👁️</span> Voir tout démasqué';
   }
 
   applyUnmaskedTokens(tokensMap) {
