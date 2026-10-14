@@ -1180,8 +1180,8 @@
       <div class="modal-header">
         <span class="modal-header-icon">🌐</span>
         <div class="modal-title-col">
-          <h3>Salons Multijoueur en ligne</h3>
-          <p class="modal-subtitle">Trouvez facilement d'autres joueurs ou lancez une partie avec vos amis !</p>
+          <h3>Jouer en multijoueur</h3>
+          <p class="modal-subtitle">Créez un salon, rejoignez-en un avec un code ou choisissez une partie publique.</p>
         </div>
       </div>
       <div class="modal-body">
@@ -1189,11 +1189,10 @@
           <section class="rooms-action-card rooms-create-card" aria-labelledby="rooms-create-title">
             <span class="rooms-action-icon" aria-hidden="true">✨</span>
             <div class="rooms-action-copy">
-              <h4 id="rooms-create-title">Créer une partie</h4>
-              <p>Ouvrez un nouveau salon et invitez vos amis.</p>
+              <h4 id="rooms-create-title">Créer un salon</h4>
             </div>
             <button type="button" id="btn-modal-create-room" class="btn-create-highlight">
-              Créer un salon
+              Créer
             </button>
           </section>
 
@@ -1201,10 +1200,9 @@
             <span class="rooms-action-icon" aria-hidden="true">🔑</span>
             <div class="rooms-action-copy">
               <h4 id="rooms-join-title">Rejoindre avec un code</h4>
-              <p>Entrez le nom ou le code partagé par l’hôte.</p>
             </div>
             <div class="join-by-code-box">
-              <input type="text" id="input-join-code" aria-label="Nom ou code du salon" placeholder="Ex. salon-123" maxlength="30" autocomplete="off" />
+              <input type="text" id="input-join-code" aria-label="Nom ou code du salon" placeholder="Code du salon" maxlength="30" autocomplete="off" />
               <button type="button" id="btn-modal-join-code" class="btn-join-code">Rejoindre</button>
             </div>
           </section>
@@ -1212,10 +1210,10 @@
 
         <div class="current-room-bar">
           <div class="current-room-info">
-            <span class="current-room-label">Votre salon actuel</span>
+            <span class="current-room-label">Salon actuel</span>
             <strong id="current-room-name-text">Aucun salon sélectionné</strong>
           </div>
-          <button type="button" id="btn-copy-current-link" class="btn-copy-small">📋 Copier le lien d’invitation</button>
+          <button type="button" id="btn-copy-current-link" class="btn-copy-small">Copier le lien</button>
         </div>
 
         <!-- Active Rooms List -->
@@ -1223,17 +1221,17 @@
           <div class="rooms-list-header">
             <div>
               <h4>Parties publiques</h4>
-              <p>Parcourez les salons ouverts et rejoignez celui qui vous convient.</p>
+              <p>Choisissez un salon ouvert pour le rejoindre.</p>
             </div>
             <div class="rooms-list-tools">
-              <span id="rooms-count-badge" class="rooms-count-badge">0 salon disponible</span>
+              <span id="rooms-count-badge" class="rooms-count-badge" aria-live="polite">0 salon actif</span>
               <button type="button" id="btn-refresh-rooms" class="btn-refresh-rooms" title="Actualiser la liste des salons">
-                <span>🔄</span> Actualiser
+                <span aria-hidden="true">↻</span> Actualiser
               </button>
             </div>
           </div>
-          <div id="rooms-list" class="rooms-list-grid">
-            <div class="rooms-loading-placeholder">Chargement des salons en ligne...</div>
+          <div id="rooms-list" class="rooms-list-grid" aria-live="polite">
+            <div class="rooms-loading-placeholder" role="status">Chargement des salons...</div>
           </div>
         </div>
       </div>

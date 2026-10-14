@@ -1441,9 +1441,9 @@ class PedantixApp {
 
       if (rooms.length === 0) {
         this.dom.roomsList.innerHTML = `
-          <div class="rooms-empty-state" style="grid-column: 1 / -1; text-align: center; padding: 2rem; opacity: 0.85;">
-            <p style="font-size: 1rem; font-weight: 600;">Aucun salon public disponible pour l'instant.</p>
-            <p style="font-size: 0.85rem; margin-top: 0.5rem; opacity: 0.8;">Créez le vôtre avec le bouton <b>« ➕ Créer un nouveau salon »</b> ci-dessus pour jouer avec vos amis !</p>
+          <div class="rooms-empty-state">
+            <strong>Aucune partie publique pour le moment</strong>
+            <p>Créez un salon ou rejoignez-en un avec un code.</p>
           </div>
         `;
         return;
@@ -1455,10 +1455,9 @@ class PedantixApp {
         const card = document.createElement('div');
         card.className = `room-card ${isCurrent ? 'current-active-card' : ''}`;
 
-        const statusLabel = r.status === 'playing' ? 'En jeu' : 'Salon d\'attente';
+        const statusLabel = r.status === 'playing' ? 'En jeu' : 'En attente';
         const statusClass = r.status === 'playing' ? 'playing' : 'lobby';
         const modeLabel = r.game_mode === 'team' ? 'Par équipes' : 'Chacun pour soi';
-        const playersText = (r.players && r.players.length > 0) ? r.players.join(', ') : 'Aucun joueur';
 
         card.innerHTML = `
           <div class="room-card-header">
@@ -1466,13 +1465,13 @@ class PedantixApp {
             <span class="room-card-status-badge ${statusClass}">${statusLabel}</span>
           </div>
           <div class="room-card-meta">
-            <span>👥 <b>${r.players_count}</b> joueur${r.players_count > 1 ? 's' : ''} • Host : <b>${this.escapeHtml(r.host_name || 'Anonyme')}</b></span>
-            <span>🎮 Mode : ${modeLabel}</span>
-            <span class="room-card-players-list" title="${this.escapeHtml(playersText)}">Joueurs : ${this.escapeHtml(playersText)}</span>
+            <span class="room-card-player-count">${r.players_count} joueur${r.players_count > 1 ? 's' : ''}</span>
+            <span class="room-card-mode">${modeLabel}</span>
+            <span class="room-card-host">Hôte : ${this.escapeHtml(r.host_name || 'Anonyme')}</span>
           </div>
           <div class="room-card-footer">
             ${isCurrent
-              ? '<span style="font-size: 0.82rem; font-weight: 700; color: #10b981;">✓ Vous êtes dans ce salon</span>'
+              ? '<span class="room-card-current">Vous êtes dans ce salon</span>'
               : `<button type="button" class="btn-join-room-card btn-join-code" data-room-id="${this.escapeHtml(r.room_id)}">Rejoindre</button>`
             }
           </div>
