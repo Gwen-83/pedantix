@@ -103,6 +103,8 @@ class Room:
         self.chat_messages: List[Dict[str, Any]] = []
         self.game_mode: str = "individual"  # "individual" or "team"
         self.team_sessions: Dict[str, GameSession] = {}
+        self.assist_token = uuid.uuid4().hex
+        self.assisting_player_id: Optional[str] = None
         self.winning_team: Optional[str] = None
         self._countdown_task: Optional[asyncio.Task] = None
         self._timer_30s_task: Optional[asyncio.Task] = None
@@ -117,6 +119,10 @@ class Room:
         self.surrender_votes: Set[str] = set()
         self.surrender_cooldowns: Dict[str, float] = {}
         self._disconnect_tasks: Dict[str, asyncio.Task] = {}
+
+    @property
+    def is_cooperative_solo(self) -> bool:
+        return self.room_id.startswith("solo-") and self.assisting_player_id is not None
 
     def get_all_player_identifiers(self) -> List[str]:
         """Collecte tous les identifiants uniques des joueurs de la salle (player_id et pseudonymes valides)."""
@@ -575,7 +581,9 @@ class Room:
         player = RoomPlayer(player_id=player_id, name=player_name, session=session, is_host=is_first, team=default_team)
         if self.room_id.startswith("solo-"):
             player.is_ready = True
-            player.is_host = True
+            player.is_host = is_first
+            if is_first:
+                self.host_player_id = player_id
             self.status = "playing"
         self.players[player_id] = player
         if self.status in ("playing", "starting", "ending") or self.room_id.startswith("solo-"):
@@ -746,8 +754,15 @@ class Room:
             session = self.team_sessions.get(player.team)
             if not session:
                 session = player.session
+        elif self.is_cooperative_solo:
+            owner_id = self.room_id.removeprefix("solo-")
+            owner = self.players.get(owner_id)
+            session = owner.session if owner else player.session
         else:
             session = player.session
+
+        if self.is_cooperative_solo and session.is_won:
+            return {"status": "already_won", "message": "Cette page a déjà été trouvée ensemble."}
 
         guess_res = session.submit_guess(word)
 
@@ -763,7 +778,17 @@ class Room:
         matches_count = guess_res["matches_count"]
         score = guess_res.get("score", 0)
 
-        if self.game_mode == "team":
+        if self.is_cooperative_solo:
+            for p in self.players.values():
+                p.attempts = attempts
+                p.revealed_words_count = revealed_count
+                p.total_words = total_words
+                p.pct = pct
+                p.last_word = word
+                p.last_status = status
+                p.last_count = matches_count
+                p.last_score = score
+        elif self.game_mode == "team":
             # Cooperative: sync all teammates
             for p in self.players.values():
                 if p.team == player.team:
@@ -790,7 +815,24 @@ class Room:
 
         # Check win
         if guess_res["is_won"]:
-            if self.game_mode == "team":
+            if self.is_cooperative_solo:
+                owner_id = self.room_id.removeprefix("solo-")
+                owner = self.players.get(owner_id)
+                self.status = "ending"
+                self.first_winner_id = owner_id
+                self.first_winner_name = owner.name if owner else player.name
+                self.first_winner_attempts = attempts
+                self.winners = [owner_id]
+                for p in self.players.values():
+                    p.is_won = True
+                    p.won_at = time.time()
+                self.add_activity(f"🤝 {player.name} et {owner.name if owner else 'le propriétaire'} ont trouvé le titre ensemble !", "win")
+                if self._word_hint_task and not self._word_hint_task.done():
+                    self._word_hint_task.cancel()
+                self.next_word_hint_time = None
+                if self._timer_30s_task and not self._timer_30s_task.done():
+                    self._timer_30s_task.cancel()
+            elif self.game_mode == "team":
                 if not self.winning_team:
                     self.winning_team = player.team
                     team_meta = TEAM_METADATA.get(player.team, {})
@@ -1033,6 +1075,8 @@ class Room:
             "game_mode": self.game_mode,
             "winning_team": self.winning_team
         }
+        if self.is_cooperative_solo:
+            self.assisting_player_id = None
 
         # Broadcast round over and return to lobby
         await self.broadcast({
@@ -1405,6 +1449,8 @@ class Room:
             "game_mode": self.game_mode,
             "winning_team": None
         }
+        if self.is_cooperative_solo:
+            self.assisting_player_id = None
 
         self.add_activity("🏳️ La partie a été abandonnée à l'unanimité. L'article est révélé ! (0 point)", "surrender")
 
@@ -1508,6 +1554,8 @@ class Room:
 
         player = self.players.pop(player_id)
         player_name = player.name
+        if self.assisting_player_id == player_id:
+            self.assisting_player_id = None
 
         for ws, pid in list(self.ws_player_map.items()):
             if pid == player_id:
@@ -1581,6 +1629,7 @@ class Room:
             "player_id": player_id,
             "player_name": player_name,
             "host_player_id": self.host_player_id,
+            "assisting_player_id": self.assisting_player_id,
             "leaderboard": self.get_leaderboard(),
             "teams": self.get_teams_data(),
             "can_start": self.can_start(),

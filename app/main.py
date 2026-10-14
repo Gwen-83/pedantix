@@ -4,6 +4,7 @@ import json
 import socket
 import time
 import math
+import hmac
 import datetime
 import asyncio
 from typing import Optional, Dict, Any, List
@@ -164,6 +165,7 @@ class RoomJoinRequest(BaseModel):
     player_id: str
     player_name: str
     difficulty: Optional[str] = None
+    assist_token: Optional[str] = None
 
 class RoomReadyRequest(BaseModel):
     room_id: str = "default"
@@ -324,18 +326,41 @@ async def create_room(req: RoomCreateRequest):
 @app.post("/api/room/join")
 async def join_room(req: RoomJoinRequest):
     diff = req.difficulty if req.difficulty in ("facile", "moyen", "difficile") else "moyen"
-    room = room_manager.get_or_create_room(
-        req.room_id,
-        difficulty=diff,
-        player_id=req.player_id,
-        player_name=req.player_name
-    )
+    if req.assist_token:
+        room = room_manager.get_room(req.room_id)
+        if (
+            not room
+            or not room.room_id.startswith("solo-")
+            or not hmac.compare_digest(room.assist_token, req.assist_token)
+        ):
+            raise HTTPException(status_code=404, detail="Lien d'aide invalide ou expiré.")
+        owner_id = room.room_id.removeprefix("solo-")
+        owner = room.players.get(owner_id)
+        if not owner or room.status != "playing":
+            raise HTTPException(status_code=409, detail="Cette partie solo n'est plus disponible pour l'aide.")
+        if req.player_id == owner_id:
+            raise HTTPException(status_code=400, detail="Vous ne pouvez pas rejoindre votre propre partie comme aide.")
+        if room.assisting_player_id and room.assisting_player_id != req.player_id:
+            raise HTTPException(status_code=409, detail="Un autre joueur aide déjà sur cette page.")
+    else:
+        room = room_manager.get_or_create_room(
+            req.room_id,
+            difficulty=diff,
+            player_id=req.player_id,
+            player_name=req.player_name
+        )
     is_reconnect = req.player_id in room.players
-    if not is_reconnect and req.room_id.startswith("solo-") and req.difficulty and req.difficulty != room.difficulty:
+    if not req.assist_token and not is_reconnect and req.room_id.startswith("solo-") and req.difficulty and req.difficulty != room.difficulty:
         excluded = room.get_recently_played_titles(days=15)
         new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty, exclude_titles=excluded)
         room.set_difficulty(req.difficulty, new_article=new_art)
     player = room.get_or_create_player(req.player_id, req.player_name)
+    if req.assist_token:
+        owner_id = room.room_id.removeprefix("solo-")
+        player.session = room.players[owner_id].session
+        player.is_host = False
+        player.is_ready = True
+        room.assisting_player_id = player.player_id
     if room.room_id.startswith("solo-"):
         room.start_word_hint_timer()
 
@@ -384,6 +409,7 @@ async def join_room(req: RoomJoinRequest):
         "activity": room.recent_activity,
         "status": room.status,
         "host_player_id": room.host_player_id,
+        "assisting_player_id": room.assisting_player_id,
         "can_start": room.can_start()
     })
 
@@ -393,6 +419,8 @@ async def join_room(req: RoomJoinRequest):
         "room_id": room.room_id,
         "seed": room.seed,
         "guess_token": guess_token,
+        "assist_token": room.assist_token if player.player_id == room.room_id.removeprefix("solo-") else None,
+        "assisting_player_id": room.assisting_player_id,
         "game_mode": room.game_mode,
         "difficulty": room.difficulty,
         "article_difficulty": room.article_data.get("difficulty", room.difficulty),
@@ -562,6 +590,8 @@ async def set_room_difficulty(req: RoomDifficultyRequest):
         raise HTTPException(status_code=404, detail="Joueur introuvable dans la salle.")
     if not player.is_host:
         raise HTTPException(status_code=403, detail="Seul l'Host peut modifier la difficulté.")
+    if room.assisting_player_id:
+        raise HTTPException(status_code=409, detail="La difficulté ne peut pas changer pendant qu'un joueur aide sur cette page.")
     if req.difficulty not in ("facile", "moyen", "difficile"):
         raise HTTPException(status_code=400, detail="Difficulté invalide.")
 
@@ -619,6 +649,8 @@ async def set_room_difficulty(req: RoomDifficultyRequest):
 @app.post("/api/room/next-round")
 async def next_round_room(req: RoomNextRoundRequest):
     room = room_manager.get_or_create_room(req.room_id)
+    if room.assisting_player_id:
+        raise HTTPException(status_code=409, detail="La page ne peut pas être remplacée pendant qu'un joueur aide.")
     if not room.room_id.startswith("solo-") and room.status not in ("lobby", "round_over"):
         raise HTTPException(status_code=400, detail="Impossible de lancer une nouvelle manche pendant une partie en cours.")
     player = room.players.get(req.player_id)
@@ -749,8 +781,25 @@ async def room_guess(req: RoomGuessRequest, request: Request):
             "newly_revealed": res.get("newly_revealed", {}) if room.game_mode == "team" else {},
             "close_tokens": res.get("close_tokens", []) if room.game_mode == "team" else [],
             "attempt_number": res.get("attempt_number", player.attempts)
-        } if room.game_mode == "team" else None
+        } if room.game_mode == "team" else None,
+        "cooperative_solo": room.is_cooperative_solo,
+        "assisted_guess": {
+            "player_id": player.player_id,
+            "player_name": player.name,
+            "word": req.word,
+            "status": res.get("status"),
+            "matches_count": res.get("matches_count", 0),
+            "score": res.get("score", 0),
+            "newly_revealed": res.get("newly_revealed", {}),
+            "close_tokens": res.get("close_tokens", []),
+            "attempt_number": res.get("attempt_number", player.attempts),
+            "revealed_words_count": res.get("revealed_words_count", player.revealed_words_count),
+            "history": res.get("history", []),
+            "is_won": res.get("is_won", False)
+        } if room.is_cooperative_solo else None
     })
+    if room.is_cooperative_solo and res.get("is_won"):
+        await room._finish_round()
 
     return res
 

@@ -33,6 +33,8 @@ class PedantixApp {
     const urlParams = new URLSearchParams(window.location.search);
     const modeParam = urlParams.get('mode');
     const roomParam = urlParams.get('room');
+    const assistRoomParam = urlParams.get('assist');
+    const assistTokenParam = urlParams.get('key');
 
     // Default mode is Solo unless explicitly invited to a room with ?room or requested
     this.isSoloMode = modeParam === 'solo' || (modeParam !== 'multi' && !roomParam && localStorage.getItem('pedantix_play_mode') !== 'multi');
@@ -43,10 +45,18 @@ class PedantixApp {
       localStorage.setItem('pedantix_player_id', this.playerId);
     }
 
+    this.soloRoomId = `solo-${this.playerId}`;
+    this.isAssisting = this.isSoloMode && !!(
+      assistRoomParam &&
+      assistRoomParam.startsWith('solo-') &&
+      assistTokenParam
+    );
+    this.assistToken = this.isAssisting ? assistTokenParam : null;
+    this.assistingPlayerId = null;
     const validRoomParam = (roomParam && !roomParam.startsWith('solo-')) ? roomParam : null;
 
     if (this.isSoloMode) {
-      this.roomId = `solo-${this.playerId}`;
+      this.roomId = this.isAssisting ? assistRoomParam : this.soloRoomId;
     } else {
       this.roomId = validRoomParam || '';
     }
@@ -1182,25 +1192,45 @@ class PedantixApp {
   }
 
   copyInviteUrl(forcedMode = null) {
-    const roomParam = this.roomId !== 'default' ? `?room=${encodeURIComponent(this.roomId)}` : '';
     let urlToCopy = '';
+
+    if (this.isSoloMode && this.isAssisting) {
+      this.showToast("Vous aidez déjà sur une partie solo.");
+      return;
+    }
+    if (this.isSoloMode && !this.assistToken) {
+      this.showToast("Le lien d'aide n'est pas encore prêt. Réessayez dans un instant.");
+      return;
+    }
 
     // En mode hébergé (Netlify), on copie toujours l'URL publique de la page
     if (this.isHostedMode()) {
-      urlToCopy = `${window.location.origin}/${roomParam}`;
+      urlToCopy = `${window.location.origin}${window.location.pathname}`;
     } else {
       const mode = forcedMode || this.activeNetMode || 'lan';
       if (mode === 'tunnel' && this.networkInfo && this.networkInfo.tunnel_url) {
-        urlToCopy = `${this.networkInfo.tunnel_url}/${roomParam}`;
+        urlToCopy = `${this.networkInfo.tunnel_url}${window.location.pathname}`;
       } else if (this.networkInfo && this.networkInfo.lan_ip && this.networkInfo.lan_ip !== '127.0.0.1') {
         const portStr = this.networkInfo.port ? `:${this.networkInfo.port}` : '';
-        urlToCopy = `http://${this.networkInfo.lan_ip}${portStr}/${roomParam}`;
+        urlToCopy = `http://${this.networkInfo.lan_ip}${portStr}${window.location.pathname}`;
       } else if (this.dom.inviteUrlInput && this.dom.inviteUrlInput.value && !this.dom.inviteUrlInput.value.includes('127.0.0.1')) {
         urlToCopy = this.dom.inviteUrlInput.value;
       } else {
-        urlToCopy = window.location.href;
+        urlToCopy = `${window.location.origin}${window.location.pathname}`;
       }
     }
+
+    const inviteUrl = new URL(urlToCopy);
+    inviteUrl.search = '';
+    inviteUrl.hash = '';
+    if (this.isSoloMode) {
+      inviteUrl.searchParams.set('mode', 'solo');
+      inviteUrl.searchParams.set('assist', this.roomId);
+      inviteUrl.searchParams.set('key', this.assistToken);
+    } else if (this.roomId !== 'default') {
+      inviteUrl.searchParams.set('room', this.roomId);
+    }
+    urlToCopy = inviteUrl.toString();
 
     navigator.clipboard.writeText(urlToCopy).then(() => {
       const copyBtns = [
@@ -1218,7 +1248,13 @@ class PedantixApp {
       this.showToast(`Lien ${modeLabel} copié ! Partagez-le avec vos amis 📋`);
       setTimeout(() => {
         if (this.dom.btnCopyInvite) this.dom.btnCopyInvite.innerHTML = '<span>🔗</span> Inviter';
-        if (this.dom.btnHeaderInvite) this.dom.btnHeaderInvite.innerHTML = '<span>🔗</span> Inviter';
+        if (this.dom.btnHeaderInvite) {
+          this.dom.btnHeaderInvite.innerHTML = this.isSoloMode
+            ? this.assistingPlayerId
+              ? '<span>🤝</span> Aide en cours'
+              : '<span>🤝</span> Demander de l’aide'
+            : '<span>🔗</span> Inviter';
+        }
         if (this.dom.btnCopyDrawer) this.dom.btnCopyDrawer.innerHTML = '<span>📋</span> Copier';
         if (this.dom.btnCopyTunnel) this.dom.btnCopyTunnel.innerHTML = '<span>📋</span> Copier';
         if (this.dom.btnLobbyCopyLink) this.dom.btnLobbyCopyLink.innerHTML = '<span>📋</span> Copier le lien';
@@ -1261,6 +1297,33 @@ class PedantixApp {
     } catch (e) {
       console.warn('Erreur leaveRoom:', e);
     }
+  }
+
+  async returnToOwnSolo() {
+    if (!this.isAssisting) return;
+    const assistedRoomId = this.roomId;
+    this.isAssisting = false;
+    this.assistToken = null;
+    this.assistingPlayerId = null;
+    await this.leaveRoom(assistedRoomId);
+
+    this.isSoloMode = true;
+    this.roomId = this.soloRoomId;
+    this.roomStatus = 'playing';
+    localStorage.setItem('pedantix_play_mode', 'solo');
+    localStorage.removeItem('pedantix_last_room');
+    const url = new URL(window.location.href);
+    url.searchParams.set('mode', 'solo');
+    url.searchParams.delete('room');
+    url.searchParams.delete('assist');
+    url.searchParams.delete('key');
+    window.history.replaceState({}, '', url.toString());
+    document.body.classList.add('solo-mode');
+    if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add('active');
+    if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
+    if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
+    this.showToast('🤝 La page a été trouvée ! Retour à votre partie solo.');
+    await this.joinRoom();
   }
 
   async confirmLeaveRoom() {
@@ -1760,11 +1823,15 @@ class PedantixApp {
           room_id: this.roomId,
           player_id: this.playerId,
           player_name: this.playerName,
-          difficulty: this.currentDifficulty
+          difficulty: this.currentDifficulty,
+          assist_token: this.isAssisting ? this.assistToken : undefined
         })
       });
 
-      if (!resp.ok) throw new Error('Erreur de connexion');
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Erreur de connexion');
+      }
       const data = await resp.json();
 
       if (data.room_id) {
@@ -1786,9 +1853,17 @@ class PedantixApp {
         if (this.isSoloMode) {
           localStorage.setItem('pedantix_play_mode', 'solo');
           localStorage.removeItem('pedantix_last_room');
-          if (currentUrl.searchParams.get('mode') !== 'solo' || currentUrl.searchParams.has('room')) {
+          if (this.isAssisting) {
+            currentUrl.searchParams.set('mode', 'solo');
+            currentUrl.searchParams.set('assist', this.roomId);
+            currentUrl.searchParams.set('key', this.assistToken);
+            currentUrl.searchParams.delete('room');
+            window.history.replaceState({}, '', currentUrl.toString());
+          } else if (currentUrl.searchParams.get('mode') !== 'solo' || currentUrl.searchParams.has('room') || currentUrl.searchParams.has('assist')) {
             currentUrl.searchParams.set('mode', 'solo');
             currentUrl.searchParams.delete('room');
+            currentUrl.searchParams.delete('assist');
+            currentUrl.searchParams.delete('key');
             window.history.replaceState({}, '', currentUrl.toString());
           }
         } else if (this.roomId && !this.roomId.startsWith('solo-')) {
@@ -1807,6 +1882,8 @@ class PedantixApp {
       this.sessionId = data.session.session_id;
       this.seed = data.seed;
       if (data.guess_token) this.guessToken = data.guess_token;
+      if (data.assist_token) this.assistToken = data.assist_token;
+      this.assistingPlayerId = data.assisting_player_id || null;
       this.tokens = data.session.tokens;
       this.tokensById = {};
       this.tokens.forEach(t => {
@@ -1826,6 +1903,7 @@ class PedantixApp {
       this.canStart = data.can_start || false;
       this.roomStatus = data.status || 'lobby';
       this.lastRound = data.last_round || null;
+      this.isAbandoned = !!(this.lastRound && this.lastRound.abandoned);
 
       this.gameMode = data.game_mode || 'individual';
       if (data.player && data.player.team) this.myTeam = data.player.team;
@@ -1850,7 +1928,24 @@ class PedantixApp {
       this.renderTeamsRoster();
       this.renderTeamConfrontation();
       this.syncRoomUI();
-      if (this.isWon) {
+      if (this.isAbandoned) {
+        const revealedTokens = Object.fromEntries(
+          this.tokens
+            .filter(t => t.is_word || t.type === 'word')
+            .map(t => [String(t.id), t.text])
+        );
+        this.handleSurrenderPassed({
+          title: this.lastRound.title,
+          url: this.lastRound.url,
+          image: this.lastRound.image,
+          solution: this.solution,
+          tokens: revealedTokens,
+          last_round: this.lastRound,
+          leaderboard: data.leaderboard,
+          teams: data.teams,
+          activity: data.activity
+        });
+      } else if (this.isWon) {
         this.handleVictory();
       }
       this.initWebSocket();
@@ -1874,7 +1969,7 @@ class PedantixApp {
 
     } catch (err) {
       console.error(err);
-      this.showToast('Erreur lors de la connexion au concours.');
+      this.showToast(err.message || 'Erreur lors de la connexion au concours.');
     }
   }
 
@@ -2083,6 +2178,9 @@ class PedantixApp {
       if (msg.host_player_id) {
         this.isHost = (msg.host_player_id === this.playerId);
       }
+      if (msg.assisting_player_id !== undefined) {
+        this.assistingPlayerId = msg.assisting_player_id;
+      }
       if (msg.player_id === this.playerId) {
         if (msg.is_ready !== undefined) this.isReady = msg.is_ready;
         if (msg.is_spectator !== undefined) {
@@ -2159,6 +2257,23 @@ class PedantixApp {
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
       if (msg.activity) this.updateActivity(msg.activity);
 
+      if (msg.cooperative_solo && msg.assisted_guess) {
+        const guess = msg.assisted_guess;
+        if (guess.newly_revealed) this.revealTokens(guess.newly_revealed);
+        if (guess.close_tokens) this.applyCloseTokens(guess.close_tokens, guess.word);
+        this.history = guess.history || this.history;
+        this.revealedWordsCount = guess.revealed_words_count || this.revealedWordsCount;
+        this.updateDayMeter();
+        this.renderHistory();
+        if (guess.is_won && !this.isWon) {
+          this.isWon = true;
+          this.handleVictory();
+        }
+        if (guess.player_id !== this.playerId) {
+          this.showToast(`🤝 ${guess.player_name} a proposé « ${guess.word} »`);
+        }
+      }
+
       // Cooperative guess update for teammates
       if (this.gameMode === 'team' && msg.team === this.myTeam && msg.team_guess) {
         const tg = msg.team_guess;
@@ -2211,7 +2326,11 @@ class PedantixApp {
       this.showToast(`🏆 ${msg.winner_name} a trouvé le titre ! Il vous reste 30 secondes pour trouver (+2 pt au 2e, +1 pt au 3e) !`);
 
     } else if (msg.type === 'round_over' || msg.type === 'round_over_to_lobby') {
-      this.clearSurrenderCooldown();
+    if (this.isAssisting) {
+      this.returnToOwnSolo();
+      return;
+    }
+    this.clearSurrenderCooldown();
       this.stopWordHintTimer();
       if (this.sprintInterval) clearInterval(this.sprintInterval);
       if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
@@ -2301,6 +2420,10 @@ class PedantixApp {
 
     } else if (msg.type === 'surrender_passed') {
       this.clearSurrenderCooldown();
+      if (this.isAssisting) {
+        this.returnToOwnSolo();
+        return;
+      }
       this.handleSurrenderPassed(msg);
     }
   }
@@ -2502,6 +2625,10 @@ class PedantixApp {
   }
 
   async requestNewRound() {
+    if (this.isAssisting) {
+      this.showToast("Vous aidez sur la page du propriétaire et ne pouvez pas la remplacer.");
+      return;
+    }
     // If in multiplayer and host, start next round directly; else join/request
     if (this.isHost || this.isSoloMode) {
       return this.startNextRound();
@@ -2660,6 +2787,20 @@ class PedantixApp {
     if (this.dom.lobbyRoomNameDisplay) this.dom.lobbyRoomNameDisplay.textContent = this.roomId;
     if (this.dom.hostPill) this.dom.hostPill.style.display = this.isHost ? 'inline-block' : 'none';
     if (this.dom.sideHostPill) this.dom.sideHostPill.style.display = this.isHost ? 'inline-block' : 'none';
+    if (this.dom.btnHeaderInvite) {
+      this.dom.btnHeaderInvite.style.display = this.isAssisting ? 'none' : '';
+      this.dom.btnHeaderInvite.innerHTML = this.isSoloMode
+        ? this.assistingPlayerId
+          ? '<span>🤝</span> Aide en cours'
+          : '<span>🤝</span> Demander de l’aide'
+        : '<span>🔗</span> Inviter';
+      this.dom.btnHeaderInvite.disabled = this.isSoloMode && !!this.assistingPlayerId;
+      this.dom.btnHeaderInvite.title = this.isSoloMode
+        ? this.assistingPlayerId
+          ? 'Un joueur aide actuellement sur cette page'
+          : 'Partager cette page solo pour demander de l’aide'
+        : 'Copier le lien d’invitation pour vos amis';
+    }
     if (this.dom.myPlayerScoreBadge) {
       this.dom.myPlayerScoreBadge.textContent = `${this.myScore} pt${this.myScore > 1 ? 's' : ''}`;
     }
@@ -2668,6 +2809,7 @@ class PedantixApp {
     if (this.dom.btnSoloDiffChoices) {
       this.dom.btnSoloDiffChoices.forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-diff') === this.currentDifficulty);
+        btn.disabled = this.isAssisting || !!this.assistingPlayerId;
       });
     }
 

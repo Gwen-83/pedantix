@@ -2,6 +2,7 @@ import os
 import unittest
 import datetime
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.database import (
@@ -357,8 +358,17 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
             score=0,
             is_won=True,
             attempts=3,
+            is_spectator=False,
             is_ready=False,
-            session=None,
+            session=SimpleNamespace(
+                session_id="test_game_count_session",
+                is_won=True,
+                is_surrendered=False,
+                attempts=3,
+                revealed_word_ids=set(),
+                created_at=0,
+                total_words=10
+            ),
             refresh_score=lambda: None
         )
         room.players[player.player_id] = player
@@ -368,13 +378,19 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
         room.get_teams_data = lambda: {}
         room.can_start = lambda: True
 
-        with patch("app.room.record_user_game_finish") as record_finish:
+        with (
+            patch("app.room.record_game_finish") as record_game_finish,
+            patch("app.room.record_user_game_finish") as record_finish
+        ):
             await room._finish_round()
             await room._finish_round()
 
-        record_finish.assert_called_once_with(
-            player.name, won=True, attempts=player.attempts, points=3
-        )
+        record_game_finish.assert_called_once()
+        record_finish.assert_called_once()
+        self.assertEqual(record_finish.call_args.args[0], player.name)
+        self.assertEqual(record_finish.call_args.kwargs["won"], True)
+        self.assertEqual(record_finish.call_args.kwargs["attempts"], player.attempts)
+        self.assertEqual(record_finish.call_args.kwargs["points"], 3)
 
 
 if __name__ == "__main__":

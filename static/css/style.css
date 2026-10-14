@@ -5145,7 +5145,6 @@ body.solo-mode #room-badge,
 body.solo-mode #btn-browse-rooms,
 body.solo-mode #btn-create-room,
 body.solo-mode #btn-header-leave-room,
-body.solo-mode #btn-header-invite,
 body.solo-mode #host-pill {
   display: none !important;
 }
