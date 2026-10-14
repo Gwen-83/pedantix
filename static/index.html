@@ -1178,28 +1178,27 @@
     <div class="modal modal-wide rooms-modal-content">
       <button class="modal-close" data-close="rooms-modal" aria-label="Fermer">&times;</button>
       <div class="modal-header">
-        <span class="modal-header-icon">🌐</span>
         <div class="modal-title-col">
           <h3>Jouer en multijoueur</h3>
-          <p class="modal-subtitle">Créez un salon, rejoignez-en un avec un code ou choisissez une partie publique.</p>
+          <p class="modal-subtitle">Choisissez comment rejoindre la partie.</p>
         </div>
       </div>
       <div class="modal-body">
         <div class="rooms-action-grid">
           <section class="rooms-action-card rooms-create-card" aria-labelledby="rooms-create-title">
-            <span class="rooms-action-icon" aria-hidden="true">✨</span>
             <div class="rooms-action-copy">
               <h4 id="rooms-create-title">Créer un salon</h4>
+              <p>Vous pourrez inviter vos amis avec un lien.</p>
             </div>
             <button type="button" id="btn-modal-create-room" class="btn-create-highlight">
-              Créer
+              Créer le salon
             </button>
           </section>
 
           <section class="rooms-action-card rooms-join-card" aria-labelledby="rooms-join-title">
-            <span class="rooms-action-icon" aria-hidden="true">🔑</span>
             <div class="rooms-action-copy">
               <h4 id="rooms-join-title">Rejoindre avec un code</h4>
+              <p>Entrez le code donné par l’hôte.</p>
             </div>
             <div class="join-by-code-box">
               <input type="text" id="input-join-code" aria-label="Nom ou code du salon" placeholder="Code du salon" maxlength="30" autocomplete="off" />
@@ -1219,10 +1218,7 @@
         <!-- Active Rooms List -->
         <div class="rooms-list-container">
           <div class="rooms-list-header">
-            <div>
-              <h4>Parties publiques</h4>
-              <p>Choisissez un salon ouvert pour le rejoindre.</p>
-            </div>
+            <h4>Salons publics</h4>
             <div class="rooms-list-tools">
               <span id="rooms-count-badge" class="rooms-count-badge" aria-live="polite">0 salon actif</span>
               <button type="button" id="btn-refresh-rooms" class="btn-refresh-rooms" title="Actualiser la liste des salons">
