@@ -8069,6 +8069,7 @@ button:disabled {
   grid-column: 1;
   grid-row: 2;
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 12px;
@@ -8222,13 +8223,25 @@ button:disabled {
   }
 
   .current-room-bar {
-    align-items: center;
-    flex-direction: row;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .current-room-info {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .btn-copy-small {
+    align-self: flex-start;
   }
 
   .rooms-list-header {
-    align-items: center;
-    flex-direction: row;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .rooms-list-tools {
@@ -8248,5 +8261,508 @@ button:disabled {
   .lobby-secondary-actions > button {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* Desktop game layout: clear workspace, compact progress and competition panels. */
+@media (min-width: 1220px) {
+  article.game-container {
+    display: grid;
+    grid-template-columns: minmax(238px, 260px) minmax(400px, 1fr) minmax(320px, 340px);
+    align-items: start;
+    justify-content: stretch;
+    gap: 20px;
+    max-width: 1640px;
+    padding: 24px clamp(24px, 2.5vw, 40px) 40px;
+  }
+
+  .sidebar-aside {
+    width: auto;
+    max-width: none;
+    gap: 12px;
+  }
+
+  .sidebar-action-btns {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sidebar-diff-indicator {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 0;
+  }
+
+  .sidebar-aside,
+  .competition-panel {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+  }
+
+  .nav-bar {
+    gap: 4px;
+    padding: 6px;
+    border-radius: 12px;
+    box-shadow: none;
+  }
+
+  .nav-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    filter: none;
+  }
+
+  .summary {
+    align-items: stretch;
+    padding: 16px;
+    border-color: var(--dialog-border);
+    border-radius: 14px;
+    background: var(--dialog-bg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    color: var(--dialog-color);
+    backdrop-filter: none;
+  }
+
+  .summary-top-banner {
+    justify-content: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .summary h3 {
+    font-size: 1.05rem;
+  }
+
+  #day-meter {
+    margin: 4px 0 8px;
+    font-size: 0.88rem;
+    filter: none;
+  }
+
+  .progress-bar-wrap {
+    height: 5px;
+    margin-bottom: 10px;
+    box-shadow: none;
+  }
+
+  #summary-meta {
+    justify-content: flex-start;
+    margin-bottom: 12px;
+  }
+
+  .meta-pill {
+    padding: 4px 8px;
+    border-color: var(--dialog-border);
+    background: rgba(148, 163, 184, 0.12);
+    box-shadow: none;
+    color: var(--dialog-color);
+  }
+
+  .meta-pill.attempts-pill {
+    background: rgba(148, 163, 184, 0.08);
+  }
+
+  .history-filter-wrapper {
+    margin-bottom: 8px;
+  }
+
+  .filter-input-box {
+    border-color: var(--dialog-border);
+    background: rgba(148, 163, 184, 0.1);
+    box-shadow: none;
+  }
+
+  #history-filter {
+    color: var(--dialog-color);
+  }
+
+  #history-filter::placeholder {
+    color: var(--text-muted);
+  }
+
+  .table-scroll-wrap {
+    max-height: min(34vh, 300px);
+    border-color: var(--dialog-border);
+    background: rgba(148, 163, 184, 0.06);
+    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  }
+
+  table.guessable thead {
+    background: var(--dialog-bg);
+  }
+
+  table.guessable th {
+    color: var(--text-muted);
+  }
+
+  table.guessable tbody tr {
+    border-bottom-color: var(--dialog-border);
+  }
+
+  table.guessable tbody tr:hover {
+    background: rgba(148, 163, 184, 0.1);
+  }
+
+  table.guessable td.number {
+    color: var(--text-muted);
+  }
+
+  .side-btn {
+    border-color: var(--dialog-border);
+    background: rgba(148, 163, 184, 0.1);
+    box-shadow: none;
+    color: var(--dialog-color);
+  }
+
+  .side-btn:hover {
+    background: rgba(148, 163, 184, 0.18);
+    box-shadow: none;
+    transform: none;
+  }
+
+  .yesterday {
+    border-color: var(--dialog-border);
+    background: rgba(148, 163, 184, 0.06);
+    text-align: left;
+  }
+
+  .main {
+    width: auto;
+    max-width: none;
+  }
+
+  #tabs {
+    margin: 0 0 14px;
+    padding: 0;
+  }
+
+  .brand-tab {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .brand-title-wrap {
+    gap: 8px;
+  }
+
+  .brand-logo-badge {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    box-shadow: none;
+    font-size: 1.15rem;
+  }
+
+  #pedantix-title {
+    font-size: 2rem;
+    text-shadow: none;
+  }
+
+  .caption {
+    font-size: 0.88rem;
+  }
+
+  .header-room-badges {
+    width: 100%;
+    margin: 8px 0 0;
+    padding: 8px;
+    gap: 6px;
+    border: 1px solid var(--dialog-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--dialog-bg) 88%, transparent);
+  }
+
+  .game-type-toggle {
+    padding: 2px;
+    border-color: var(--dialog-border);
+    background: rgba(148, 163, 184, 0.08);
+  }
+
+  .btn-type-toggle {
+    padding: 6px 10px;
+  }
+
+  .btn-type-toggle.active {
+    box-shadow: none;
+  }
+
+  .difficulty-badge,
+  .mode-badge,
+  .room-badge,
+  .word-hint-timer-badge,
+  .host-pill {
+    box-shadow: none;
+  }
+
+  .header-room-badges #btn-browse-rooms,
+  .header-room-badges #btn-header-leave-room,
+  .header-room-badges #btn-surrender-room {
+    min-height: 32px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .header-room-badges #btn-create-room,
+  .header-room-badges #btn-header-invite {
+    display: none !important;
+  }
+
+  .form {
+    gap: 8px;
+    padding: 9px;
+    border-radius: 14px;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+    backdrop-filter: none;
+  }
+
+  .pin-button {
+    padding: 9px;
+    border-radius: 9px;
+  }
+
+  .guess {
+    height: 44px;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .guess-btn {
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .guess-btn:hover {
+    box-shadow: none;
+    transform: none;
+  }
+
+  #wiki {
+    min-height: 560px;
+    margin-top: 12px;
+    padding: 24px 28px;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  }
+
+  #wiki h2 {
+    font-size: 1.9rem;
+  }
+
+  #article {
+    max-width: 68ch;
+    margin: 0 auto;
+    font-size: 1rem;
+    line-height: 1.8;
+  }
+
+  #article p {
+    text-align: left;
+  }
+
+  .competition-panel {
+    width: auto;
+    min-width: 0;
+  }
+
+  .competition-panel .comp-card {
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--dialog-border);
+    border-radius: 14px;
+    background: var(--dialog-bg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    color: var(--dialog-color);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .comp-header {
+    padding-bottom: 10px;
+    border-bottom-color: var(--dialog-border);
+  }
+
+  .comp-header::after,
+  .comp-footer::before {
+    display: none;
+  }
+
+  .comp-brand h4 {
+    color: var(--dialog-color);
+    font-size: 1rem;
+    white-space: nowrap;
+  }
+
+  .comp-header-actions {
+    gap: 6px;
+  }
+
+  .comp-status-badge {
+    white-space: nowrap;
+    padding: 4px 7px;
+  }
+
+  .comp-status-badge {
+    border: 0;
+    box-shadow: none;
+  }
+
+  .btn-copy-invite-compact {
+    box-shadow: none;
+  }
+
+  .comp-user-card {
+    gap: 10px;
+    padding: 12px;
+    border-color: var(--dialog-border);
+    border-radius: 11px;
+    background: rgba(148, 163, 184, 0.06);
+    box-shadow: none;
+  }
+
+  .comp-user-avatar {
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .pseudo-field-container,
+  .pseudo-field-container:hover {
+    border-color: var(--dialog-border);
+    background: var(--dialog-bg);
+    box-shadow: none;
+  }
+
+  .pseudo-field-input {
+    color: var(--dialog-color);
+  }
+
+  .player-db-score-pill {
+    box-shadow: none;
+  }
+
+  .comp-actions-box {
+    gap: 8px;
+  }
+
+  .btn-side-ready,
+  .btn-side-start {
+    min-height: 42px;
+    border-radius: 9px;
+    box-shadow: none;
+  }
+
+  .btn-side-ready:hover,
+  .btn-side-start:not(:disabled):hover {
+    box-shadow: none;
+    transform: none;
+  }
+
+  .btn-side-spectator {
+    min-height: 38px;
+    border-radius: 9px;
+    box-shadow: none;
+  }
+
+  .comp-tabs-nav {
+    gap: 4px;
+    margin: 0;
+    padding: 3px;
+    border-color: var(--dialog-border);
+    border-radius: 9px;
+    background: rgba(148, 163, 184, 0.08);
+    backdrop-filter: none;
+  }
+
+  .comp-tab-btn {
+    border-radius: 7px;
+    box-shadow: none;
+  }
+
+  .comp-tab-btn.active {
+    border: 0;
+    background: rgba(56, 189, 248, 0.14);
+    box-shadow: none;
+  }
+
+  .comp-section-header {
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom-color: var(--dialog-border);
+  }
+
+  .comp-section-title {
+    color: var(--text-muted);
+  }
+
+  .comp-player-card,
+  .comp-player-card:hover {
+    padding: 10px 12px;
+    border-color: var(--dialog-border);
+    border-radius: 9px;
+    background: rgba(148, 163, 184, 0.06);
+    box-shadow: none;
+    transform: none;
+  }
+
+  .activity-feed {
+    border-color: var(--dialog-border);
+    border-radius: 9px;
+    background: rgba(148, 163, 184, 0.06);
+  }
+
+  .comp-footer {
+    gap: 10px;
+    padding-top: 12px;
+    border-top-color: var(--dialog-border);
+  }
+
+  .btn-new-round-comp,
+  .btn-new-round-comp:hover {
+    min-height: 40px;
+    border: 1px solid var(--dialog-border);
+    border-radius: 9px;
+    background: rgba(148, 163, 184, 0.1);
+    box-shadow: none;
+    color: var(--dialog-color);
+    transform: none;
+  }
+
+  .network-invite-drawer {
+    gap: 8px;
+    padding: 10px;
+    border-color: var(--dialog-border);
+    border-radius: 10px;
+    background: rgba(148, 163, 184, 0.05);
+    box-shadow: none;
+  }
+
+  .network-drawer-header {
+    flex-wrap: wrap;
+  }
+
+  .network-drawer-input-wrap {
+    border-color: var(--dialog-border);
+    box-shadow: none;
+  }
+
+  .network-drawer-input-wrap:hover {
+    box-shadow: none;
+  }
+
+  body.solo-mode article.game-container {
+    grid-template-columns: minmax(238px, 260px) minmax(400px, 1fr);
+  }
+
+  body.solo-mode .main {
+    grid-column: 2;
   }
 }
