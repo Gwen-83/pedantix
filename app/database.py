@@ -363,6 +363,11 @@ def get_random_cached_article(category: Optional[str] = None, exclude_titles: Op
             for row in rows:
                 art = _row_to_article(row)
                 if art:
+                    if any(
+                        "dans cette manche de Pédantix." in paragraph
+                        for paragraph in art.get("paragraphs", [])
+                    ):
+                        continue
                     title = art.get("title", "")
                     if title not in exclude_set and normalize_wiki_title(title) not in exclude_norm:
                         return art
@@ -865,4 +870,3 @@ def get_user_stats(username: str) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"get_user_stats: {e}")
         return empty
-

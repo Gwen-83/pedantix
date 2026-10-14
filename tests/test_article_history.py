@@ -250,6 +250,73 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
         art_excluded = get_random_cached_article(category="test", exclude_titles={"article_cache_test"})
         self.assertIsNone(art_excluded)
 
+    def test_random_cache_skips_legacy_synthetic_articles(self):
+        from app.database import _cache_article_sync, get_random_cached_article
+
+        _cache_article_sync(
+            title="Legacy synthetic cache test",
+            url="",
+            image="",
+            paragraphs=[
+                "Article sur Legacy synthetic cache test sur Wikipédia en français.",
+                "Découvrez son histoire, ses caractéristiques et ses éléments majeurs dans cette manche de Pédantix.",
+                "Proposez des mots pour dévoiler le texte secret et trouver le titre de la page !"
+            ],
+            category="synthetic-cache-test"
+        )
+        _cache_article_sync(
+            title="Real cache test",
+            url="https://fr.wikipedia.org/wiki/Real_cache_test",
+            image="",
+            paragraphs=["Un article réel conservé dans le cache."],
+            category="synthetic-cache-test"
+        )
+
+        article = get_random_cached_article(category="synthetic-cache-test")
+        self.assertIsNotNone(article)
+        self.assertEqual(article["title"], "Real cache test")
+
+    def test_rooms_use_live_fetch_before_database_cache(self):
+        cached_article = {
+            "title": "Cached article",
+            "paragraphs": ["Cached article text with sufficient content."],
+            "url": "https://fr.wikipedia.org/wiki/Cached_article",
+        }
+        events = []
+        with (
+            patch("app.room.RoomManager.prefetch_articles"),
+            patch("app.room.get_random_cached_article", side_effect=lambda **_: (events.append("database"), cached_article)[1]) as cache_lookup,
+            patch("app.room.cache_article"),
+        ):
+            manager = RoomManager()
+            self.assertTrue(all(not pool for pool in manager._article_pools.values()))
+            manager.game_manager.offline_curated = {}
+            with (
+                patch.object(manager.wiki_client, "fetch_random_wikipedia_article", side_effect=lambda **_: (events.append("online"), None)[1]) as live_fetch,
+                patch.object(manager.wiki_client, "fetch_curated_article", return_value=None),
+            ):
+                article = manager._fetch_random_article()
+
+        self.assertEqual(article["title"], "Cached article")
+        self.assertEqual(events, ["online", "database"])
+        live_fetch.assert_called_once()
+        cache_lookup.assert_called_once()
+
+    def test_synthetic_game_fallback_is_not_saved_to_article_cache(self):
+        from app.game import GameManager
+
+        manager = GameManager()
+        manager.offline_curated = {}
+        with (
+            patch.object(manager.wiki_client, "fetch_random_wikipedia_article", return_value=None),
+            patch("app.game.get_random_cached_article", return_value=None),
+            patch("app.game.cache_article") as cache_write,
+        ):
+            session = manager.create_game()
+
+        self.assertTrue(session.paragraphs)
+        cache_write.assert_not_called()
+
     async def test_lobby_sync_sessions_when_article_replaced(self):
         from app.main import join_room, RoomJoinRequest
         from app.room import room_manager

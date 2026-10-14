@@ -390,6 +390,7 @@ class GameManager:
         seed = f"P-{seed_num}"
 
         article_data = None
+        cacheable_article = True
 
         # 1. Custom query or URL
         if query:
@@ -403,8 +404,6 @@ class GameManager:
         # 3. By specific category/theme
         elif category and category in ("histoire", "geographie", "sciences", "monuments", "biographies", "arts_culture", "nature", "tech_jeux", "litterature"):
             article_data = self.wiki_client.fetch_curated_article(category, difficulty=difficulty, exclude_titles=exclude_titles)
-            if not article_data:
-                article_data = get_random_cached_article(category, exclude_titles=exclude_titles)
 
         # 4. Random French Wikipedia article meeting difficulty criteria
         if not article_data:
@@ -418,11 +417,14 @@ class GameManager:
                 ]
                 if candidates:
                     article_data = dict(random.choice(candidates))
+            if not article_data and category:
+                article_data = get_random_cached_article(category, exclude_titles=exclude_titles)
             if not article_data:
                 article_data = get_random_cached_article(exclude_titles=exclude_titles)
 
         # Ultimate fallback
         if not article_data:
+            cacheable_article = False
             fallback_candidates = [
                 "Tour Eiffel", "Colisée", "Musée du Louvre", "Statue de la Liberté",
                 "Pyramides de Gizeh", "Pont du Gard", "Château de Versailles",
@@ -450,13 +452,14 @@ class GameManager:
             }
 
         # Cache in DB for future offline use
-        cache_article(
-            title=article_data["title"],
-            url=article_data.get("url", ""),
-            image=article_data.get("image", ""),
-            paragraphs=article_data["paragraphs"],
-            category=category or article_data.get("category", "")
-        )
+        if cacheable_article:
+            cache_article(
+                title=article_data["title"],
+                url=article_data.get("url", ""),
+                image=article_data.get("image", ""),
+                paragraphs=article_data["paragraphs"],
+                category=category or article_data.get("category", "")
+            )
 
         session = GameSession(
             session_id=session_id,

@@ -14,7 +14,8 @@ from app.game import GameSession, GameManager
 from app.wiki import ALL_CURATED_TITLES, WikipediaClient, CURATED_DIFFICULTY_MAP
 from app.database import (
     get_player_score, increment_player_score, record_user_game_finish, record_user_guess_word,
-    record_played_article, get_recently_played_articles, is_valid_user_identifier
+    record_played_article, get_recently_played_articles, is_valid_user_identifier,
+    get_random_cached_article, cache_article
 )
 from app.nlp import normalize_letter, is_letter_revealed, normalize_wiki_title
 
@@ -1600,24 +1601,7 @@ class RoomManager:
         }
         self._pool_lock = threading.Lock()
         self._refilling = False
-        self._seed_initial_articles()
         self.prefetch_articles(target_per_diff=3)
-
-    def _seed_initial_articles(self):
-        """Pre-populates pools instantly from offline curated data so pools are never empty on startup."""
-        if not self.game_manager.offline_curated:
-            return
-        with self._pool_lock:
-            for diff in ("facile", "moyen", "difficile"):
-                if not self._article_pools[diff]:
-                    candidates = [
-                        dict(a) for a in self.game_manager.offline_curated.values()
-                        if CURATED_DIFFICULTY_MAP.get(a.get("title", "")) == diff
-                    ]
-                    random.shuffle(candidates)
-                    for item in candidates[:3]:
-                        item["difficulty"] = diff
-                        self._article_pools[diff].append(item)
 
     # -- Pool d'articles préchargés par niveau de difficulté
     def prefetch_articles(self, target_per_diff: int = 3):
@@ -1781,6 +1765,10 @@ class RoomManager:
                 article = random.choice(candidates)
 
         if not article:
+            article = get_random_cached_article(exclude_titles=exclude_set)
+
+        cacheable_article = bool(article)
+        if not article:
             fallback_candidates = [
                 "Tour Eiffel", "Colisée", "Musée du Louvre", "Statue de la Liberté",
                 "Pyramides de Gizeh", "Pont du Gard", "Château de Versailles",
@@ -1808,6 +1796,14 @@ class RoomManager:
                 "pageviews_90d": 40000 if diff_key == "facile" else (8000 if diff_key == "moyen" else 1500)
             }
         article["difficulty"] = diff_key
+        if cacheable_article:
+            cache_article(
+                title=article["title"],
+                url=article.get("url", ""),
+                image=article.get("image", ""),
+                paragraphs=article.get("paragraphs", []),
+                category=article.get("category", "general")
+            )
         return article
 
     _fetch_notable_article = _fetch_random_article
