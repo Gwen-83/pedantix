@@ -8264,7 +8264,7 @@ button:disabled {
   }
 }
 
-/* Desktop game layout: clear workspace, compact progress and competition panels. */
+/* Desktop game layout: clear workspace, compact panels without hiding solo help. */
 @media (min-width: 1220px) {
   article.game-container {
     display: grid;
@@ -8508,7 +8508,7 @@ button:disabled {
   }
 
   .header-room-badges #btn-create-room,
-  .header-room-badges #btn-header-invite {
+  body:not(.solo-mode) .header-room-badges #btn-header-invite {
     display: none !important;
   }
 
