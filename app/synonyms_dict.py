@@ -61,30 +61,30 @@ EXPANDED_STOPWORDS: Set[str] = {
 HARDCODED_SYNONYMS_RAW: Dict[str, Set[str]] = {
     # --- Montagnes, Relief & Géographie alpine ---
     "mont": {
-        "montagne", "sommet", "pic", "cime", "creme", "aiguille", "massif", "alpes",
+        "montagne", "sommet", "pic", "cime", "aiguille", "massif", "alpes",
         "pyrenees", "colline", "hauteur", "elevation", "monticule", "relief", "altitude",
         "versant", "crete", "butte", "morne", "puy", "orographie"
     },
     "montagne": {
         "mont", "sommet", "pic", "cime", "chaine", "massif", "alpes", "pyrenees",
         "himalaya", "relief", "cordillere", "alpinisme", "altitude", "hauteur",
-        "roche", "vallee", "glacier", "versant", "aiguille", "crevasse"
+        "roche", "glacier", "versant", "aiguille", "crevasse"
     },
     "sommet": {
-        "mont", "montagne", "pic", "cime", "faite", "zenith", "apex", "apogee",
+        "mont", "montagne", "pic", "cime", "zenith", "apex", "apogee",
         "pointe", "aiguille", "hauteur", "altitude", "crete", "haut", "pinnacle"
     },
     "pic": {
-        "mont", "montagne", "sommet", "cime", "aiguille", "pointe", "dent", "arete", "creme"
+        "mont", "montagne", "sommet", "cime", "aiguille", "pointe", "dent", "arete"
     },
     "cime": {
-        "mont", "montagne", "sommet", "pic", "aiguille", "faite", "pointe", "hauteur"
+        "mont", "montagne", "sommet", "pic", "aiguille", "pointe", "hauteur"
     },
     "colline": {
         "mont", "montagne", "monticule", "coteau", "butte", "eminence", "tertre", "vallon"
     },
     "vallee": {
-        "montagne", "gorge", "ravin", "vallon", "combe", "plaine", "canyon", "bassin", "val"
+        "gorge", "ravin", "vallon", "combe", "plaine", "canyon", "bassin", "val"
     },
     "glacier": {
         "glace", "neige", "crevasse", "serac", "moraine", "banquise", "montagne", "inlandsis",

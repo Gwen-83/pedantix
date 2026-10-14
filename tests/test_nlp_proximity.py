@@ -103,6 +103,21 @@ class ProximityTests(unittest.TestCase):
         self.assertGreaterEqual(score, 48.0)
         self.assertLess(score, 90.0)
 
+    def test_shared_etymology_does_not_claim_semantic_proximity(self):
+        for first, second in (
+            ("père", "patrie"),
+            ("roi", "régime"),
+            ("livre", "lettre"),
+            ("biographie", "biologie"),
+            ("montagne", "montant"),
+        ):
+            with self.subTest(first=first, second=second):
+                self.assertLess(calculate_proximity(first, second), 88.0)
+
+    def test_related_but_non_synonymous_words_keep_moderate_scores(self):
+        self.assertLess(calculate_proximity("montagne", "vallée"), 90.0)
+        self.assertEqual(calculate_proximity("mont", "crème"), 0.0)
+
     def test_known_false_friends_remain_unrelated(self):
         for first, second in (
             ("enfant", "enfer"),

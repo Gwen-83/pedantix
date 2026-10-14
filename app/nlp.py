@@ -1951,23 +1951,12 @@ def _calculate_proximity_cached(g_norm: str, t_norm: str) -> float:
         if g_norm[:3] == t_norm[:3] and not ((g_norm, t_norm) in FALSE_HOMOGRAPHS or (t_norm, g_norm) in FALSE_HOMOGRAPHS):
             return 91.0
 
-    # Etymological Root Families (curated Greek/Latin root clusters)
-    g_etym = ETYMOLOGICAL_INDEX.get(g_norm)
-    t_etym = ETYMOLOGICAL_INDEX.get(t_norm)
-    if g_etym and t_etym and g_etym == t_etym:
-        return 88.0
-
     # Prefix stripping check (e.g. astrophysique vs physique, neuroscience vs science)
     g_nopre = strip_prefix(g_norm)
     t_nopre = strip_prefix(t_norm)
     if g_nopre != g_norm or t_nopre != t_norm:
         if stem_french(g_nopre) == stem_french(t_nopre) and len(g_nopre) >= 4 and len(t_nopre) >= 4:
             return 89.5
-
-        g_etym_nopre = ETYMOLOGICAL_INDEX.get(g_nopre)
-        t_etym_nopre = ETYMOLOGICAL_INDEX.get(t_nopre)
-        if g_etym_nopre and t_etym_nopre and g_etym_nopre == t_etym_nopre:
-            return 86.0
 
     # 6. Shared 2nd-degree synonyms with Adamic-Adar specificity weighting
     if g_syns and t_syns:
