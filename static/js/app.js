@@ -3747,7 +3747,6 @@ class PedantixApp {
               <span class="lobby-card-name" title="${this.escapeHtml(p.name)}">${this.escapeHtml(p.name)}</span>
               ${isMe ? '<span class="player-you-tag">Vous</span>' : ''}
               ${p.is_host ? '<span class="host-pill" style="font-size:0.68rem;padding:0.1rem 0.45rem;">👑 Host</span>' : ''}
-              ${p.is_spectator ? '<span class="spectator-pill" style="font-size:0.68rem;padding:0.1rem 0.45rem;background:rgba(168,85,247,0.2);color:#c084fc;border:1px solid rgba(168,85,247,0.35);border-radius:6px;font-weight:700;">👁️ Spectateur</span>' : ''}
             </div>
             <div class="lobby-card-score">
               🏆 <b>${p.score || 0}</b> victoire${(p.score || 0) > 1 ? 's' : ''}
