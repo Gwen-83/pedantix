@@ -61,10 +61,17 @@ if allowed_origins_env and allowed_origins_env.strip() != "*":
 else:
     allowed_origins = ["*"]
 
+allowed_origin_regex = (
+    r"https://(?:pedantixenac|enacgames)\.studio4242\.fr"
+    r"|https://.*\.netlify\.app"
+    r"|http://localhost(:\d+)?"
+    r"|http://127\.0\.0\.1(:\d+)?"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"https://.*\.netlify\.app|http://localhost(:\d+)?|http://127\.0\.0\.1(:\d+)?",
+    allow_origin_regex=allowed_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
