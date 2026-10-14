@@ -5146,10 +5146,7 @@ class PedantixApp {
     this.authUser = localStorage.getItem('pedantix_auth_user') || null;
     this.authToken = localStorage.getItem('pedantix_auth_token') || null;
 
-    if (!this.authUser) {
-      // First connection on this browser: prompt for username
-      this.openAuthModal();
-    } else {
+    if (this.authUser) {
       this.playerName = this.authUser;
       if (this.dom.playerPseudoInput) this.dom.playerPseudoInput.value = this.authUser;
       if (this.dom.lobbyPseudoInput) this.dom.lobbyPseudoInput.value = this.authUser;
@@ -5339,12 +5336,7 @@ class PedantixApp {
     this.clearAdminUsersPanel();
     localStorage.removeItem('pedantix_auth_user');
     localStorage.removeItem('pedantix_auth_token');
-    this.authUser = null;
-    this.authToken = null;
-
-    this.closeModal(this.dom.statsModal);
-    this.openAuthModal();
-    this.showToast("Déconnecté. Choisissez un compte pour continuer.");
+    window.location.href = '/';
   }
 
   // =========================================================================
@@ -5389,5 +5381,7 @@ class PedantixApp {
 
 // Start app on DOMContentLoaded
 window.addEventListener('DOMContentLoaded', () => {
-  new PedantixApp();
+  if (document.documentElement.classList.contains('game-mode')) {
+    new PedantixApp();
+  }
 });

@@ -256,6 +256,13 @@ async def root():
         return FileResponse(index_path)
     return {"message": "Pédantix Local API opérationnelle."}
 
+@app.get("/games/pedantix/")
+async def pedantix_page():
+    index_path = os.path.join(STATIC_DIR, "games", "pedantix", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Pédantix est introuvable.")
+
 
 @app.get("/health")
 async def health_check():
