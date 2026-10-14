@@ -17,13 +17,27 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/games/cemantix/style.css">
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
 </head>
 <body>
   <main class="cemantix-shell">
     <header class="cemantix-header">
       <a class="cemantix-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
       <p class="cemantix-brand"><span aria-hidden="true">🧠</span> CÉMANTIX</p>
-      <span id="cemantix-player-name" class="cemantix-player-name"></span>
+      <div class="shared-header-actions">
+        <span id="cemantix-player-name" class="cemantix-player-name"></span>
+        <label class="shared-theme-control" for="shared-theme-select">
+          <span aria-hidden="true">🎨</span><span>Thème</span>
+          <select id="shared-theme-select" aria-label="Thème de l’interface">
+            <option value="dark-colorful">Coloré sombre</option>
+            <option value="midnight">Nuit étoilée</option>
+            <option value="light-colorful">Coloré clair</option>
+            <option value="light-grey">Gris clair</option>
+            <option value="dark-grey">Charbon sombre</option>
+            <option value="parchment">Parchemin</option>
+          </select>
+        </label>
+      </div>
     </header>
 
     <section id="cemantix-home" class="cemantix-panel" aria-labelledby="cemantix-heading">
@@ -58,7 +72,7 @@
       </div>
       <section class="cemantix-room-browser" aria-labelledby="cemantix-room-browser-title">
         <div class="cemantix-room-browser-heading">
-          <div><h2 id="cemantix-room-browser-title">Salons ouverts</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
+          <div><h2 id="cemantix-room-browser-title">Salons publics</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
           <button type="button" id="cemantix-refresh-rooms" class="cemantix-secondary-button">Actualiser</button>
         </div>
         <div id="cemantix-room-directory" class="cemantix-room-directory" aria-live="polite"></div>
@@ -119,6 +133,7 @@
     <footer>Un mot peut tout rapprocher.</footer>
   </main>
   <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
   <script src="/static/games/cemantix/app.js"></script>
 </body>
 </html>
