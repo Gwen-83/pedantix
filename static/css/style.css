@@ -8317,11 +8317,8 @@ button:disabled {
   .summary {
     align-items: stretch;
     padding: 16px;
-    border-color: var(--dialog-border);
     border-radius: 14px;
-    background: var(--dialog-bg);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    color: var(--dialog-color);
+    box-shadow: var(--summary-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
     backdrop-filter: none;
   }
 
@@ -8337,7 +8334,6 @@ button:disabled {
   #day-meter {
     margin: 4px 0 8px;
     font-size: 0.88rem;
-    filter: none;
   }
 
   .progress-bar-wrap {
@@ -8353,14 +8349,11 @@ button:disabled {
 
   .meta-pill {
     padding: 4px 8px;
-    border-color: var(--dialog-border);
-    background: rgba(148, 163, 184, 0.12);
     box-shadow: none;
-    color: var(--dialog-color);
   }
 
   .meta-pill.attempts-pill {
-    background: rgba(148, 163, 184, 0.08);
+    background: rgba(0, 0, 0, 0.08);
   }
 
   .history-filter-wrapper {
@@ -8368,62 +8361,32 @@ button:disabled {
   }
 
   .filter-input-box {
-    border-color: var(--dialog-border);
-    background: rgba(148, 163, 184, 0.1);
     box-shadow: none;
   }
 
   #history-filter {
-    color: var(--dialog-color);
+    color: var(--summary-color);
   }
 
   #history-filter::placeholder {
-    color: var(--text-muted);
+    color: rgba(28, 25, 23, 0.55);
   }
 
   .table-scroll-wrap {
     max-height: min(34vh, 300px);
-    border-color: var(--dialog-border);
-    background: rgba(148, 163, 184, 0.06);
-    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
-  }
-
-  table.guessable thead {
-    background: var(--dialog-bg);
-  }
-
-  table.guessable th {
-    color: var(--text-muted);
-  }
-
-  table.guessable tbody tr {
-    border-bottom-color: var(--dialog-border);
-  }
-
-  table.guessable tbody tr:hover {
-    background: rgba(148, 163, 184, 0.1);
-  }
-
-  table.guessable td.number {
-    color: var(--text-muted);
+    scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
   }
 
   .side-btn {
-    border-color: var(--dialog-border);
-    background: rgba(148, 163, 184, 0.1);
     box-shadow: none;
-    color: var(--dialog-color);
   }
 
   .side-btn:hover {
-    background: rgba(148, 163, 184, 0.18);
     box-shadow: none;
     transform: none;
   }
 
   .yesterday {
-    border-color: var(--dialog-border);
-    background: rgba(148, 163, 184, 0.06);
     text-align: left;
   }
 
@@ -8470,15 +8433,11 @@ button:disabled {
     margin: 8px 0 0;
     padding: 8px;
     gap: 6px;
-    border: 1px solid var(--dialog-border);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--dialog-bg) 88%, transparent);
   }
 
   .game-type-toggle {
     padding: 2px;
-    border-color: var(--dialog-border);
-    background: rgba(148, 163, 184, 0.08);
   }
 
   .btn-type-toggle {
@@ -8486,14 +8445,6 @@ button:disabled {
   }
 
   .btn-type-toggle.active {
-    box-shadow: none;
-  }
-
-  .difficulty-badge,
-  .mode-badge,
-  .room-badge,
-  .word-hint-timer-badge,
-  .host-pill {
     box-shadow: none;
   }
 
@@ -8574,27 +8525,18 @@ button:disabled {
   .competition-panel .comp-card {
     gap: 12px;
     padding: 16px;
-    border: 1px solid var(--dialog-border);
     border-radius: 14px;
-    background: var(--dialog-bg);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    color: var(--dialog-color);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    box-shadow:
+      0 20px 45px -10px rgba(0, 0, 0, 0.65),
+      0 0 0 1px rgba(255, 255, 255, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15);
   }
 
   .comp-header {
     padding-bottom: 10px;
-    border-bottom-color: var(--dialog-border);
-  }
-
-  .comp-header::after,
-  .comp-footer::before {
-    display: none;
   }
 
   .comp-brand h4 {
-    color: var(--dialog-color);
     font-size: 1rem;
     white-space: nowrap;
   }
@@ -8608,11 +8550,6 @@ button:disabled {
     padding: 4px 7px;
   }
 
-  .comp-status-badge {
-    border: 0;
-    box-shadow: none;
-  }
-
   .btn-copy-invite-compact {
     box-shadow: none;
   }
@@ -8620,10 +8557,7 @@ button:disabled {
   .comp-user-card {
     gap: 10px;
     padding: 12px;
-    border-color: var(--dialog-border);
     border-radius: 11px;
-    background: rgba(148, 163, 184, 0.06);
-    box-shadow: none;
   }
 
   .comp-user-avatar {
@@ -8636,13 +8570,7 @@ button:disabled {
 
   .pseudo-field-container,
   .pseudo-field-container:hover {
-    border-color: var(--dialog-border);
-    background: var(--dialog-bg);
     box-shadow: none;
-  }
-
-  .pseudo-field-input {
-    color: var(--dialog-color);
   }
 
   .player-db-score-pill {
@@ -8676,9 +8604,7 @@ button:disabled {
     gap: 4px;
     margin: 0;
     padding: 3px;
-    border-color: var(--dialog-border);
     border-radius: 9px;
-    background: rgba(148, 163, 184, 0.08);
     backdrop-filter: none;
   }
 
@@ -8687,61 +8613,38 @@ button:disabled {
     box-shadow: none;
   }
 
-  .comp-tab-btn.active {
-    border: 0;
-    background: rgba(56, 189, 248, 0.14);
-    box-shadow: none;
-  }
-
   .comp-section-header {
     margin-bottom: 8px;
     padding-bottom: 6px;
-    border-bottom-color: var(--dialog-border);
-  }
-
-  .comp-section-title {
-    color: var(--text-muted);
   }
 
   .comp-player-card,
   .comp-player-card:hover {
     padding: 10px 12px;
-    border-color: var(--dialog-border);
     border-radius: 9px;
-    background: rgba(148, 163, 184, 0.06);
-    box-shadow: none;
     transform: none;
   }
 
   .activity-feed {
-    border-color: var(--dialog-border);
     border-radius: 9px;
-    background: rgba(148, 163, 184, 0.06);
   }
 
   .comp-footer {
     gap: 10px;
     padding-top: 12px;
-    border-top-color: var(--dialog-border);
   }
 
   .btn-new-round-comp,
   .btn-new-round-comp:hover {
     min-height: 40px;
-    border: 1px solid var(--dialog-border);
     border-radius: 9px;
-    background: rgba(148, 163, 184, 0.1);
-    box-shadow: none;
-    color: var(--dialog-color);
     transform: none;
   }
 
   .network-invite-drawer {
     gap: 8px;
     padding: 10px;
-    border-color: var(--dialog-border);
     border-radius: 10px;
-    background: rgba(148, 163, 184, 0.05);
     box-shadow: none;
   }
 
