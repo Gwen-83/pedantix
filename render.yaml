@@ -17,6 +17,6 @@ services:
       - key: PEDANTIX_SQLITE_PATH
         value: /tmp/pedantix.db  # repli si Supabase est indisponible (disque éphémère)
       - key: PEDANTIX_ALLOWED_ORIGINS
-        sync: false              # ex: https://mon-site.netlify.app (séparés par des virgules)
+        sync: false              # origine(s) frontend, ex: https://mon-site.onrender.com (séparées par des virgules)
       - key: DATABASE_URL
         sync: false              # URI "Session pooler" de Supabase (voir DEPLOY.md)

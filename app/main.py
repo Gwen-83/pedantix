@@ -82,7 +82,7 @@ async def security_headers_middleware(request: Request, call_next):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: https://upload.wikimedia.org https://*.wikimedia.org https://*.wikipedia.org; "
-        "connect-src 'self' ws: wss:;"
+        "connect-src 'self' https://pedantix-api.onrender.com ws: wss:;"
     )
     return response
 
