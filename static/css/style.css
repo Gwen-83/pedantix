@@ -8507,8 +8507,9 @@ button:disabled {
   }
 
   #article {
-    max-width: 68ch;
-    margin: 0 auto;
+    width: 100%;
+    max-width: none;
+    margin: 0;
     font-size: 1rem;
     line-height: 1.8;
   }
