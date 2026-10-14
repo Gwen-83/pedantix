@@ -124,6 +124,7 @@
               <span class="room-badge" id="room-badge" title="Cliquez pour voir les salons disponibles">Salon : <b id="room-code-display">default</b></span>
               <button type="button" id="btn-browse-rooms" class="btn-browse-rooms" title="Voir les salons multijoueur disponibles">🔍 Trouver une partie</button>
               <button type="button" id="btn-create-room" class="btn-create-room" title="Créer un nouveau salon">➕ Créer</button>
+              <button type="button" id="btn-header-leave-room" class="btn-header-leave" style="display: none;" title="Quitter ce salon et revenir en mode solo">🚪 Quitter</button>
               <button type="button" id="btn-header-invite" class="btn-header-invite" title="Copier le lien d'invitation pour vos amis">🔗 Inviter</button>
               <button type="button" id="btn-surrender-room" class="btn-surrender-room" style="display: none;" title="Proposer d'abandonner la partie en cours">🏳️ Abandonner</button>
               <span class="hint-timer-badge" id="hint-timer-badge" style="display: none;" title="Un indice lettre est révélé toutes les 5 minutes si personne n'a trouvé !">💡 Lettre dans <b id="hint-timer-val">5:00</b></span>
@@ -947,6 +948,10 @@
         <button type="button" id="btn-lobby-spectator" class="btn-lobby-spectator" title="Passer en spectateur pour faire une pause">
           <span id="lobby-spec-icon">👁️</span>
           <span id="lobby-spec-label">Mode Spectateur (Pause)</span>
+        </button>
+
+        <button type="button" id="btn-lobby-leave-room" class="btn-lobby-leave" title="Quitter ce salon et revenir en mode solo">
+          <span>🚪</span> Quitter le salon
         </button>
 
         <button type="button" id="btn-lobby-start-game" class="btn-lobby-start" style="display: none;">

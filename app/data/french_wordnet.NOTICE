@@ -1,0 +1,18 @@
+French lexical synsets in this file are derived from WOLF
+(Wordnet Libre du Français), distributed in the Open Multilingual Wordnet
+data repository:
+https://github.com/omwn/omw-data/tree/406bf83b3c507a3d1f26e88252d5d66893fd36bf/wns/fra
+
+Source file: wn-data-fra.tab
+Pinned revision: 406bf83b3c507a3d1f26e88252d5d66893fd36bf
+License: CeCILL-C; see french_wordnet.LICENSE.
+
+Citation:
+Benoit Sagot and Darja Fišer. 2008. Building a free French wordnet from
+multilingual resources. Proceedings of LREC 2008, Marrakech, Morocco.
+
+Regenerate the bundled index with:
+    python scripts/build_nlp_data.py --download-wordnets
+
+Or build it from a previously downloaded source file with:
+    python scripts/build_nlp_data.py --wolf-source /path/to/wn-data-fra.tab

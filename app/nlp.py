@@ -6,6 +6,7 @@ import os
 import math
 import gzip
 import json
+import numpy as np
 from typing import Set, Dict, Optional, List, Tuple, Any
 from rapidfuzz import fuzz
 
@@ -27,6 +28,25 @@ def normalize_text(text: str) -> str:
     # Replace ligatures
     stripped = stripped.replace("œ", "oe").replace("æ", "ae")
     return stripped
+
+
+def normalize_wiki_title(title: str) -> str:
+    """Normalizes a Wikipedia title for robust duplicate matching.
+    Handles spaces vs underscores, straight vs curly apostrophes, non-breaking spaces,
+    accents, case-insensitivity, and ligatures (œ -> oe, æ -> ae)."""
+    if not title:
+        return ""
+    cleaned = (
+        title.replace("\xa0", " ")
+        .replace("\u202f", " ")
+        .replace("’", "'")
+        .replace("‘", "'")
+        .replace("`", "'")
+        .replace("_", " ")
+        .strip()
+        .lower()
+    )
+    return normalize_text(cleaned)
 
 
 def normalize_letter(c: str) -> str:
@@ -53,6 +73,8 @@ from app.synonyms_dict import (
     HARDCODED_SYNONYMS_RAW,
     EXPANDED_ETYMOLOGICAL_FAMILIES,
     FRENCH_PROPER_NOUNS,
+    CURATED_VERB_ASSOCIATIONS,
+    CURATED_DOMAIN_ASSOCIATIONS,
 )
 from app.synonym_api import SYNONYM_API
 
@@ -199,6 +221,66 @@ _register_verb("lire", [
     "lira", "liras", "lirai", "liront", "lirait",
     "lise", "lisant",
     "lu", "lue", "lues"
+])
+
+_register_verb("elire", [
+    "elire", "elis", "elit", "elisons", "elisez", "elisent",
+    "elisais", "elisait", "elisions", "elisiez", "elisaient",
+    "elus", "elut", "elumes", "elutes", "elurent",
+    "elirai", "eliras", "elira", "elirons", "elirez", "eliront",
+    "elirais", "elirait", "elirions", "eliriez", "eliraient",
+    "elise", "elises", "elisent", "elisant",
+    "elu", "elue", "elues"
+])
+
+_register_verb("recevoir", [
+    "recevoir", "recois", "recoit", "recevons", "recevez", "recoivent",
+    "recevais", "recevait", "recevions", "receviez", "recevaient",
+    "recus", "recut", "recumes", "recutes", "recurent",
+    "recevrai", "recevras", "recevra", "recevrons", "recevrez", "recevront",
+    "recevrais", "recevrait", "recevrions", "recevriez", "recevraient",
+    "recoive", "recoives", "recevions", "receviez", "recoivent",
+    "recevant", "recu", "recue", "recus", "recues"
+])
+
+_register_verb("resoudre", [
+    "resoudre", "resous", "resout", "resolvons", "resolvez", "resolvent",
+    "resolvais", "resolvait", "resolvions", "resolviez", "resolvaient",
+    "resolus", "resolut", "resolumes", "resolutes", "resolurent",
+    "resoudrai", "resoudras", "resoudra", "resoudrons", "resoudrez", "resoudront",
+    "resoudrais", "resoudrait", "resoudrions", "resoudriez", "resoudraient",
+    "resolve", "resolves", "resolvions", "resolviez", "resolvent",
+    "resolvant", "resolu", "resolue", "resolus", "resolues"
+])
+
+_register_verb("detruire", [
+    "detruire", "detruis", "detruit", "detruisons", "detruisez", "detruisent",
+    "detruisais", "detruisait", "detruisions", "detruisiez", "detruisaient",
+    "detruisis", "detruisit", "detruisimes", "detruisites", "detruisirent",
+    "detruirai", "detruiras", "detruira", "detruirons", "detruirez", "detruiront",
+    "detruirais", "detruirait", "detruirions", "detruiriez", "detruiraient",
+    "detruise", "detruises", "detruisions", "detruisiez", "detruisent",
+    "detruisant", "detruit", "detruite", "detruits", "detruites"
+])
+
+_register_verb("reduire", [
+    "reduire", "reduis", "reduit", "reduisons", "reduisez", "reduisent",
+    "reduisais", "reduisait", "reduisions", "reduisiez", "reduisaient",
+    "reduisis", "reduisit", "reduisimes", "reduisites", "reduisirent",
+    "reduirai", "reduiras", "reduira", "reduirons", "reduirez", "reduiront",
+    "reduirais", "reduirait", "reduirions", "reduiriez", "reduiraient",
+    "reduise", "reduises", "reduisions", "reduisiez", "reduisent",
+    "reduisant", "reduit", "reduite", "reduits", "reduites"
+])
+
+_register_verb("eteindre", [
+    "eteindre", "eteins", "eteint", "eteignons", "eteignez", "eteignent",
+    "eteignais", "eteignait", "eteignions", "eteigniez", "eteignaient",
+    "eteignis", "eteignit", "eteignimes", "eteignites", "eteignirent",
+    "eteindrai", "eteindras", "eteindra", "eteindrons", "eteindrez", "eteindront",
+    "eteindrais", "eteindrait", "eteindrions", "eteindriez", "eteindraient",
+    "eteigne", "eteignes", "eteignions", "eteigniez", "eteignent",
+    "eteignant", "eteint", "eteinte", "eteints", "eteintes"
 ])
 
 _register_verb("ecrire", [
@@ -560,6 +642,10 @@ def check_match(guess: str, target: str) -> bool:
     if g_norm in STOPWORDS_EXACT or t_norm in STOPWORDS_EXACT:
         return False
 
+    # False homographs must be excluded before morphology can create a match.
+    if (g_norm, t_norm) in FALSE_HOMOGRAPHS or (t_norm, g_norm) in FALSE_HOMOGRAPHS:
+        return False
+
     # 3. Verb lemma match (for irregular / 3rd group verbs)
     g_lemmas = FRENCH_VERB_LEMMA_CANDIDATES.get(g_norm, set())
     t_lemmas = FRENCH_VERB_LEMMA_CANDIDATES.get(t_norm, set())
@@ -822,6 +908,20 @@ for _word, _associations in {
 }.items():
     WORD_ASSOCIATIONS.setdefault(_word, {}).update(_associations)
 
+for _verb, _associations in CURATED_VERB_ASSOCIATIONS.items():
+    WORD_ASSOCIATIONS.setdefault(normalize_text(_verb), {}).update(
+        {
+            normalize_text(_word): _score
+            for _word, _score in _associations.items()
+        }
+    )
+
+for _word, _associations in CURATED_DOMAIN_ASSOCIATIONS.items():
+    _normalized_word = normalize_text(_word)
+    _word_associations = WORD_ASSOCIATIONS.setdefault(_normalized_word, {})
+    for _associated_word, _score in _associations.items():
+        _word_associations.setdefault(normalize_text(_associated_word), _score)
+
 
 # Comprehensive French semantic clusters
 THEMATIC_CLUSTERS = {
@@ -1033,6 +1133,75 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 FRENCH_WORDS_PATH = os.path.join(DATA_DIR, "french_words.txt.gz")
 SYNONYMS_PATH = os.path.join(DATA_DIR, "synonyms.json.gz")
 VERB_LEMMAS_PATH = os.path.join(DATA_DIR, "verb_lemmas.json.gz")
+WORDNET_PATH = os.path.join(DATA_DIR, "french_wordnet.json.gz")
+WIKTIONARY_WORDNET_PATH = os.path.join(DATA_DIR, "french_wiktionary.json.gz")
+EMBEDDINGS_PATH = os.path.join(DATA_DIR, "french_embeddings.bin.gz")
+
+
+def _load_french_embeddings() -> Tuple[Dict[str, int], np.ndarray, np.ndarray]:
+    with gzip.open(EMBEDDINGS_PATH, "rb") as embeddings_file:
+        header = embeddings_file.readline().decode("ascii").strip().split()
+        if len(header) != 2:
+            raise ValueError(f"Invalid embeddings header in {EMBEDDINGS_PATH}")
+        try:
+            vocab_size, dimensions = (int(value) for value in header)
+        except ValueError as exc:
+            raise ValueError(f"Invalid embeddings header in {EMBEDDINGS_PATH}") from exc
+        if vocab_size <= 0 or dimensions <= 0:
+            raise ValueError(f"Invalid embeddings dimensions in {EMBEDDINGS_PATH}")
+
+        word_to_index: Dict[str, int] = {}
+        for index in range(vocab_size):
+            line = embeddings_file.readline()
+            if not line:
+                raise ValueError(f"Truncated vocabulary in {EMBEDDINGS_PATH}")
+            word = normalize_text(line.decode("utf-8").strip())
+            if not word or word in word_to_index:
+                raise ValueError(f"Invalid or duplicate word in {EMBEDDINGS_PATH}: {word!r}")
+            word_to_index[word] = index
+
+        if embeddings_file.readline() != b"---VECTORS---\n":
+            raise ValueError(f"Missing vector separator in {EMBEDDINGS_PATH}")
+
+        vector_bytes = embeddings_file.read(vocab_size * dimensions)
+        if len(vector_bytes) != vocab_size * dimensions:
+            raise ValueError(f"Truncated vectors in {EMBEDDINGS_PATH}")
+        if embeddings_file.read(1):
+            raise ValueError(f"Unexpected trailing data in {EMBEDDINGS_PATH}")
+
+    vectors = np.frombuffer(vector_bytes, dtype=np.int8).reshape(vocab_size, dimensions)
+    norms = np.linalg.norm(vectors.astype(np.float32), axis=1)
+    return word_to_index, vectors, norms
+
+
+WORD_EMBEDDING_INDEX, WORD_EMBEDDINGS, WORD_EMBEDDING_NORMS = _load_french_embeddings()
+
+
+def _load_french_wordnet() -> Dict[str, Set[str]]:
+    word_to_synsets: Dict[str, Set[str]] = {}
+    for wordnet_path in (WORDNET_PATH, WIKTIONARY_WORDNET_PATH):
+        with gzip.open(wordnet_path, "rt", encoding="utf-8") as wordnet_file:
+            data = json.load(wordnet_file)
+
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid WordNet index in {wordnet_path}")
+
+        for word, synset_ids in data.items():
+            normalized_word = normalize_text(word)
+            if (
+                not normalized_word
+                or not isinstance(synset_ids, list)
+                or any(
+                    not isinstance(synset_id, str) or not synset_id
+                    for synset_id in synset_ids
+                )
+            ):
+                raise ValueError(f"Invalid WordNet entry for {word!r} in {wordnet_path}")
+            word_to_synsets.setdefault(normalized_word, set()).update(synset_ids)
+    return word_to_synsets
+
+
+FRENCH_WORDNET_SYNSETS = _load_french_wordnet()
 
 FRENCH_DICTIONARY: Set[str] = set()
 if os.path.exists(FRENCH_WORDS_PATH):
@@ -1066,6 +1235,21 @@ if os.path.exists(PROPER_NOUNS_PATH):
     except Exception:
         pass
 FRENCH_DICTIONARY.update(PROPER_NOUNS)
+FRENCH_DICTIONARY.update(
+    word for word in FRENCH_WORDNET_SYNSETS if " " not in word
+)
+FRENCH_DICTIONARY.update(
+    normalize_text(word)
+    for verb, associations in CURATED_VERB_ASSOCIATIONS.items()
+    for word in (verb, *associations)
+    if " " not in normalize_text(word)
+)
+FRENCH_DICTIONARY.update(
+    normalize_text(word)
+    for term, associations in CURATED_DOMAIN_ASSOCIATIONS.items()
+    for word in (term, *associations)
+    if " " not in normalize_text(word)
+)
 
 _verb_index = {}
 if os.path.exists(VERB_LEMMAS_PATH):
@@ -1274,8 +1458,90 @@ for _w, _assocs in WORD_ASSOCIATIONS.items():
         _a_stem = stem_french(_a_word)
         ASSOCIATION_STEMS[_w_stem][_a_stem] = max(ASSOCIATION_STEMS[_w_stem].get(_a_stem, 0), _score)
 
+_CURATED_VERB_LEMMAS = {
+    normalize_text(verb) for verb in CURATED_VERB_ASSOCIATIONS
+}
+_CURATED_VERB_ROOTS: Dict[str, Set[str]] = {}
+for _verb in CURATED_VERB_ASSOCIATIONS:
+    _verb_norm = normalize_text(_verb)
+    if _verb_norm.endswith(("er", "ir", "re")):
+        _root = _verb_norm[:-2]
+        if len(_root) >= 3:
+            _CURATED_VERB_ROOTS.setdefault(_root, set()).add(_verb_norm)
+
+
+def _curated_verb_lemma(word: str) -> Optional[str]:
+    """Return a curated verb lemma only when lexical or stem evidence is unambiguous."""
+    if word in _CURATED_VERB_LEMMAS:
+        return word
+
+    candidates = FRENCH_VERB_LEMMA_CANDIDATES.get(word)
+    if candidates:
+        if len(candidates) == 1:
+            lemma = next(iter(candidates))
+            if lemma in _CURATED_VERB_LEMMAS:
+                return lemma
+        return None
+
+    lemma = FRENCH_VERB_LEMMAS.get(word)
+    if lemma:
+        return lemma if lemma in _CURATED_VERB_LEMMAS else None
+
+    matching_roots = {
+        lemma
+        for stem in get_verb_stems(word)
+        for lemma in _CURATED_VERB_ROOTS.get(stem, ())
+    }
+    return next(iter(matching_roots)) if len(matching_roots) == 1 else None
+
+
+def _curated_association_score(first: str, second: str) -> Optional[float]:
+    first_keys = {first}
+    second_keys = {second}
+    first_lemma = _curated_verb_lemma(first)
+    second_lemma = _curated_verb_lemma(second)
+    if first_lemma:
+        first_keys.add(first_lemma)
+    if second_lemma:
+        second_keys.add(second_lemma)
+
+    scores = [
+        WORD_ASSOCIATIONS[verb].get(related)
+        for verb in first_keys
+        for related in second_keys
+        if verb in WORD_ASSOCIATIONS and related in WORD_ASSOCIATIONS[verb]
+    ]
+    scores.extend(
+        WORD_ASSOCIATIONS[verb].get(related)
+        for verb in second_keys
+        for related in first_keys
+        if verb in WORD_ASSOCIATIONS and related in WORD_ASSOCIATIONS[verb]
+    )
+    valid_scores = [score for score in scores if score is not None]
+    return float(max(valid_scores)) if valid_scores else None
+
+
 # Known false homographs and coincidental stems that must NEVER match
 FALSE_HOMOGRAPHS = {
+    ("enfant", "enfer"), ("enfer", "enfant"),
+    ("talent", "talons"), ("talons", "talent"),
+    ("parent", "parer"), ("parer", "parent"),
+    ("lit", "lire"), ("lire", "lit"),
+    ("souris", "sourire"), ("sourire", "souris"),
+    ("bois", "boire"), ("boire", "bois"),
+    ("cours", "courir"), ("courir", "cours"),
+    ("vers", "verser"), ("verser", "vers"),
+    ("fond", "fondre"), ("fondre", "fond"),
+    ("sens", "sentir"), ("sentir", "sens"),
+    ("tour", "tourner"), ("tourner", "tour"),
+    ("pas", "passer"), ("passer", "pas"),
+    ("plat", "plaire"), ("plaire", "plat"),
+    ("vent", "vendre"), ("vendre", "vent"),
+    ("pain", "peine"), ("peine", "pain"),
+    ("chat", "chambre"), ("chambre", "chat"),
+    ("sang", "sangle"), ("sangle", "sang"),
+    ("cote", "coton"), ("coton", "cote"),
+    ("point", "pointer"), ("pointer", "point"),
     ("banc", "banque"), ("banque", "banc"),
     ("banc", "bancaire"), ("bancaire", "banc"),
     ("banc", "banquier"), ("banquier", "banc"),
@@ -1324,6 +1590,11 @@ CONCEPT_DOMAINS = [
         "core": {"pain", "boulangerie", "boulanger", "baguette", "farine", "four", "ble", "pate", "croissant", "patisserie"},
         "extended": {"levure", "mie", "croute", "fournil", "brioche", "biscuit", "gateau", "artisan", "nourriture"},
         "base_score": 84.0
+    },
+    {
+        "core": {"cuisine", "cuisiner", "cuisinier", "cuisiniere", "casserole", "poele", "marmite", "cocotte", "ustensile", "cuisson"},
+        "extended": {"recette", "ingredient", "four", "plaque", "bouillir", "frire", "sauce", "couteau", "spatule", "vaisselle", "repas", "preparation"},
+        "base_score": 77.0
     },
     {
         "core": {"viande", "boucherie", "boucher", "boeuf", "porc", "veau", "agneau", "volaille", "poulet", "charcuterie"},
@@ -1511,6 +1782,67 @@ def calculate_numeric_proximity(g_val: int, t_val: int) -> float:
     return 0.0
 
 
+@functools.lru_cache(maxsize=32768)
+def _get_embedding_index(word: str) -> Optional[int]:
+    index = WORD_EMBEDDING_INDEX.get(word)
+    if index is not None:
+        return index
+
+    verb_lemma = FRENCH_VERB_LEMMAS.get(word)
+    if verb_lemma:
+        index = WORD_EMBEDDING_INDEX.get(verb_lemma)
+        if index is not None:
+            return index
+
+    singular_candidates = sorted(
+        get_singular_forms(word) - {word},
+        key=lambda candidate: (len(candidate), candidate),
+    )
+    for candidate in singular_candidates:
+        index = WORD_EMBEDDING_INDEX.get(candidate)
+        if index is not None:
+            return index
+    return None
+
+
+def _embedding_proximity(g_norm: str, t_norm: str) -> float:
+    g_index = _get_embedding_index(g_norm)
+    t_index = _get_embedding_index(t_norm)
+    if g_index is None or t_index is None:
+        return 0.0
+
+    denominator = WORD_EMBEDDING_NORMS[g_index] * WORD_EMBEDDING_NORMS[t_index]
+    if denominator == 0:
+        return 0.0
+
+    cosine = float(
+        np.dot(
+            WORD_EMBEDDINGS[g_index].astype(np.int32),
+            WORD_EMBEDDINGS[t_index].astype(np.int32),
+        )
+        / denominator
+    )
+    score_points = (
+        (0.15, 48.0),
+        (0.25, 57.0),
+        (0.35, 65.0),
+        (0.45, 74.0),
+        (0.55, 80.0),
+        (0.65, 86.0),
+        (0.80, 89.0),
+    )
+    if cosine <= score_points[0][0]:
+        return 0.0
+
+    for (lower_cosine, lower_score), (upper_cosine, upper_score) in zip(
+        score_points, score_points[1:]
+    ):
+        if cosine <= upper_cosine:
+            fraction = (cosine - lower_cosine) / (upper_cosine - lower_cosine)
+            return round(lower_score + fraction * (upper_score - lower_score), 1)
+    return score_points[-1][1]
+
+
 @functools.lru_cache(maxsize=65536)
 def _calculate_proximity_cached(g_norm: str, t_norm: str) -> float:
     if not g_norm or not t_norm:
@@ -1533,6 +1865,7 @@ def _calculate_proximity_cached(g_norm: str, t_norm: str) -> float:
     if (g_norm, t_norm) in FALSE_HOMOGRAPHS or (t_norm, g_norm) in FALSE_HOMOGRAPHS:
         return 0.0
 
+    embedding_score = _embedding_proximity(g_norm, t_norm)
     t_forms = {t_norm} | get_singular_forms(t_norm)
     g_forms = {g_norm} | get_singular_forms(g_norm)
 
@@ -1562,7 +1895,22 @@ def _calculate_proximity_cached(g_norm: str, t_norm: str) -> float:
         len_ratio = min(len(g_norm), len(t_norm)) / max(len(g_norm), len(t_norm))
         return round(86.0 + 3.5 * len_ratio, 1)
 
-    # 3. High-Affinity Concept Domain Associations (sports, objects, trades, health, science, etc.)
+    # 3. WordNet synonymy is sense-based, unlike distributional similarity.
+    g_wordnet_synsets = set().union(
+        *(FRENCH_WORDNET_SYNSETS.get(form, set()) for form in g_forms)
+    )
+    t_wordnet_synsets = set().union(
+        *(FRENCH_WORDNET_SYNSETS.get(form, set()) for form in t_forms)
+    )
+    shared_wordnet_synsets = g_wordnet_synsets & t_wordnet_synsets
+    if shared_wordnet_synsets:
+        least_ambiguous_sense_count = min(
+            len(g_wordnet_synsets), len(t_wordnet_synsets)
+        )
+        sense_coverage = len(shared_wordnet_synsets) / least_ambiguous_sense_count
+        return round(90.0 + 4.0 * sense_coverage, 1)
+
+    # 4. High-Affinity Concept Domain Associations (sports, objects, trades, health, science, etc.)
     g_concepts = CONCEPT_LOOKUP.get(g_norm, [])
     t_concepts = CONCEPT_LOOKUP.get(t_norm, [])
     best_concept_score = 0.0
@@ -1581,14 +1929,16 @@ def _calculate_proximity_cached(g_norm: str, t_norm: str) -> float:
                 if score > best_concept_score:
                     best_concept_score = score
 
+    association_score = _curated_association_score(g_norm, t_norm)
     if best_concept_score >= 60.0:
-        return round(best_concept_score, 1)
+        return round(
+            max(best_concept_score, association_score or 0.0, embedding_score),
+            1,
+        )
 
     # 4. Curated Word Associations (direct)
-    if g_norm in WORD_ASSOCIATIONS and t_norm in WORD_ASSOCIATIONS[g_norm]:
-        return float(WORD_ASSOCIATIONS[g_norm][t_norm])
-    if t_norm in WORD_ASSOCIATIONS and g_norm in WORD_ASSOCIATIONS[t_norm]:
-        return float(WORD_ASSOCIATIONS[t_norm][g_norm])
+    if association_score is not None:
+        return max(association_score, embedding_score)
 
     # 5. Morphological family / Stem analysis with homograph safety
     g_stem = stem_french(g_norm)
@@ -1631,14 +1981,14 @@ def _calculate_proximity_cached(g_norm: str, t_norm: str) -> float:
 
             if total_weight >= 0.35:
                 score = 58.0 + 24.0 * min(total_weight / 2.5, 1.0)
-                return round(score, 1)
+                return round(max(score, embedding_score), 1)
 
     # 7. Direct Thematic Cluster membership (exact word verification, no loose stem collision)
     for cluster in THEMATIC_CLUSTERS.values():
         if g_norm in cluster and t_norm in cluster:
-            return 64.0
+            return max(64.0, embedding_score)
 
-    return 0.0
+    return embedding_score
 
 
 def calculate_proximity(guess: str, target: str, context_words: Optional[Set[str]] = None) -> float:
@@ -1649,6 +1999,7 @@ def calculate_proximity(guess: str, target: str, context_words: Optional[Set[str
     90-94 = standard thesaurus synonym or direct morphological family
     82-92 = high-affinity domain association (e.g. football/ballon, table/chaise, medecin/hopital)
     60-82 = shared 2nd-degree semantic overlap (Adamic-Adar specificity weighted)
+    48-82 = distributional association inferred from French word embeddings
     < 48  = unrelated (returns 0.0)
     """
     if not guess or not target:

@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional, Set
 
 from app.nlp import (
     normalize_text, check_match, calculate_proximity, is_valid_french_word,
-    normalize_letter, is_letter_revealed, clean_guess
+    normalize_letter, is_letter_revealed, clean_guess, normalize_wiki_title
 )
 from app.synonyms_dict import EXPANDED_STOPWORDS
 from app.tokenizer import ArticleTokenizer
@@ -382,7 +382,8 @@ class GameManager:
         category: Optional[str] = None,
         query: Optional[str] = None,
         date_str: Optional[str] = None,
-        difficulty: str = "moyen"
+        difficulty: str = "moyen",
+        exclude_titles: Optional[Set[str]] = None
     ) -> GameSession:
         session_id = str(uuid.uuid4())
         seed_num = random.randint(1000, 9999)
@@ -401,33 +402,51 @@ class GameManager:
 
         # 3. By specific category/theme
         elif category and category in ("histoire", "geographie", "sciences", "monuments", "biographies", "arts_culture", "nature", "tech_jeux", "litterature"):
-            article_data = self.wiki_client.fetch_curated_article(category, difficulty=difficulty)
+            article_data = self.wiki_client.fetch_curated_article(category, difficulty=difficulty, exclude_titles=exclude_titles)
             if not article_data:
-                article_data = get_random_cached_article(category)
+                article_data = get_random_cached_article(category, exclude_titles=exclude_titles)
 
         # 4. Random French Wikipedia article meeting difficulty criteria
         if not article_data:
-            article_data = self.wiki_client.fetch_random_wikipedia_article(difficulty=difficulty)
+            article_data = self.wiki_client.fetch_random_wikipedia_article(difficulty=difficulty, exclude_titles=exclude_titles)
             if not article_data and self.offline_curated:
-                article_data = random.choice(list(self.offline_curated.values()))
+                exclude_set = set(exclude_titles) if exclude_titles else set()
+                exclude_norm = {normalize_wiki_title(t) for t in exclude_set if t}
+                candidates = [
+                    c for c in self.offline_curated.values()
+                    if c.get("title", "") not in exclude_set and normalize_wiki_title(c.get("title", "")) not in exclude_norm
+                ]
+                if candidates:
+                    article_data = dict(random.choice(candidates))
             if not article_data:
-                article_data = get_random_cached_article()
+                article_data = get_random_cached_article(exclude_titles=exclude_titles)
 
         # Ultimate fallback
         if not article_data:
+            fallback_candidates = [
+                "Tour Eiffel", "Colisée", "Musée du Louvre", "Statue de la Liberté",
+                "Pyramides de Gizeh", "Pont du Gard", "Château de Versailles",
+                "Alhambra (Grenade)", "Mont Blanc", "Taj Mahal", "Acropole d'Athènes",
+                "Grande Muraille", "Stonehenge", "Sagrada Família", "Machu Picchu",
+                "Système solaire", "Voie lactée", "Lune", "Soleil", "Mars (planète)"
+            ]
+            exclude_set = set(exclude_titles) if exclude_titles else set()
+            exclude_norm = {normalize_wiki_title(t) for t in exclude_set if t}
+            valid_fallbacks = [t for t in fallback_candidates if t not in exclude_set and normalize_wiki_title(t) not in exclude_norm]
+            cand_title = random.choice(valid_fallbacks) if valid_fallbacks else random.choice(fallback_candidates)
             article_data = {
-                "title": "Tour Eiffel",
+                "title": cand_title,
                 "paragraphs": [
-                    "La tour Eiffel est une tour autoportante de fer puddlé de 330 m de hauteur située à Paris, à l’extrémité nord-ouest du parc du Champ-de-Mars en bordure de la Seine dans le 7e arrondissement.",
-                    "Construite en deux ans par Gustave Eiffel et ses collaborateurs pour l'Exposition universelle de Paris de 1889, célébrant le centenaire de la Révolution française, elle est devenue le symbole emblématique de la capitale française et de la France entière.",
-                    "D’une hauteur de 312 mètres à l’origine, la tour Eiffel est restée le monument le plus élevé du monde pendant quarante ans. Elle accueille chaque année plus de six millions de visiteurs du monde entier."
+                    f"Article sur {cand_title} sur Wikipédia en français.",
+                    "Découvrez son histoire, ses caractéristiques et ses éléments majeurs dans cette manche de Pédantix.",
+                    "Proposez des mots pour dévoiler le texte secret et trouver le titre de la page !"
                 ],
                 "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg/500px-Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg",
-                "url": "https://fr.wikipedia.org/wiki/Tour_Eiffel",
+                "url": f"https://fr.wikipedia.org/wiki/{cand_title}",
                 "category": "monuments",
-                "difficulty": "facile",
-                "lang_count": 130,
-                "pageviews_90d": 75000
+                "difficulty": difficulty,
+                "lang_count": 80 if difficulty == "facile" else (35 if difficulty == "moyen" else 20),
+                "pageviews_90d": 40000 if difficulty == "facile" else (8000 if difficulty == "moyen" else 1500)
             }
 
         # Cache in DB for future offline use

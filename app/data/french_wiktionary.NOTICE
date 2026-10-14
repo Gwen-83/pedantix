@@ -1,0 +1,18 @@
+French lexical synsets in this file are derived from the French Wiktionary
+wordnet data packaged by Open Multilingual Wordnet:
+https://github.com/omwn/omw-data/tree/406bf83b3c507a3d1f26e88252d5d66893fd36bf/wns/wikt
+
+Source file: wn-wikt-fra.tab
+Pinned revision: 406bf83b3c507a3d1f26e88252d5d66893fd36bf
+License: CC BY-SA 3.0 or GFDL; see french_wiktionary.LICENSE.
+This file contains a normalized, compressed index derived from the source.
+
+Citation:
+Francis Bond and Ryan Foster. 2013. Linking and Extending an Open Multilingual
+Wordnet. Proceedings of ACL-51, Sofia, pages 1352-1362.
+
+Regenerate the bundled indexes with:
+    python scripts/build_nlp_data.py --download-wordnets
+
+Or build this index from a previously downloaded source file with:
+    python scripts/build_nlp_data.py --wiktionary-source /path/to/wn-wikt-fra.tab

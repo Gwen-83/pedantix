@@ -7,8 +7,9 @@ import re
 import random
 import time
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Set
 from bs4 import BeautifulSoup
+from app.nlp import normalize_wiki_title
 
 logger = logging.getLogger("pedantix.wiki")
 
@@ -676,10 +677,12 @@ class WikipediaClient:
         min_person_languages_regional: Optional[int] = None,
         min_person_pageviews: Optional[int] = None,
         min_general_pageviews: Optional[int] = None,
-        max_attempts: int = 1
+        max_attempts: int = 4,
+        exclude_titles: Optional[Set[str]] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Fetches a random article from French Wikipedia (fr.wikipedia.org) tailored to the requested difficulty level.
+        Never returns articles present in exclude_titles.
         - Difficulty levels:
           * 'facile': min 45 languages, min 20,000 views / 90d, high chance of iconic curated subjects, min 90 words.
           * 'moyen': min 28 languages, min 4,000 views / 90d, balanced pool, min 65 words.
@@ -687,6 +690,14 @@ class WikipediaClient:
         """
         diff_key = difficulty.lower() if difficulty and difficulty.lower() in DIFFICULTY_LEVELS else "moyen"
         cfg = DIFFICULTY_LEVELS[diff_key]
+
+        exclude_set = set(exclude_titles) if exclude_titles else set()
+        exclude_norm = {normalize_wiki_title(t) for t in exclude_set if t}
+
+        def is_title_excluded(t: str) -> bool:
+            if not t:
+                return True
+            return t in exclude_set or normalize_wiki_title(t) in exclude_norm
 
         if min_languages is None:
             min_languages = cfg["min_languages"]
@@ -708,11 +719,12 @@ class WikipediaClient:
         # In easy / medium / hard mode, prioritize curated pool matching requested difficulty
         if curated_prob > 0 and random.random() < curated_prob:
             target_pool = CURATED_BY_DIFFICULTY.get(diff_key, [])
-            if target_pool:
-                sample_candidates = random.sample(target_pool, min(5, len(target_pool)))
+            valid_curated = [t for t in target_pool if not is_title_excluded(t)]
+            if valid_curated:
+                sample_candidates = random.sample(valid_curated, min(5, len(valid_curated)))
                 for candidate in sample_candidates:
                     art = self.fetch_article_by_title(candidate)
-                    if art and count_article_words(art.get("paragraphs", [])) >= min_words:
+                    if art and not is_title_excluded(art.get("title", "")) and count_article_words(art.get("paragraphs", [])) >= min_words:
                         art["difficulty"] = diff_key
                         if not art.get("lang_count"):
                             art["lang_count"] = 75 if diff_key == "facile" else (35 if diff_key == "moyen" else 22)
@@ -745,7 +757,7 @@ class WikipediaClient:
 
             for page in data["query"]["pages"].values():
                 title = page.get("title", "")
-                if not title:
+                if not title or is_title_excluded(title):
                     continue
 
                 raw_extract = page.get("extract", "")
@@ -808,12 +820,38 @@ class WikipediaClient:
                 )
                 return chosen
 
+        # If random search yielded nothing, try pageviews pool (top read Wikipedia articles)
+        pv_pool = self._get_pageviews_pool()
+        if pv_pool:
+            valid_pv = [t for t in pv_pool if not is_title_excluded(t)]
+            if valid_pv:
+                sample_pv = random.sample(valid_pv, min(10, len(valid_pv)))
+                for pv_title in sample_pv:
+                    art = self.fetch_article_by_title(pv_title)
+                    if not art or is_title_excluded(art.get("title", "")):
+                        continue
+                    if count_article_words(art.get("paragraphs", [])) < min_words:
+                        continue
+                    art_diff = art.get("difficulty") or calculate_article_difficulty(
+                        art.get("lang_count", 0),
+                        art.get("pageviews_90d", 0),
+                        art.get("is_person", False),
+                        art.get("title", "")
+                    )
+                    if art_diff == diff_key or diff_key == "moyen":
+                        art["difficulty"] = diff_key
+                        logger.info(
+                            f"Accepted notable article from pageviews pool for difficulty '{diff_key}': '{art['title']}' "
+                            f"({art.get('lang_count', 0)} languages)"
+                        )
+                        return art
+
         # Fallback to curated only if live network request fails or no candidate met criteria
         logger.warning(
             f"Could not find random article meeting criteria for difficulty '{diff_key}' after {max_attempts} attempts; "
             "falling back to curated iconic articles."
         )
-        fallback = self.fetch_curated_article(difficulty=diff_key)
+        fallback = self.fetch_curated_article(difficulty=diff_key, exclude_titles=exclude_set)
         if fallback:
             fallback["difficulty"] = diff_key
             if not fallback.get("lang_count"):
@@ -824,9 +862,22 @@ class WikipediaClient:
 
     fetch_notable_random_wikipedia_article = fetch_random_wikipedia_article
 
-    def fetch_curated_article(self, category: Optional[str] = None, difficulty: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Picks a random article from the curated collections and fetches it."""
+    def fetch_curated_article(
+        self,
+        category: Optional[str] = None,
+        difficulty: Optional[str] = None,
+        exclude_titles: Optional[Set[str]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Picks a random article from the curated collections, excluding recently played ones, and fetches it."""
         diff_key = difficulty.lower() if difficulty and difficulty.lower() in ("facile", "moyen", "difficile") else None
+        exclude_set = set(exclude_titles) if exclude_titles else set()
+        exclude_norm = {normalize_wiki_title(t) for t in exclude_set if t}
+
+        def is_title_excluded(t: str) -> bool:
+            if not t:
+                return True
+            return t in exclude_set or normalize_wiki_title(t) in exclude_norm
+
         if diff_key and diff_key in CURATED_BY_DIFFICULTY:
             titles_pool = CURATED_BY_DIFFICULTY[diff_key]
         elif category and category in THEMES_ARTICLES:
@@ -834,17 +885,22 @@ class WikipediaClient:
         else:
             titles_pool = ALL_CURATED_TITLES
 
-        chosen_titles = random.sample(titles_pool, min(5, len(titles_pool)))
-        for title in chosen_titles:
-            article = self.fetch_article_by_title(title)
-            if article and count_article_words(article.get("paragraphs", [])) >= 50:
-                if diff_key:
-                    article["difficulty"] = diff_key
-                    if not article.get("lang_count"):
-                        article["lang_count"] = 75 if diff_key == "facile" else (35 if diff_key == "moyen" else 22)
-                    if not article.get("pageviews_90d"):
-                        article["pageviews_90d"] = 35000 if diff_key == "facile" else (8000 if diff_key == "moyen" else 2200)
-                return article
+        valid_pool = [t for t in titles_pool if not is_title_excluded(t)]
+        if not valid_pool:
+            valid_pool = [t for t in ALL_CURATED_TITLES if not is_title_excluded(t)]
+
+        if valid_pool:
+            chosen_titles = random.sample(valid_pool, min(6, len(valid_pool)))
+            for title in chosen_titles:
+                article = self.fetch_article_by_title(title)
+                if article and not is_title_excluded(article.get("title", "")) and count_article_words(article.get("paragraphs", [])) >= 50:
+                    if diff_key:
+                        article["difficulty"] = diff_key
+                        if not article.get("lang_count"):
+                            article["lang_count"] = 75 if diff_key == "facile" else (35 if diff_key == "moyen" else 22)
+                        if not article.get("pageviews_90d"):
+                            article["pageviews_90d"] = 35000 if diff_key == "facile" else (8000 if diff_key == "moyen" else 2200)
+                    return article
 
         # Fallback to local curated_articles.json if network is unavailable
         try:
@@ -853,18 +909,19 @@ class WikipediaClient:
                 with open(json_path, "r", encoding="utf-8") as f:
                     local_curated = json.load(f)
                     if local_curated:
-                        candidates = list(local_curated.values())
+                        candidates = [c for c in local_curated.values() if not is_title_excluded(c.get("title", ""))]
                         if diff_key:
                             filtered = [c for c in candidates if CURATED_DIFFICULTY_MAP.get(c.get("title", "")) == diff_key]
                             if filtered:
                                 candidates = filtered
-                        chosen = dict(random.choice(candidates))
-                        if count_article_words(chosen.get("paragraphs", [])) >= 50:
-                            chosen_diff = diff_key or CURATED_DIFFICULTY_MAP.get(chosen.get("title", ""), "moyen")
-                            chosen["difficulty"] = chosen_diff
-                            chosen["lang_count"] = chosen.get("lang_count") or (75 if chosen_diff == "facile" else (35 if chosen_diff == "moyen" else 22))
-                            chosen["pageviews_90d"] = chosen.get("pageviews_90d") or (35000 if chosen_diff == "facile" else (8000 if chosen_diff == "moyen" else 2200))
-                            return chosen
+                        if candidates:
+                            chosen = dict(random.choice(candidates))
+                            if count_article_words(chosen.get("paragraphs", [])) >= 50:
+                                chosen_diff = diff_key or CURATED_DIFFICULTY_MAP.get(chosen.get("title", ""), "moyen")
+                                chosen["difficulty"] = chosen_diff
+                                chosen["lang_count"] = chosen.get("lang_count") or (75 if chosen_diff == "facile" else (35 if chosen_diff == "moyen" else 22))
+                                chosen["pageviews_90d"] = chosen.get("pageviews_90d") or (35000 if chosen_diff == "facile" else (8000 if chosen_diff == "moyen" else 2200))
+                                return chosen
         except Exception as e:
             logger.debug(f"Failed loading offline curated: {e}")
 

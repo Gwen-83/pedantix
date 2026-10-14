@@ -15,10 +15,13 @@ import os
 import queue
 import sqlite3
 import threading
+import time
 import datetime as _dt
 import hashlib
 import secrets
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
+
+from app.nlp import normalize_wiki_title
 
 logger = logging.getLogger("pedantix.database")
 
@@ -234,10 +237,17 @@ _SCHEMA_PG = [
     """CREATE TABLE IF NOT EXISTS user_words (
         username TEXT NOT NULL, word TEXT NOT NULL, count INTEGER DEFAULT 1,
         PRIMARY KEY (username, word))""",
+    """CREATE TABLE IF NOT EXISTS user_played_articles (
+        id BIGSERIAL PRIMARY KEY,
+        user_identifier TEXT NOT NULL,
+        article_title TEXT NOT NULL,
+        played_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_games_finished ON games(finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_article_category ON article_cache(category)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
+    "CREATE INDEX IF NOT EXISTS idx_user_played_lookup ON user_played_articles(user_identifier, played_at)",
+    "CREATE INDEX IF NOT EXISTS idx_user_played_title ON user_played_articles(article_title)",
 ]
 
 _SCHEMA_SQLITE = [
@@ -265,8 +275,15 @@ _SCHEMA_SQLITE = [
     """CREATE TABLE IF NOT EXISTS user_words (
         username TEXT NOT NULL, word TEXT NOT NULL, count INTEGER DEFAULT 1,
         PRIMARY KEY (username, word))""",
+    """CREATE TABLE IF NOT EXISTS user_played_articles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_identifier TEXT NOT NULL,
+        article_title TEXT NOT NULL,
+        played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
+    "CREATE INDEX IF NOT EXISTS idx_user_played_lookup ON user_played_articles(user_identifier, played_at)",
+    "CREATE INDEX IF NOT EXISTS idx_user_played_title ON user_played_articles(article_title)",
 ]
 
 
@@ -333,18 +350,125 @@ def get_cached_article(title: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_random_cached_article(category: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def get_random_cached_article(category: Optional[str] = None, exclude_titles: Optional[Set[str]] = None) -> Optional[Dict[str, Any]]:
+    exclude_set = set(exclude_titles) if exclude_titles else set()
+    exclude_norm = {normalize_wiki_title(t) for t in exclude_set if t}
     try:
         with DatabaseContext() as db:
             if category:
-                db.execute("SELECT * FROM article_cache WHERE category = ? ORDER BY RANDOM() LIMIT 1", (category,))
+                db.execute("SELECT * FROM article_cache WHERE category = ? ORDER BY RANDOM() LIMIT 25", (category,))
             else:
-                db.execute("SELECT * FROM article_cache ORDER BY RANDOM() LIMIT 1")
-            row = db.fetchone()
-            return _row_to_article(row) if row else None
+                db.execute("SELECT * FROM article_cache ORDER BY RANDOM() LIMIT 25")
+            rows = db.fetchall()
+            for row in rows:
+                art = _row_to_article(row)
+                if art:
+                    title = art.get("title", "")
+                    if title not in exclude_set and normalize_wiki_title(title) not in exclude_norm:
+                        return art
+            return None
     except Exception as e:
         logger.warning(f"get_random_cached_article: {e}")
         return None
+
+
+# ---------------------------------------------------------------------------
+# Suivi des pages apparues / jouées (règle des 15 jours sans répétition)
+# ---------------------------------------------------------------------------
+_recent_played_cache: Dict[str, Dict[str, float]] = {}
+_recent_played_lock = threading.Lock()
+
+
+def is_valid_user_identifier(ident: str) -> bool:
+    """Valide qu'un identifiant n'est pas un nom d'invité générique (ex: 'Joueur 1', 'Host')."""
+    if not ident:
+        return False
+    ci = ident.strip().lower()
+    if not ci or len(ci) < 2:
+        return False
+    if ci.startswith("joueur ") or ci in ("host", "anonyme", "spectateur", "undefined", "null"):
+        return False
+    return True
+
+
+def _record_played_article_sync(identifiers: List[str], article_title: str):
+    if not identifiers or not article_title:
+        return
+    clean_title = article_title.strip()
+    clean_ids = list({ident.strip().lower() for ident in identifiers if is_valid_user_identifier(ident)})
+    if not clean_ids or not clean_title:
+        return
+    try:
+        with DatabaseContext() as db:
+            for ident in clean_ids:
+                db.execute(
+                    "INSERT INTO user_played_articles (user_identifier, article_title) VALUES (?, ?)",
+                    (ident, clean_title),
+                )
+    except Exception as e:
+        logger.warning(f"_record_played_article_sync: {e}")
+
+
+def record_played_article(identifiers: List[str], article_title: str):
+    """Enregistre qu'une page Wikipedia est apparue pour un ou plusieurs utilisateurs."""
+    if not identifiers or not article_title:
+        return
+    clean_title = article_title.strip()
+    clean_ids = list({ident.strip().lower() for ident in identifiers if is_valid_user_identifier(ident)})
+    if not clean_ids or not clean_title:
+        return
+    now_ts = time.time()
+    with _recent_played_lock:
+        for ident in clean_ids:
+            if ident not in _recent_played_cache:
+                _recent_played_cache[ident] = {}
+            _recent_played_cache[ident][clean_title] = now_ts
+    _enqueue(_record_played_article_sync, clean_ids, clean_title)
+
+
+def get_recently_played_articles(identifiers: List[str], days: int = 15) -> Set[str]:
+    """Retourne l'ensemble des titres d'articles apparus pour ces identifiants durant les X derniers jours."""
+    if not identifiers:
+        return set()
+    clean_ids = list({ident.strip().lower() for ident in identifiers if is_valid_user_identifier(ident)})
+    if not clean_ids:
+        return set()
+
+    titles: Set[str] = set()
+    now_ts = time.time()
+    cutoff_ts = now_ts - (days * 86400)
+
+    with _recent_played_lock:
+        for ident in clean_ids:
+            cached_entries = _recent_played_cache.get(ident)
+            if cached_entries:
+                for t, ts in list(cached_entries.items()):
+                    if ts >= cutoff_ts:
+                        titles.add(t)
+                    else:
+                        cached_entries.pop(t, None)
+
+    cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days)
+    cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+
+    try:
+        with DatabaseContext() as db:
+            placeholders = ", ".join(["?"] * len(clean_ids))
+            query = (
+                f"SELECT DISTINCT article_title FROM user_played_articles "
+                f"WHERE user_identifier IN ({placeholders}) AND played_at >= ?"
+            )
+            params = tuple(clean_ids) + (cutoff if db.is_pg else cutoff_str,)
+            db.execute(query, params)
+            for row in db.fetchall():
+                t = row["article_title"] if isinstance(row, dict) or hasattr(row, "__getitem__") else row[0]
+                if t:
+                    titles.add(t)
+    except Exception as e:
+        logger.warning(f"get_recently_played_articles: {e}")
+
+    return titles
+
 
 
 # ---------------------------------------------------------------------------

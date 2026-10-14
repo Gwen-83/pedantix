@@ -3043,6 +3043,35 @@ footer a {
   transform: translateY(-1px);
 }
 
+.btn-header-leave {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.28rem 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.btn-header-leave:hover {
+  background: #ef4444;
+  border-color: #f87171;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+.btn-loading {
+  opacity: 0.65 !important;
+  cursor: wait !important;
+  pointer-events: none !important;
+}
+
 /* 30-SECOND SPRINT TIMER BANNER */
 .sprint-timer-banner {
   background: linear-gradient(135deg, #991b1b, #dc2626);
@@ -5120,6 +5149,7 @@ body.solo-mode article.game-container {
 body.solo-mode #room-badge,
 body.solo-mode #btn-browse-rooms,
 body.solo-mode #btn-create-room,
+body.solo-mode #btn-header-leave-room,
 body.solo-mode #btn-header-invite,
 body.solo-mode #host-pill {
   display: none !important;
@@ -6268,6 +6298,30 @@ body.solo-mode #host-pill {
   box-shadow: 0 6px 22px rgba(168, 85, 247, 0.45);
 }
 
+/* Bouton Quitter du Lobby */
+.btn-lobby-leave {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 0.85rem 1.6rem;
+  border-radius: 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-lobby-leave:hover {
+  transform: translateY(-2px);
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35);
+}
+
 /* Bannière Mode Spectateur au-dessus du formulaire */
 .spectator-mode-banner {
   display: flex;
@@ -7021,7 +7075,8 @@ button, input, select, .w, .pin-button, .nav-icon {
 
   .btn-lobby-ready,
   .btn-lobby-start,
-  .btn-lobby-spectator {
+  .btn-lobby-spectator,
+  .btn-lobby-leave {
     width: 100%;
     padding: 0.7rem 0.85rem;
     font-size: 0.92rem;

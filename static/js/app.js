@@ -167,6 +167,9 @@ class PedantixApp {
 
     // Check user authentication
     this.checkAuthOnLoad();
+
+    // Setup page unload handlers (leave room on page close)
+    this.setupPageUnloadHandlers();
   }
 
   getBackendUrl() {
@@ -243,6 +246,7 @@ class PedantixApp {
       roomCodeDisplay: document.getElementById('room-code-display'),
       btnBrowseRooms: document.getElementById('btn-browse-rooms'),
       btnCreateRoom: document.getElementById('btn-create-room'),
+      btnHeaderLeaveRoom: document.getElementById('btn-header-leave-room'),
       btnHeaderInvite: document.getElementById('btn-header-invite'),
       hostPill: document.getElementById('host-pill'),
       hintTimerBadge: document.getElementById('hint-timer-badge'),
@@ -297,6 +301,7 @@ class PedantixApp {
       lobbyReadyLabel: document.getElementById('lobby-ready-label'),
       btnLobbyStartGame: document.getElementById('btn-lobby-start-game'),
       btnLobbySpectator: document.getElementById('btn-lobby-spectator'),
+      btnLobbyLeaveRoom: document.getElementById('btn-lobby-leave-room'),
       lobbySpecIcon: document.getElementById('lobby-spec-icon'),
       lobbySpecLabel: document.getElementById('lobby-spec-label'),
       lobbyStatusHint: document.getElementById('lobby-status-hint'),
@@ -650,6 +655,9 @@ class PedantixApp {
     if (this.dom.btnCreateRoom) {
       this.dom.btnCreateRoom.addEventListener('click', () => this.createNewRoom());
     }
+    if (this.dom.btnHeaderLeaveRoom) {
+      this.dom.btnHeaderLeaveRoom.addEventListener('click', () => this.confirmLeaveRoom());
+    }
 
     // Room browser & discovery buttons
     if (this.dom.btnBrowseRooms) {
@@ -717,6 +725,7 @@ class PedantixApp {
     if (this.dom.btnLobbySpectator) this.dom.btnLobbySpectator.addEventListener('click', handleSpectatorToggle);
     if (this.dom.btnRoundSpectator) this.dom.btnRoundSpectator.addEventListener('click', handleSpectatorToggle);
     if (this.dom.btnBannerResume) this.dom.btnBannerResume.addEventListener('click', handleSpectatorToggle);
+    if (this.dom.btnLobbyLeaveRoom) this.dom.btnLobbyLeaveRoom.addEventListener('click', () => this.confirmLeaveRoom());
 
     // Host Start Game buttons
     const handleStartGame = () => this.startGame();
@@ -1255,6 +1264,49 @@ class PedantixApp {
     }
   }
 
+  async confirmLeaveRoom() {
+    this.playTone('click');
+    if (confirm("Voulez-vous vraiment quitter ce salon ?")) {
+      this.closeModal(this.dom.lobbyModal);
+      await this.switchPlayMode('solo');
+      this.showToast("Vous avez quitté le salon 👋");
+    }
+  }
+
+  setupPageUnloadHandlers() {
+    const handleUnloadLeave = () => {
+      if (this.roomId && !this.roomId.startsWith('solo-') && this.playerId) {
+        const payload = JSON.stringify({
+          room_id: this.roomId,
+          player_id: this.playerId
+        });
+        const leaveUrl = this.getApiUrl('/api/room/leave');
+        if (navigator.sendBeacon) {
+          try {
+            const blob = new Blob([payload], { type: 'application/json' });
+            navigator.sendBeacon(leaveUrl, blob);
+          } catch (e) {
+            fetch(leaveUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: payload,
+              keepalive: true
+            }).catch(() => {});
+          }
+        } else {
+          fetch(leaveUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+          }).catch(() => {});
+        }
+      }
+    };
+    window.addEventListener('pagehide', handleUnloadLeave);
+    window.addEventListener('beforeunload', handleUnloadLeave);
+  }
+
   async switchRoom(newRoomId) {
     const cleanId = (newRoomId || '').trim();
     if (!cleanId) return;
@@ -1371,9 +1423,26 @@ class PedantixApp {
   }
 
   async createMultiplayerRoom(customId = null) {
+    if (this._isCreatingRoom) return null;
+    this._isCreatingRoom = true;
+
+    const btnCreate = this.dom.btnCreateRoom;
+    const btnModalCreate = this.dom.btnModalCreateRoom;
+    const oldModalText = btnModalCreate ? btnModalCreate.innerHTML : '';
+    if (btnCreate) {
+      btnCreate.disabled = true;
+      btnCreate.classList.add('btn-loading');
+    }
+    if (btnModalCreate) {
+      btnModalCreate.disabled = true;
+      btnModalCreate.classList.add('btn-loading');
+      btnModalCreate.innerHTML = '<span>⏳</span> Création en cours...';
+    }
+
     const roomId = (customId && customId.trim()) ? customId.trim() : `salon-${Math.floor(Math.random() * 899 + 100)}`;
 
     try {
+      this.showToast('Création du salon en cours... ⏳');
       if (this.roomId && this.roomId !== roomId) {
         if (!this.roomId.startsWith('solo-')) {
           await this.leaveRoom(this.roomId);
@@ -1397,6 +1466,9 @@ class PedantixApp {
           difficulty: this.currentDifficulty
         })
       });
+      if (!resp.ok) {
+        throw new Error('Erreur HTTP création de salon');
+      }
       const data = await resp.json();
 
       this.roomId = data.room_id || roomId;
@@ -1423,9 +1495,20 @@ class PedantixApp {
       await this.joinRoom();
       return this.roomId;
     } catch (e) {
-      console.error(e);
+      console.error('Erreur createMultiplayerRoom:', e);
       this.showToast('Erreur lors de la création du salon.');
       return null;
+    } finally {
+      this._isCreatingRoom = false;
+      if (btnCreate) {
+        btnCreate.disabled = false;
+        btnCreate.classList.remove('btn-loading');
+      }
+      if (btnModalCreate) {
+        btnModalCreate.disabled = false;
+        btnModalCreate.classList.remove('btn-loading');
+        btnModalCreate.innerHTML = oldModalText;
+      }
     }
   }
 
@@ -2646,6 +2729,7 @@ class PedantixApp {
 
     // 3. Phase-specific view toggling
     if (this.isSoloMode) {
+      if (this.dom.btnHeaderLeaveRoom) this.dom.btnHeaderLeaveRoom.style.display = 'none';
       if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
       this.closeModal(this.dom.lobbyModal);
       if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
@@ -2670,6 +2754,9 @@ class PedantixApp {
       return;
     }
 
+    if (this.dom.btnHeaderLeaveRoom) {
+      this.dom.btnHeaderLeaveRoom.style.display = (this.roomId && !this.roomId.startsWith('solo-')) ? 'inline-flex' : 'none';
+    }
     if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
 
     if (this.roomStatus === 'lobby') {

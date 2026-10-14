@@ -5,16 +5,28 @@ Build high-precision NLP resources for Pedantix:
 2. french_embeddings.bin.gz (Compact, quantized Word2Vec embeddings from frWaC)
 """
 
+import argparse
 import gzip
 import io
 import json
 import os
 import re
+import tempfile
+import urllib.request
 import unicodedata
 import numpy as np
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "app", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
+WOLF_REVISION = "406bf83b3c507a3d1f26e88252d5d66893fd36bf"
+WOLF_SOURCE_URL = (
+    "https://raw.githubusercontent.com/omwn/omw-data/"
+    f"{WOLF_REVISION}/wns/fra/wn-data-fra.tab"
+)
+WIKTIONARY_SOURCE_URL = (
+    "https://raw.githubusercontent.com/omwn/omw-data/"
+    f"{WOLF_REVISION}/wns/wikt/wn-wikt-fra.tab"
+)
 
 def normalize_text(text: str) -> str:
     if not text:
@@ -216,18 +228,94 @@ def build_embeddings(frwac_path: str, out_path: str):
     print(f"Finished {out_path} ({os.path.getsize(out_path) / 1024 / 1024:.2f} MB)")
 
 
+def build_french_wordnet(wordnet_path: str, out_path: str):
+    print(f"Building {out_path} from {wordnet_path}...")
+    word_to_synsets = {}
+
+    with open(wordnet_path, "r", encoding="utf-8") as source:
+        for line in source:
+            if not line.strip() or line.startswith("#"):
+                continue
+            parts = line.rstrip("\r\n").split("\t", 2)
+            if len(parts) != 3 or parts[1] != "fra:lemma":
+                continue
+
+            synset_id, _, lemma = parts
+            word = normalize_text(lemma)
+            if not synset_id or len(word) < 2:
+                continue
+            word_to_synsets.setdefault(word, set()).add(synset_id)
+
+    if not word_to_synsets:
+        raise ValueError(f"No French lemma entries found in {wordnet_path}")
+
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    with gzip.open(out_path, "wt", encoding="utf-8", compresslevel=9) as gz:
+        json.dump(
+            {word: sorted(synsets) for word, synsets in sorted(word_to_synsets.items())},
+            gz,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+    relation_count = sum(map(len, word_to_synsets.values()))
+    print(
+        f"Saved {len(word_to_synsets)} lemmas and {relation_count} synset links "
+        f"({os.path.getsize(out_path) / 1024 / 1024:.2f} MB)"
+    )
+
+
 if __name__ == "__main__":
-    grammalecte_file = "/tmp/grammalecte.txt"
-    frwac_file = "/tmp/frwac.bin"
+    parser = argparse.ArgumentParser(description="Build Pedantix French NLP resources.")
+    parser.add_argument("--grammalecte-source", default="/tmp/grammalecte.txt")
+    parser.add_argument("--frwac-source", default="/tmp/frwac.bin")
+    parser.add_argument("--wolf-source")
+    parser.add_argument("--wiktionary-source")
+    parser.add_argument(
+        "--download-wordnets",
+        action="store_true",
+        help="Download the pinned WOLF and French Wiktionary WordNet sources.",
+    )
+    args = parser.parse_args()
+
+    if args.download_wordnets and (args.wolf_source or args.wiktionary_source):
+        parser.error("--download-wordnets cannot be combined with explicit source paths")
+
     lemmas_out = os.path.join(DATA_DIR, "french_lemmas.json.gz")
     embeddings_out = os.path.join(DATA_DIR, "french_embeddings.bin.gz")
+    wolf_out = os.path.join(DATA_DIR, "french_wordnet.json.gz")
+    wiktionary_out = os.path.join(DATA_DIR, "french_wiktionary.json.gz")
 
-    if os.path.exists(grammalecte_file):
-        build_lemmas(grammalecte_file, lemmas_out)
-    else:
-        print(f"Missing {grammalecte_file}")
+    def download_source(url: str, output_path: str):
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Pedantix-NLP-data-builder/1.0"},
+        )
+        with urllib.request.urlopen(request, timeout=60) as response:
+            with open(output_path, "wb") as output_file:
+                while chunk := response.read(1024 * 1024):
+                    output_file.write(chunk)
 
-    if os.path.exists(frwac_file):
-        build_embeddings(frwac_file, embeddings_out)
+    if args.download_wordnets:
+        with tempfile.TemporaryDirectory() as directory:
+            wolf_source = os.path.join(directory, "wolf-fra.tab")
+            wiktionary_source = os.path.join(directory, "wiktionary-fra.tab")
+            download_source(WOLF_SOURCE_URL, wolf_source)
+            download_source(WIKTIONARY_SOURCE_URL, wiktionary_source)
+            build_french_wordnet(wolf_source, wolf_out)
+            build_french_wordnet(wiktionary_source, wiktionary_out)
+    elif args.wolf_source or args.wiktionary_source:
+        if args.wolf_source:
+            build_french_wordnet(args.wolf_source, wolf_out)
+        if args.wiktionary_source:
+            build_french_wordnet(args.wiktionary_source, wiktionary_out)
     else:
-        print(f"Missing {frwac_file}")
+        if os.path.exists(args.grammalecte_source):
+            build_lemmas(args.grammalecte_source, lemmas_out)
+        else:
+            print(f"Missing {args.grammalecte_source}")
+
+        if os.path.exists(args.frwac_source):
+            build_embeddings(args.frwac_source, embeddings_out)
+        else:
+            print(f"Missing {args.frwac_source}")

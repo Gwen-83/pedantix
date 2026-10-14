@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import random
+import uuid
 
 from app.database import (
     init_db,
@@ -27,8 +28,12 @@ from app.database import (
     record_user_guess_word,
     record_user_game_finish,
     get_user_stats,
+    record_played_article,
+    get_recently_played_articles,
+    is_valid_user_identifier,
 )
-from app.game import GameManager
+from app.nlp import normalize_wiki_title
+from app.game import GameManager, GameSession
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
 from app.tunnel import tunnel_manager
@@ -149,6 +154,8 @@ class HintRequest(BaseModel):
 
 class RoomCreateRequest(BaseModel):
     host_player_id: str
+    host_name: Optional[str] = None
+    player_name: Optional[str] = None
     room_id: Optional[str] = None
     difficulty: Optional[str] = "moyen"
 
@@ -292,7 +299,19 @@ async def stop_tunnel():
 
 @app.post("/api/room/create")
 async def create_room(req: RoomCreateRequest):
-    room = await room_manager.create_new_room_async(req.host_player_id, req.room_id, difficulty=req.difficulty or "moyen")
+    host_name = req.host_name or req.player_name or "Host"
+    host_idents = [req.host_player_id.strip().lower()]
+    if is_valid_user_identifier(host_name):
+        host_idents.append(host_name.strip().lower())
+    excluded = get_recently_played_articles(host_idents, days=15)
+
+    room = await room_manager.create_new_room_async(
+        req.host_player_id,
+        host_name=host_name,
+        custom_id=req.room_id,
+        difficulty=req.difficulty or "moyen",
+        exclude_titles=excluded
+    )
     return {
         "room_id": room.room_id,
         "host_player_id": room.host_player_id,
@@ -305,12 +324,51 @@ async def create_room(req: RoomCreateRequest):
 @app.post("/api/room/join")
 async def join_room(req: RoomJoinRequest):
     diff = req.difficulty if req.difficulty in ("facile", "moyen", "difficile") else "moyen"
-    room = room_manager.get_or_create_room(req.room_id, difficulty=diff)
+    room = room_manager.get_or_create_room(
+        req.room_id,
+        difficulty=diff,
+        player_id=req.player_id,
+        player_name=req.player_name
+    )
     if req.room_id.startswith("solo-") and req.difficulty and req.difficulty != room.difficulty:
-        new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty)
+        excluded = room.get_recently_played_titles(days=15)
+        new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty, exclude_titles=excluded)
         room.set_difficulty(req.difficulty, new_article=new_art)
     is_reconnect = req.player_id in room.players
     player = room.get_or_create_player(req.player_id, req.player_name)
+
+    # In multiplayer lobby, verify if current article was played in last 15 days by any player in room
+    if not room.room_id.startswith("solo-") and room.status == "lobby":
+        excluded_titles = room.get_recently_played_titles(days=15)
+        exclude_norm = {normalize_wiki_title(t) for t in excluded_titles if t}
+        curr_title = room.article_data.get("title", "")
+        if curr_title in excluded_titles or normalize_wiki_title(curr_title) in exclude_norm:
+            new_art = await asyncio.to_thread(room_manager._fetch_random_article, room.difficulty, exclude_titles=excluded_titles)
+            if new_art:
+                room.article_data = new_art
+                room.seed = f"P-{random.randint(1000, 9999)}"
+                # Synchronize sessions for all players and teams in room
+                if room.game_mode == "team":
+                    room._init_team_sessions()
+                    for p in room.players.values():
+                        if p.team in room.team_sessions:
+                            p.session = room.team_sessions[p.team]
+                else:
+                    for p in room.players.values():
+                        session_id = str(uuid.uuid4())
+                        p.session = GameSession(
+                            session_id=session_id,
+                            seed=room.seed,
+                            title=room.article_data["title"],
+                            url=room.article_data.get("url", ""),
+                            image=room.article_data.get("image", ""),
+                            paragraphs=room.article_data["paragraphs"],
+                            mode="multiplayer",
+                            category=room.article_data.get("category", "general"),
+                            difficulty=room.difficulty,
+                            lang_count=room.article_data.get("lang_count", 0),
+                            pageviews_90d=room.article_data.get("pageviews_90d", int(room.article_data.get("pageviews_60d", 0) * 1.5))
+                        )
 
     # Broadcast player joined to all active websockets in this room
     await room.broadcast({
@@ -511,7 +569,8 @@ async def set_room_difficulty(req: RoomDifficultyRequest):
     if not room.room_id.startswith("solo-") and room.status != "lobby":
         raise HTTPException(status_code=400, detail="Impossible de modifier la difficulté en cours de partie.")
 
-    new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty)
+    excluded_titles = room.get_recently_played_titles(days=15)
+    new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty, exclude_titles=excluded_titles)
     success = room.set_difficulty(req.difficulty, new_article=new_art)
     if not success:
         raise HTTPException(status_code=400, detail="Impossible de modifier la difficulté.")
@@ -566,7 +625,8 @@ async def next_round_room(req: RoomNextRoundRequest):
         raise HTTPException(status_code=403, detail="Seul l'Host peut lancer la manche suivante.")
     diff = req.difficulty if req.difficulty in ("facile", "moyen", "difficile") else room.difficulty
     room.difficulty = diff
-    new_article = await asyncio.to_thread(room_manager._fetch_random_article, diff)
+    excluded_titles = room.get_recently_played_titles(days=15)
+    new_article = await asyncio.to_thread(room_manager._fetch_random_article, diff, exclude_titles=excluded_titles)
     seed_num = random.randint(1000, 9999)
     new_seed = f"P-{seed_num}"
     res = await room.start_new_round(req.player_id, new_article, new_seed)
@@ -877,9 +937,19 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
 async def new_game(
     mode: str = Query("random"),
     query: Optional[str] = Query(None),
-    difficulty: str = Query("moyen")
+    difficulty: str = Query("moyen"),
+    player_id: Optional[str] = Query(None),
+    player_name: Optional[str] = Query(None)
 ):
-    session = game_manager.create_game(mode=mode, query=query, difficulty=difficulty)
+    idents = []
+    if player_id and is_valid_user_identifier(player_id):
+        idents.append(player_id.strip().lower())
+    if player_name and is_valid_user_identifier(player_name):
+        idents.append(player_name.strip().lower())
+    excluded = get_recently_played_articles(idents, days=15) if idents else None
+    session = game_manager.create_game(mode=mode, query=query, difficulty=difficulty, exclude_titles=excluded)
+    if idents:
+        record_played_article(idents, session.title)
     state = session.get_public_state()
     state["guess_token"] = anti_bot_guard.get_or_issue_token(session.session_id)
     return state

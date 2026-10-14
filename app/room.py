@@ -11,9 +11,12 @@ from typing import Dict, List, Optional, Set, Any
 from fastapi import WebSocket
 
 from app.game import GameSession, GameManager
-from app.wiki import ALL_CURATED_TITLES, WikipediaClient
-from app.database import get_player_score, increment_player_score, record_user_game_finish, record_user_guess_word
-from app.nlp import normalize_letter, is_letter_revealed
+from app.wiki import ALL_CURATED_TITLES, WikipediaClient, CURATED_DIFFICULTY_MAP
+from app.database import (
+    get_player_score, increment_player_score, record_user_game_finish, record_user_guess_word,
+    record_played_article, get_recently_played_articles, is_valid_user_identifier
+)
+from app.nlp import normalize_letter, is_letter_revealed, normalize_wiki_title
 
 logger = logging.getLogger("pedantix.room")
 
@@ -110,6 +113,38 @@ class Room:
         self.surrender_initiator_name: Optional[str] = None
         self.surrender_votes: Set[str] = set()
         self.surrender_cooldowns: Dict[str, float] = {}
+        self._disconnect_tasks: Dict[str, asyncio.Task] = {}
+
+    def get_all_player_identifiers(self) -> List[str]:
+        """Collecte tous les identifiants uniques des joueurs de la salle (player_id et pseudonymes valides)."""
+        idents: Set[str] = set()
+        for p in self.players.values():
+            if p.player_id:
+                idents.add(p.player_id.strip().lower())
+            if p.name:
+                clean_name = p.name.strip().lower()
+                if clean_name and not clean_name.startswith("joueur ") and clean_name not in ("host", "anonyme", "spectateur"):
+                    idents.add(clean_name)
+        if not idents and self.room_id.startswith("solo-"):
+            idents.add(self.room_id[5:].strip().lower())
+        return list(idents)
+
+    def get_recently_played_titles(self, days: int = 15) -> Set[str]:
+        """Retourne les titres d'articles apparus à TOUS les joueurs du salon durant les 15 derniers jours."""
+        idents = self.get_all_player_identifiers()
+        return get_recently_played_articles(idents, days=days)
+
+    def record_current_article_for_players(self, player_ids: Optional[List[str]] = None):
+        """Enregistre l'article actuel pour tous les joueurs du salon (ou les IDs spécifiés)."""
+        title = self.article_data.get("title")
+        if not title:
+            return
+        if player_ids:
+            idents = list({pid.strip().lower() for pid in player_ids if is_valid_user_identifier(pid)})
+        else:
+            idents = self.get_all_player_identifiers()
+        if idents:
+            record_played_article(idents, title)
 
     def _pick_next_hint_letter(self) -> Optional[str]:
         """
@@ -306,7 +341,8 @@ class Room:
         if self.room_id.startswith("solo-"):
             # Solo mode: immediately load a fresh article with the requested difficulty
             try:
-                new_art = new_article or room_manager._fetch_random_article(difficulty=difficulty)
+                excluded = self.get_recently_played_titles(days=15)
+                new_art = new_article or room_manager._fetch_random_article(difficulty=difficulty, exclude_titles=excluded)
                 if new_art:
                     new_art["difficulty"] = difficulty
                     self.article_data = new_art
@@ -349,16 +385,19 @@ class Room:
                         p.last_status = None
                         p.last_count = 0
                         p.is_ready = True
+                    self.record_current_article_for_players()
             except Exception as e:
                 logger.error(f"Error updating solo article on difficulty change: {e}")
 
         elif self.status == "lobby":
             # Multiplayer lobby: pre-fetch/update article for the new difficulty
             try:
-                new_art = new_article or room_manager._fetch_random_article(difficulty=difficulty)
+                excluded = self.get_recently_played_titles(days=15)
+                new_art = new_article or room_manager._fetch_random_article(difficulty=difficulty, exclude_titles=excluded)
                 if new_art:
                     new_art["difficulty"] = difficulty
                     self.article_data = new_art
+                    self.seed = f"P-{random.randint(1000, 9999)}"
                     if self.game_mode == "team":
                         self._init_team_sessions()
                         for p in self.players.values():
@@ -429,7 +468,7 @@ class Room:
         """Returns True if there is at least one active player and all active players are ready."""
         if self.room_id.startswith("solo-"):
             return True
-        active_players = [p for p in self.players.values() if not p.is_spectator]
+        active_players = [p for p in self.players.values() if not p.is_spectator and p.connected]
         if not active_players:
             return False
         if not all(p.is_ready for p in active_players):
@@ -493,6 +532,9 @@ class Room:
     def get_or_create_player(self, player_id: str, player_name: str) -> RoomPlayer:
         if player_id in self.players:
             player = self.players[player_id]
+            task = self._disconnect_tasks.pop(player_id, None)
+            if task and not task.done():
+                task.cancel()
             if player_name and player.name != player_name:
                 old_name = player.name
                 player.name = player_name
@@ -542,6 +584,8 @@ class Room:
             player.is_host = True
             self.status = "playing"
         self.players[player_id] = player
+        if self.status in ("playing", "starting", "ending") or self.room_id.startswith("solo-"):
+            self.record_current_article_for_players([player_id, player_name])
         team_meta = TEAM_METADATA.get(default_team, {})
         team_tag = f" ({team_meta.get('icon', '')} {team_meta.get('short', '')})" if self.game_mode == "team" else ""
         self.add_activity(f"👋 {player_name} a rejoint la salle{' (Host 👑)' if is_first else ''}{team_tag}", "join")
@@ -571,17 +615,30 @@ class Room:
         if not player.is_host:
             return {"error": "Seul l'Host peut lancer la partie."}
         if not self.can_start():
-            not_ready_count = sum(1 for p in self.players.values() if not p.is_spectator and not p.is_ready)
+            not_ready_count = sum(1 for p in self.players.values() if not p.is_spectator and not p.is_ready and p.connected)
             return {"error": f"Impossible de lancer : {not_ready_count} joueur(s) ne sont pas encore prêts."}
 
         # If a previous round was already finished, launch a new round with a fresh article
         if self.rounds_played > 0:
             return await self.start_new_round(player_id)
 
-        # Strictly guarantee the article corresponds to the lobby difficulty
-        if self.article_data.get("difficulty") != self.difficulty:
+        # Collect 15-day played articles for ALL players in the room
+        excluded_titles = self.get_recently_played_titles(days=15)
+        exclude_norm = {normalize_wiki_title(t) for t in excluded_titles if t}
+        curr_title = self.article_data.get("title", "")
+
+        # Guarantee the article corresponds to the lobby difficulty and has not appeared to ANY player in the room
+        if (
+            curr_title in excluded_titles or
+            normalize_wiki_title(curr_title) in exclude_norm or
+            self.article_data.get("difficulty") != self.difficulty
+        ):
             try:
-                new_art = await asyncio.to_thread(room_manager._fetch_random_article, self.difficulty)
+                new_art = await asyncio.to_thread(
+                    room_manager._fetch_random_article,
+                    self.difficulty,
+                    exclude_titles=excluded_titles
+                )
                 if new_art:
                     new_art["difficulty"] = self.difficulty
                     self.article_data = new_art
@@ -610,6 +667,9 @@ class Room:
                     lang_count=self.article_data.get("lang_count", 0),
                     pageviews_90d=self.article_data.get("pageviews_90d", int(self.article_data.get("pageviews_60d", 0) * 1.5))
                 )
+
+        # Enregistrer l'article comme apparu pour tous les joueurs du salon
+        self.record_current_article_for_players()
 
         self.winners = []
         self.first_winner_id = None
@@ -987,7 +1047,7 @@ class Room:
             if not player.is_host:
                 return {"error": "Seul l'Host peut lancer la partie."}
             if not self.can_start():
-                not_ready = [p.name for p in self.players.values() if not p.is_spectator and not p.is_ready]
+                not_ready = [p.name for p in self.players.values() if not p.is_spectator and not p.is_ready and p.connected]
                 return {"error": f"En attente que tous les joueurs soient prêts : {', '.join(not_ready)}"}
 
         if self._timer_30s_task and not self._timer_30s_task.done():
@@ -999,14 +1059,28 @@ class Room:
         self.revealed_letters = []
         self.next_letter_hint_time = None
 
+        excluded_titles = self.get_recently_played_titles(days=15)
+        exclude_norm = {normalize_wiki_title(t) for t in excluded_titles if t}
+
+        if (
+            not new_article or
+            new_article.get("title", "") in excluded_titles or
+            normalize_wiki_title(new_article.get("title", "")) in exclude_norm
+        ):
+            new_article = await asyncio.to_thread(
+                room_manager._fetch_notable_article,
+                self.difficulty,
+                exclude_titles=excluded_titles
+            )
         if not new_article:
-            new_article = await asyncio.to_thread(room_manager._fetch_notable_article, self.difficulty)
+            new_article = room_manager._fetch_random_article(self.difficulty, exclude_titles=excluded_titles)
         if not new_seed:
             new_seed = f"P-{random.randint(1000, 9999)}"
 
         new_article["difficulty"] = self.difficulty
         self.article_data = new_article
         self.seed = new_seed
+        self.record_current_article_for_players()
         self.status = "starting"
         self.countdown_end = time.time() + 5.0
         self.timer_30s_end = None
@@ -1300,6 +1374,10 @@ class Room:
             self._timer_30s_task.cancel()
         if self._letter_hint_task and not self._letter_hint_task.done():
             self._letter_hint_task.cancel()
+        for task in self._disconnect_tasks.values():
+            if not task.done():
+                task.cancel()
+        self._disconnect_tasks.clear()
         self.surrender_in_progress = False
         self.surrender_initiator_id = None
         self.surrender_initiator_name = None
@@ -1314,6 +1392,9 @@ class Room:
             if player_id in self.players:
                 self.players[player_id].connected = True
                 self.players[player_id].disconnected_at = None
+                task = self._disconnect_tasks.pop(player_id, None)
+                if task and not task.done():
+                    task.cancel()
 
     def remove_websocket(self, ws: WebSocket):
         self.websockets.discard(ws)
@@ -1345,7 +1426,32 @@ class Room:
                     "can_start": self.can_start()
                 })
 
+                # Schedule automatic removal after a short grace period (4 seconds for page reload)
+                existing_task = self._disconnect_tasks.pop(pid, None)
+                if existing_task and not existing_task.done():
+                    existing_task.cancel()
+                self._disconnect_tasks[pid] = asyncio.create_task(self._delayed_remove_player(pid, delay=4.0))
+
+    async def _delayed_remove_player(self, player_id: str, delay: float = 4.0):
+        try:
+            await asyncio.sleep(delay)
+            has_active_ws = any(p_id == player_id for p_id in self.ws_player_map.values())
+            if not has_active_ws and player_id in self.players:
+                player = self.players[player_id]
+                if not player.connected:
+                    logger.info(f"Joueur « {player.name} » ({player_id}) déconnecté depuis {delay}s du salon {self.room_id} -> Retrait définitif.")
+                    await self.remove_player(player_id, reason="disconnect")
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._disconnect_tasks.pop(player_id, None)
+
     async def remove_player(self, player_id: str, reason: str = "leave") -> bool:
+        # Cancel any pending disconnect task
+        task = self._disconnect_tasks.pop(player_id, None)
+        if task and not task.done():
+            task.cancel()
+
         if player_id not in self.players:
             return False
 
@@ -1357,10 +1463,15 @@ class Room:
                 self.ws_player_map.pop(ws, None)
                 self.websockets.discard(ws)
 
-        # Si le salon n'a plus aucun membre, le salon est immédiatement supprimé
-        if len(self.players) == 0:
+        # Si le salon n'a plus aucun membre connecté ou plus aucun joueur, le salon est immédiatement supprimé
+        has_connected = any(p.connected for p in self.players.values())
+        if len(self.players) == 0 or not has_connected:
             if self.room_id != "default":
                 room_manager.delete_room(self.room_id)
+            else:
+                self.players.clear()
+                self.websockets.clear()
+                self.ws_player_map.clear()
             return True
 
         self.surrender_cooldowns.pop(player_id, None)
@@ -1432,6 +1543,9 @@ class Room:
             if player_id in self.players:
                 self.players[player_id].connected = True
                 self.players[player_id].disconnected_at = None
+                task = self._disconnect_tasks.pop(player_id, None)
+                if task and not task.done():
+                    task.cancel()
 
     async def broadcast(self, message: Dict[str, Any]):
         to_remove = set()
@@ -1486,9 +1600,27 @@ class RoomManager:
         }
         self._pool_lock = threading.Lock()
         self._refilling = False
+        self._seed_initial_articles()
+        self.prefetch_articles(target_per_diff=3)
+
+    def _seed_initial_articles(self):
+        """Pre-populates pools instantly from offline curated data so pools are never empty on startup."""
+        if not self.game_manager.offline_curated:
+            return
+        with self._pool_lock:
+            for diff in ("facile", "moyen", "difficile"):
+                if not self._article_pools[diff]:
+                    candidates = [
+                        dict(a) for a in self.game_manager.offline_curated.values()
+                        if CURATED_DIFFICULTY_MAP.get(a.get("title", "")) == diff
+                    ]
+                    random.shuffle(candidates)
+                    for item in candidates[:3]:
+                        item["difficulty"] = diff
+                        self._article_pools[diff].append(item)
 
     # -- Pool d'articles préchargés par niveau de difficulté
-    def prefetch_articles(self, target_per_diff: int = 2):
+    def prefetch_articles(self, target_per_diff: int = 3):
         """Remplit le pool pour chaque difficulté en arrière-plan sans bloquer la boucle asyncio."""
         with self._pool_lock:
             if self._refilling:
@@ -1509,6 +1641,13 @@ class RoomManager:
                         except Exception as e:
                             logger.warning(f"prefetch article {d}: {e}")
                             art = None
+                        if not art and self.game_manager.offline_curated:
+                            candidates = [
+                                dict(a) for a in self.game_manager.offline_curated.values()
+                                if CURATED_DIFFICULTY_MAP.get(a.get("title", "")) == d
+                            ]
+                            if candidates:
+                                art = random.choice(candidates)
                         if art:
                             art["difficulty"] = d
                             with self._pool_lock:
@@ -1522,25 +1661,58 @@ class RoomManager:
 
         threading.Thread(target=_worker, daemon=True, name="pedantix-article-prefetch").start()
 
-    def _pop_pooled_article(self, difficulty: str = "moyen") -> Optional[Dict[str, Any]]:
+    def _pop_pooled_article(self, difficulty: str = "moyen", exclude_titles: Optional[Set[str]] = None) -> Optional[Dict[str, Any]]:
         diff_key = difficulty.lower() if difficulty and difficulty.lower() in ("facile", "moyen", "difficile") else "moyen"
+        exclude_set = set(exclude_titles) if exclude_titles else set()
+        exclude_norm = {t.replace("_", " ").strip().lower() for t in exclude_set if t}
         with self._pool_lock:
             pool = self._article_pools.get(diff_key, [])
-            art = pool.pop(0) if pool else None
+            art = None
+            for i, cand in enumerate(pool):
+                cand_title = cand.get("title", "")
+                if cand_title not in exclude_set and cand_title.replace("_", " ").strip().lower() not in exclude_norm:
+                    art = pool.pop(i)
+                    break
         self.prefetch_articles()
         return art
 
-    async def get_or_create_room_async(self, room_id: str = "default", difficulty: str = "moyen") -> "Room":
+    async def get_or_create_room_async(
+        self,
+        room_id: str = "default",
+        difficulty: str = "moyen",
+        player_id: Optional[str] = None,
+        player_name: Optional[str] = None,
+        exclude_titles: Optional[Set[str]] = None
+    ) -> "Room":
         """Version non bloquante : à utiliser dans les handlers async (WebSocket / routes)."""
         clean_id = (room_id or "").strip() or "default"
         if clean_id in self.rooms:
             return self.rooms[clean_id]
         await asyncio.to_thread(self._ensure_article_ready, difficulty)
-        return self.get_or_create_room(clean_id, difficulty=difficulty)
+        return self.get_or_create_room(
+            clean_id,
+            difficulty=difficulty,
+            player_id=player_id,
+            player_name=player_name,
+            exclude_titles=exclude_titles
+        )
 
-    async def create_new_room_async(self, host_player_id: str, custom_id: Optional[str] = None, difficulty: str = "moyen") -> "Room":
+    async def create_new_room_async(
+        self,
+        host_player_id: str,
+        host_name: str = "Host",
+        custom_id: Optional[str] = None,
+        difficulty: str = "moyen",
+        exclude_titles: Optional[Set[str]] = None
+    ) -> "Room":
         await asyncio.to_thread(self._ensure_article_ready, difficulty)
-        return self.create_new_room(host_player_id, custom_id, difficulty=difficulty)
+        return self.create_new_room(
+            host_player_id,
+            host_name=host_name,
+            custom_id=custom_id,
+            difficulty=difficulty,
+            exclude_titles=exclude_titles
+        )
 
     def _ensure_article_ready(self, difficulty: str = "moyen"):
         """Garantit qu'un article est disponible dans le pool pour la difficulté demandée."""
@@ -1548,55 +1720,88 @@ class RoomManager:
         with self._pool_lock:
             ready = bool(self._article_pools.get(diff_key))
         if not ready:
+            art = None
             try:
                 art = self.wiki_client.fetch_random_wikipedia_article(difficulty=diff_key)
             except Exception as e:
-                logger.error(f"fetch article: {e}")
-                art = None
+                logger.warning(f"fetch article in _ensure_article_ready: {e}")
+            if not art and self.game_manager.offline_curated:
+                candidates = [
+                    dict(a) for a in self.game_manager.offline_curated.values()
+                    if CURATED_DIFFICULTY_MAP.get(a.get("title", "")) == diff_key
+                ]
+                if candidates:
+                    art = random.choice(candidates)
             if art:
                 art["difficulty"] = diff_key
                 with self._pool_lock:
                     self._article_pools[diff_key].append(art)
 
-    def _fetch_random_article(self, difficulty: str = "moyen") -> Dict[str, Any]:
-        """Fetches a random notable article from French Wikipedia for the given difficulty."""
+    def _fetch_random_article(self, difficulty: str = "moyen", exclude_titles: Optional[Set[str]] = None) -> Dict[str, Any]:
+        """Fetches a random notable article from French Wikipedia for the given difficulty, excluding recently played titles."""
         diff_key = difficulty.lower() if difficulty and difficulty.lower() in ("facile", "moyen", "difficile") else "moyen"
+        exclude_set = set(exclude_titles) if exclude_titles else set()
+        exclude_norm = {normalize_wiki_title(t) for t in exclude_set if t}
+
         article = None
-        # Check if pooled article matches requested difficulty
+        # Check if pooled article matches requested difficulty and is not in excluded list
         with self._pool_lock:
             pool = self._article_pools.get(diff_key, [])
-            if pool:
-                article = pool.pop(0)
+            for i, cand in enumerate(pool):
+                cand_title = cand.get("title", "")
+                if cand_title not in exclude_set and normalize_wiki_title(cand_title) not in exclude_norm:
+                    article = pool.pop(i)
+                    break
 
         self.prefetch_articles()
 
         if article is None:
             try:
-                article = self.wiki_client.fetch_random_wikipedia_article(difficulty=diff_key)
+                article = self.wiki_client.fetch_random_wikipedia_article(difficulty=diff_key, exclude_titles=exclude_set)
             except Exception as e:
                 logger.error(f"Error fetching random article: {e}")
 
         if not article:
-            article = self.wiki_client.fetch_curated_article(difficulty=diff_key)
+            article = self.wiki_client.fetch_curated_article(difficulty=diff_key, exclude_titles=exclude_set)
 
         if not article and self.game_manager.offline_curated:
-            candidates = list(self.game_manager.offline_curated.values())
-            filtered = [c for c in candidates if CURATED_DIFFICULTY_MAP.get(c.get("title", "")) == diff_key]
-            if filtered:
-                candidates = filtered
-            article = dict(random.choice(candidates))
+            candidates = [
+                dict(c) for c in self.game_manager.offline_curated.values()
+                if CURATED_DIFFICULTY_MAP.get(c.get("title", "")) == diff_key
+                and c.get("title", "") not in exclude_set
+                and normalize_wiki_title(c.get("title", "")) not in exclude_norm
+            ]
+            if not candidates:
+                candidates = [
+                    dict(c) for c in self.game_manager.offline_curated.values()
+                    if c.get("title", "") not in exclude_set
+                    and normalize_wiki_title(c.get("title", "")) not in exclude_norm
+                ]
+            if candidates:
+                article = random.choice(candidates)
 
         if not article:
-            fallback_title = "Tour Eiffel" if diff_key == "facile" else ("Pont du Gard" if diff_key == "moyen" else "Alhambra (Grenade)")
+            fallback_candidates = [
+                "Tour Eiffel", "Colisée", "Musée du Louvre", "Statue de la Liberté",
+                "Pyramides de Gizeh", "Pont du Gard", "Château de Versailles",
+                "Alhambra (Grenade)", "Mont Blanc", "Taj Mahal", "Acropole d'Athènes",
+                "Grande Muraille", "Stonehenge", "Sagrada Família", "Machu Picchu",
+                "Système solaire", "Voie lactée", "Lune", "Soleil", "Mars (planète)",
+                "Océan Atlantique", "Amazonie", "Sahara", "Everest", "Nil",
+                "Révolution française", "Renaissance", "Moyen Âge", "Empire romain",
+                "Antiquité", "Albert Einstein", "Léonard de Vinci", "Marie Curie"
+            ]
+            valid_fallbacks = [t for t in fallback_candidates if t not in exclude_set and normalize_wiki_title(t) not in exclude_norm]
+            cand_title = random.choice(valid_fallbacks) if valid_fallbacks else random.choice(fallback_candidates)
             article = {
-                "title": fallback_title,
+                "title": cand_title,
                 "paragraphs": [
-                    "La tour Eiffel est une tour autoportante de fer puddlé de 330 m de hauteur située à Paris, à l’extrémité nord-ouest du parc du Champ-de-Mars en bordure de la Seine dans le 7e arrondissement.",
-                    "Construite en deux ans par Gustave Eiffel et ses collaborateurs pour l'Exposition universelle de Paris de 1889, célébrant le centenaire de la Révolution française, elle est devenue le symbole emblématique de la capitale française et de la France entière.",
-                    "D’une hauteur de 312 mètres à l’origine, la tour Eiffel est restée le monument le plus élevé du monde pendant quarante ans. Elle accueille chaque année plus de six millions de visiteurs du monde entier."
+                    f"Article sur {cand_title} sur Wikipédia en français.",
+                    "Découvrez son histoire, ses caractéristiques et ses éléments majeurs dans cette manche de Pédantix.",
+                    "Proposez des mots pour dévoiler le texte secret et trouver le titre de la page !"
                 ],
                 "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg/500px-Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg",
-                "url": f"https://fr.wikipedia.org/wiki/{fallback_title}",
+                "url": f"https://fr.wikipedia.org/wiki/{cand_title}",
                 "category": "culture",
                 "difficulty": diff_key,
                 "lang_count": 80 if diff_key == "facile" else (35 if diff_key == "moyen" else 20),
@@ -1607,16 +1812,49 @@ class RoomManager:
 
     _fetch_notable_article = _fetch_random_article
 
-    def get_or_create_room(self, room_id: str = "default", difficulty: str = "moyen") -> Room:
+    def get_or_create_room(
+        self,
+        room_id: str = "default",
+        difficulty: str = "moyen",
+        player_id: Optional[str] = None,
+        player_name: Optional[str] = None,
+        exclude_titles: Optional[Set[str]] = None
+    ) -> Room:
         clean_id = room_id.strip() or "default"
         if clean_id not in self.rooms:
-            article = self._fetch_notable_article(difficulty=difficulty)
+            if exclude_titles is None:
+                idents = []
+                if player_id:
+                    idents.append(player_id.strip().lower())
+                elif clean_id.startswith("solo-"):
+                    idents.append(clean_id[5:].strip().lower())
+                if player_name:
+                    cn = player_name.strip().lower()
+                    if cn and not cn.startswith("joueur ") and cn != "host":
+                        idents.append(cn)
+                if idents:
+                    exclude_titles = get_recently_played_articles(idents, days=15)
+
+            article = self._fetch_notable_article(difficulty=difficulty, exclude_titles=exclude_titles)
             seed_num = random.randint(1000, 9999)
             seed = f"P-{seed_num}"
-            self.rooms[clean_id] = Room(room_id=clean_id, article_data=article, seed=seed, difficulty=difficulty)
+            room = Room(room_id=clean_id, article_data=article, seed=seed, difficulty=difficulty)
+            if clean_id.startswith("solo-"):
+                pid = player_id or clean_id[5:]
+                pname = player_name or "Joueur 1"
+                room.get_or_create_player(pid, pname)
+                room.record_current_article_for_players([pid, pname])
+            self.rooms[clean_id] = room
         return self.rooms[clean_id]
 
-    def create_new_room(self, host_player_id: str, custom_id: Optional[str] = None, difficulty: str = "moyen") -> Room:
+    def create_new_room(
+        self,
+        host_player_id: str,
+        host_name: str = "Host",
+        custom_id: Optional[str] = None,
+        difficulty: str = "moyen",
+        exclude_titles: Optional[Set[str]] = None
+    ) -> Room:
         if custom_id and custom_id.strip():
             clean_custom = custom_id.strip()
             if clean_custom.startswith("solo-"):
@@ -1631,11 +1869,21 @@ class RoomManager:
             else:
                 room_id = f"salon-{random.randint(1000, 9999)}"
 
-        article = self._fetch_notable_article(difficulty=difficulty)
+        if exclude_titles is None:
+            host_idents = [host_player_id.strip().lower()]
+            if host_name:
+                hn = host_name.strip().lower()
+                if hn and not hn.startswith("joueur ") and hn != "host":
+                    host_idents.append(hn)
+            exclude_titles = get_recently_played_articles(host_idents, days=15)
+
+        article = self._fetch_notable_article(difficulty=difficulty, exclude_titles=exclude_titles)
         seed_num = random.randint(1000, 9999)
         seed = f"P-{seed_num}"
         room = Room(room_id=room_id, article_data=article, seed=seed, difficulty=difficulty)
         room.host_player_id = host_player_id
+        # Automatically register the host player so the room is never created empty
+        room.get_or_create_player(host_player_id, host_name or "Host")
         self.rooms[room_id] = room
         return room
 
@@ -1669,13 +1917,10 @@ class RoomManager:
                     to_delete.append(rid)
                 continue
 
-            # Multiplayer rooms: delete if 0 players for > 5 min, or all players disconnected for > 10 min
-            if len(r.players) == 0 and (now - r.created_at > 300):
+            # Multiplayer rooms: delete immediately if 0 players, or if all players disconnected for > 10s
+            if len(r.players) == 0:
                 to_delete.append(rid)
-            elif len(r.players) > 0 and all(
-                not p.connected and p.disconnected_at and (now - p.disconnected_at > 600)
-                for p in r.players.values()
-            ):
+            elif all(not p.connected for p in r.players.values()) and (now - r.created_at > 10):
                 to_delete.append(rid)
 
         for rid in to_delete:
@@ -1686,7 +1931,6 @@ class RoomManager:
         self.cleanup_abandoned_rooms()
 
         active = []
-        now = time.time()
         for r in list(self.rooms.values()):
             if r.room_id.startswith("solo-"):
                 continue  # Never expose private solo rooms
@@ -1697,8 +1941,8 @@ class RoomManager:
                     p.disconnected_at = None
             connected_names = [p.name for p in r.players.values() if p.connected]
             active_count = len(connected_names)
-            # Only hide from browser list if 0 connected players AND created > 60s ago
-            if active_count == 0 and r.room_id != "default" and (now - r.created_at > 60):
+            # Never list empty rooms with 0 connected players
+            if active_count == 0:
                 continue
             active.append({
                 "room_id": r.room_id,
