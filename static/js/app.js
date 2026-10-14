@@ -936,7 +936,13 @@ class PedantixApp {
 
     // Copy invite IP address
     if (this.dom.btnHeaderInvite) {
-      this.dom.btnHeaderInvite.addEventListener('click', () => this.copyInviteUrl());
+      this.dom.btnHeaderInvite.addEventListener('click', () => {
+        if (this.isAssisting) {
+          this.returnToOwnSolo(false);
+        } else {
+          this.copyInviteUrl();
+        }
+      });
     }
     if (this.dom.btnCopyInvite) {
       this.dom.btnCopyInvite.addEventListener('click', () => this.copyInviteUrl());
@@ -1344,7 +1350,7 @@ class PedantixApp {
     }
   }
 
-  async returnToOwnSolo() {
+  async returnToOwnSolo(completed = true) {
     if (!this.isAssisting) return;
     const assistedRoomId = this.roomId;
     this.isAssisting = false;
@@ -1367,7 +1373,9 @@ class PedantixApp {
     if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add('active');
     if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
     if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
-    this.showToast('🤝 La page a été trouvée ! Retour à votre partie solo.');
+    this.showToast(completed
+      ? '🤝 La page a été trouvée ! Retour à votre partie solo.'
+      : 'Vous avez quitté la page de votre ami. Le lien reste réutilisable.');
     await this.joinRoom();
   }
 
@@ -2858,14 +2866,18 @@ class PedantixApp {
     if (this.dom.hostPill) this.dom.hostPill.style.display = this.isHost ? 'inline-block' : 'none';
     if (this.dom.sideHostPill) this.dom.sideHostPill.style.display = this.isHost ? 'inline-block' : 'none';
     if (this.dom.btnHeaderInvite) {
-      this.dom.btnHeaderInvite.style.display = this.isAssisting ? 'none' : '';
-      this.dom.btnHeaderInvite.innerHTML = this.isSoloMode
+      this.dom.btnHeaderInvite.style.display = '';
+      this.dom.btnHeaderInvite.innerHTML = this.isAssisting
+        ? '<span>↩️</span> Quitter l’aide'
+        : this.isSoloMode
         ? this.assistingPlayerId
           ? '<span>🤝</span> Aide en cours'
           : '<span>🤝</span> Demander de l’aide'
         : '<span>🔗</span> Inviter';
-      this.dom.btnHeaderInvite.disabled = this.isSoloMode && !!this.assistingPlayerId;
-      this.dom.btnHeaderInvite.title = this.isSoloMode
+      this.dom.btnHeaderInvite.disabled = !this.isAssisting && this.isSoloMode && !!this.assistingPlayerId;
+      this.dom.btnHeaderInvite.title = this.isAssisting
+        ? 'Quitter la page de votre ami et revenir à votre partie solo'
+        : this.isSoloMode
         ? this.assistingPlayerId
           ? 'Un joueur aide actuellement sur cette page'
           : 'Partager cette page solo pour demander de l’aide'

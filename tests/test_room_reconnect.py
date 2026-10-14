@@ -147,6 +147,53 @@ class RoomReconnectTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(owner.attempts, helper.attempts)
         self.assertEqual(owner.last_word, "proposition")
 
+    async def test_assistant_can_reload_and_reuse_the_same_link_after_leaving(self):
+        from app.main import RoomJoinRequest, RoomLeaveRequest, join_room, leave_room
+
+        room = Room(
+            room_id="solo-owner-1",
+            article_data={"title": "Article", "paragraphs": ["Texte de test."]},
+            seed="P-1234",
+        )
+        owner = RoomPlayer("owner-1", "Propriétaire", FakeSoloSession(), is_host=True)
+        room.players[owner.player_id] = owner
+        room.host_player_id = owner.player_id
+        assist_token = room.assist_token
+        request = RoomJoinRequest(
+            room_id=room.room_id,
+            player_id="helper-1",
+            player_name="Aide",
+            assist_token=room.assist_token,
+        )
+
+        with (
+            patch("app.main.room_manager.get_room", return_value=room),
+            patch.object(room, "broadcast", new_callable=AsyncMock),
+            patch("app.main.anti_bot_guard.get_or_issue_token", return_value="guess-token"),
+        ):
+            first_join = await join_room(request)
+            helper = room.players["helper-1"]
+            helper_session = owner.session
+
+            old_socket = FakeWebSocket()
+            room.add_websocket(old_socket, helper.player_id)
+            await room.handle_websocket_disconnect(old_socket)
+            reloaded_join = await join_room(request)
+            self.assertIs(room.players["helper-1"], helper)
+            self.assertIs(helper.session, helper_session)
+            self.assertEqual(reloaded_join["session"]["session_id"], helper_session.session_id)
+            self.assertNotIn("helper-1", room._disconnect_tasks)
+
+            await leave_room(RoomLeaveRequest(room_id=room.room_id, player_id="helper-1"))
+            self.assertIsNone(room.assisting_player_id)
+
+            rejoined = await join_room(request)
+
+        self.assertEqual(assist_token, room.assist_token)
+        self.assertEqual(first_join["room_id"], room.room_id)
+        self.assertEqual(rejoined["session"]["session_id"], helper_session.session_id)
+        self.assertEqual(room.assisting_player_id, "helper-1")
+
     async def test_invalid_assistance_link_does_not_create_a_solo_room(self):
         from fastapi import HTTPException
         from app.main import RoomJoinRequest, join_room
