@@ -6,6 +6,9 @@
   const playError = document.getElementById('cemantix-play-error');
   const guessInput = document.getElementById('cemantix-guess');
   const guessForm = document.getElementById('cemantix-guess-form');
+  const difficultySelect = document.getElementById('cemantix-difficulty');
+  const roomDirectory = document.getElementById('cemantix-room-directory');
+  const hintsContainer = document.getElementById('cemantix-hints');
   const params = new URLSearchParams(window.location.search);
   let playerId = localStorage.getItem('cemantix_player_id');
   if (!playerId) {
@@ -77,6 +80,47 @@
     document.getElementById('cemantix-previous-game').hidden =
       !localStorage.getItem('cemantix_solo_game_id');
     history.replaceState(null, '', window.location.pathname);
+    refreshRoomDirectory();
+  }
+
+  function renderRoomDirectory(rooms) {
+    roomDirectory.replaceChildren();
+    if (!rooms.length) {
+      const empty = document.createElement('p');
+      empty.className = 'cemantix-room-empty';
+      empty.textContent = 'Aucun salon ouvert pour le moment.';
+      roomDirectory.append(empty);
+      return;
+    }
+    for (const room of rooms) {
+      const card = document.createElement('div');
+      card.className = 'cemantix-room-card';
+      const copy = document.createElement('span');
+      copy.className = 'cemantix-room-card-copy';
+      const title = document.createElement('strong');
+      title.textContent = `Salon ${room.room_id}`;
+      const details = document.createElement('small');
+      details.textContent = `${room.player_count} joueur${room.player_count === 1 ? '' : 's'} · ${room.difficulty} · ${room.status === 'playing' ? 'En cours' : 'En attente'}`;
+      copy.append(title, details);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'cemantix-secondary-button';
+      button.textContent = room.is_member ? 'Reprendre' : room.status === 'lobby' ? 'Rejoindre' : 'En cours';
+      button.disabled = !room.is_member && room.status !== 'lobby';
+      if (!button.disabled) button.addEventListener('click', () => joinRoom(room.room_id));
+      card.append(copy, button);
+      roomDirectory.append(card);
+    }
+  }
+
+  async function refreshRoomDirectory() {
+    roomDirectory.textContent = 'Chargement des salons…';
+    try {
+      const data = await request(`/api/cemantix/rooms?player_id=${encodeURIComponent(playerId)}`);
+      renderRoomDirectory(data.rooms || []);
+    } catch (error) {
+      roomDirectory.textContent = `Impossible de charger les salons : ${error.message}`;
+    }
   }
 
   function showPlay() {
@@ -128,6 +172,21 @@
     const startButton = document.getElementById('cemantix-start-game');
     startButton.hidden = state.player_id !== state.host_player_id;
     startButton.disabled = !state.can_start || roomBusy;
+  }
+
+  function renderHints(hints) {
+    hintsContainer.replaceChildren();
+    hintsContainer.hidden = !hints.length;
+    if (!hints.length) return;
+    const title = document.createElement('strong');
+    title.textContent = 'Mots reliés à explorer';
+    const list = document.createElement('ul');
+    for (const word of hints) {
+      const item = document.createElement('li');
+      item.textContent = word;
+      list.append(item);
+    }
+    hintsContainer.append(title, list);
   }
 
   function scoreLabel(score) {
@@ -245,6 +304,7 @@
         ? 'Proposition envoyée. Les scores seront révélés à la fin de la manche.'
         : 'Une seule proposition cette manche. Le mot et son score restent cachés jusqu’à la révélation.';
       renderRoomHistory(state.players);
+      renderHints(state.player.hints || []);
       scoreboard.hidden = true;
       return;
     }
@@ -252,6 +312,7 @@
     document.getElementById('cemantix-history').replaceChildren();
     if (!isRoom) {
       const player = state.player;
+      renderHints(state.hints || []);
       input.disabled = player.solved;
       submit.disabled = player.solved;
       input.placeholder = 'Votre mot…';
@@ -276,6 +337,7 @@
     }
 
     input.disabled = true;
+    renderHints(state.player.hints || []);
     submit.disabled = true;
     message.textContent = state.winner_player_id === state.player_id
       ? 'Bravo, vous avez trouvé le mot en premier !'
@@ -293,8 +355,13 @@
     setBusy(button, true, 'Préparation…');
     hideError(homeError);
     try {
-      state = await post('/api/cemantix/solo/new', { player_id: playerId, player_name: playerName });
+      state = await post('/api/cemantix/solo/new', {
+        player_id: playerId,
+        player_name: playerName,
+        difficulty: difficultySelect.value,
+      });
       gameType = 'solo';
+      difficultySelect.value = state.difficulty || 'moyen';
       localStorage.setItem('cemantix_solo_game_id', state.game_id);
       updateView();
       guessInput.focus();
@@ -312,6 +379,7 @@
     try {
       state = await request(`/api/cemantix/solo/${encodeURIComponent(gameId)}?player_id=${encodeURIComponent(playerId)}`);
       gameType = 'solo';
+      difficultySelect.value = state.difficulty || 'moyen';
       if (state.status === 'finished') localStorage.removeItem('cemantix_solo_game_id');
       updateView();
     } catch (error) {
@@ -325,8 +393,13 @@
     setBusy(button, true, 'Création…');
     hideError(homeError);
     try {
-      state = await post('/api/cemantix/room/create', { player_id: playerId, player_name: playerName });
+      state = await post('/api/cemantix/room/create', {
+        player_id: playerId,
+        player_name: playerName,
+        difficulty: difficultySelect.value,
+      });
       gameType = 'room';
+      difficultySelect.value = state.difficulty || 'moyen';
       history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
       updateView();
     } catch (error) {
@@ -350,6 +423,7 @@
         player_name: playerName,
       });
       gameType = 'room';
+      difficultySelect.value = state.difficulty || 'moyen';
       history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
       updateView();
     } catch (error) {
@@ -450,6 +524,7 @@
   document.getElementById('cemantix-solo-button').addEventListener('click', startSolo);
   document.getElementById('cemantix-resume-solo').addEventListener('click', resumeSolo);
   document.getElementById('cemantix-create-room').addEventListener('click', createRoom);
+  document.getElementById('cemantix-refresh-rooms').addEventListener('click', refreshRoomDirectory);
   document.getElementById('cemantix-join-room').addEventListener('click', () =>
     joinRoom(document.getElementById('cemantix-room-code').value));
   document.getElementById('cemantix-room-code').addEventListener('keydown', (event) => {

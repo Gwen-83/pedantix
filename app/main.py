@@ -226,6 +226,7 @@ class GameUnmaskRequest(BaseModel):
 class MotusPlayerRequest(BaseModel):
     player_id: str
     player_name: str
+    difficulty: str = "moyen"
 
 class MotusSoloGuessRequest(MotusPlayerRequest):
     game_id: str
@@ -240,6 +241,7 @@ class MotusRoomGuessRequest(MotusRoomPlayerRequest):
 class CemantixPlayerRequest(BaseModel):
     player_id: str
     player_name: str
+    difficulty: str = "moyen"
 
 class CemantixSoloGuessRequest(CemantixPlayerRequest):
     game_id: str
@@ -254,6 +256,7 @@ class CemantixRoomGuessRequest(CemantixRoomPlayerRequest):
 class BattleshipPlayerRequest(BaseModel):
     player_id: str
     player_name: str
+    difficulty: str = "moyen"
 
 class BattleshipRoomPlayerRequest(BattleshipPlayerRequest):
     room_id: str
@@ -1110,8 +1113,18 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
 
 @app.post("/api/motus/solo/new")
 async def new_motus_solo(req: MotusPlayerRequest):
-    game = motus_manager.create_solo(req.player_id, req.player_name)
+    try:
+        game = motus_manager.create_solo(
+            req.player_id, req.player_name, req.difficulty
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return game.to_dict()
+
+
+@app.get("/api/motus/rooms")
+async def list_motus_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": motus_manager.list_rooms(player_id)}
 
 
 @app.get("/api/motus/solo/{game_id}")
@@ -1135,7 +1148,12 @@ async def guess_motus_solo(req: MotusSoloGuessRequest):
 
 @app.post("/api/motus/room/create")
 async def create_motus_room(req: MotusPlayerRequest):
-    room = motus_manager.create_room(req.player_id, req.player_name)
+    try:
+        room = motus_manager.create_room(
+            req.player_id, req.player_name, req.difficulty
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return room.to_dict(req.player_id)
 
 
@@ -1183,9 +1201,20 @@ async def get_motus_room(room_id: str, player_id: str = Query(...)):
     return room.to_dict(player_id)
 
 
+@app.get("/api/cemantix/rooms")
+async def list_cemantix_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": cemantix_manager.list_rooms(player_id)}
+
+
 @app.post("/api/cemantix/solo/new")
 async def new_cemantix_solo(req: CemantixPlayerRequest):
-    return cemantix_manager.create_solo(req.player_id, req.player_name).to_dict()
+    try:
+        game = cemantix_manager.create_solo(
+            req.player_id, req.player_name, req.difficulty
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return game.to_dict()
 
 
 @app.get("/api/cemantix/solo/{game_id}")
@@ -1209,7 +1238,12 @@ async def guess_cemantix_solo(req: CemantixSoloGuessRequest):
 
 @app.post("/api/cemantix/room/create")
 async def create_cemantix_room(req: CemantixPlayerRequest):
-    room = cemantix_manager.create_room(req.player_id, req.player_name)
+    try:
+        room = cemantix_manager.create_room(
+            req.player_id, req.player_name, req.difficulty
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return room.to_dict(req.player_id, time.time())
 
 
@@ -1259,9 +1293,19 @@ async def get_cemantix_room(room_id: str, player_id: str = Query(...)):
     return room.to_dict(player_id, time.time())
 
 
+@app.get("/api/battleship/rooms")
+async def list_battleship_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": battleship_manager.list_rooms(player_id)}
+
+
 @app.post("/api/battleship/room/create")
 async def create_battleship_room(req: BattleshipPlayerRequest):
-    room = battleship_manager.create_room(req.player_id, req.player_name)
+    try:
+        room = battleship_manager.create_room(
+            req.player_id, req.player_name, req.difficulty
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return room.to_dict(req.player_id)
 
 
@@ -1314,6 +1358,11 @@ async def set_sudoku_solo_cell(req: SudokuSoloCellRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return game.to_dict()
+
+
+@app.get("/api/sudoku/rooms")
+async def list_sudoku_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": sudoku_manager.list_rooms(player_id)}
 
 
 @app.post("/api/sudoku/room/create")

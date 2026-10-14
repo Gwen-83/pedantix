@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 from app.nlp import (
     CONCEPT_LOOKUP,
     FRENCH_DICTIONARY,
+    FRENCH_SYNONYMS,
     HARDCODED_SYNONYMS,
     PROPER_NOUNS,
     STOPWORDS_EXACT,
@@ -21,6 +22,11 @@ from app.nlp import (
 
 CEMANTIX_ROUND_SECONDS = 60
 CEMANTIX_MAX_PLAYERS = 8
+CEMANTIX_DIFFICULTIES = {"facile": (0, 3), "moyen": (2,), "difficile": (5,)}
+
+
+def _visible_hint_count(difficulty: str, attempts: int) -> int:
+    return sum(threshold <= attempts for threshold in CEMANTIX_DIFFICULTIES[difficulty])
 
 
 def _default_answers() -> List[str]:
@@ -47,6 +53,8 @@ class CemantixGame:
     target: str
     player_id: str
     player_name: str
+    difficulty: str = "moyen"
+    hint_words: List[str] = field(default_factory=list)
     guesses: List[Dict[str, Any]] = field(default_factory=list)
     guessed_words: set[str] = field(default_factory=set)
     status: str = "playing"
@@ -56,6 +64,10 @@ class CemantixGame:
         return {
             "game_id": self.game_id,
             "status": self.status,
+            "difficulty": self.difficulty,
+            "hints": self.hint_words[
+                :_visible_hint_count(self.difficulty, len(self.guesses))
+            ],
             "player": {
                 "player_id": self.player_id,
                 "name": self.player_name,
@@ -87,6 +99,8 @@ class CemantixRoom:
     room_id: str
     target: str
     host_player_id: str
+    difficulty: str = "moyen"
+    hint_words: List[str] = field(default_factory=list)
     players: Dict[str, CemantixPlayer] = field(default_factory=dict)
     status: str = "lobby"
     round_number: int = 0
@@ -101,6 +115,7 @@ class CemantixRoom:
             "room_id": self.room_id,
             "status": self.status,
             "host_player_id": self.host_player_id,
+            "difficulty": self.difficulty,
             "round_number": self.round_number,
             "round_seconds": CEMANTIX_ROUND_SECONDS,
             "deadline_at": self.deadline_at,
@@ -111,6 +126,9 @@ class CemantixRoom:
                 "name": player.name,
                 "guesses": player.guesses,
                 "has_submitted": player_id in self.pending,
+                "hints": self.hint_words[
+                    :_visible_hint_count(self.difficulty, len(player.guesses))
+                ],
             },
             "players": [
                 {
@@ -156,10 +174,54 @@ class CemantixManager:
         self._clock = clock
         self.solo_games: Dict[str, CemantixGame] = {}
         self.rooms: Dict[str, CemantixRoom] = {}
+        self._association_reverse: Dict[str, set[str]] = {}
+        for source, associations in WORD_ASSOCIATIONS.items():
+            for associated_word in associations:
+                self._association_reverse.setdefault(associated_word, set()).add(source)
+        self._synonym_reverse: Dict[str, set[str]] = {}
+        for source, synonyms in FRENCH_SYNONYMS.items():
+            for synonym in synonyms:
+                self._synonym_reverse.setdefault(synonym, set()).add(source)
+        self._hardcoded_synonym_reverse: Dict[str, set[str]] = {}
+        for source, synonyms in HARDCODED_SYNONYMS.items():
+            for synonym in synonyms:
+                self._hardcoded_synonym_reverse.setdefault(synonym, set()).add(source)
         self._lock = threading.RLock()
 
     def _pick_target(self) -> str:
         return random.choice(self.answers)
+
+    @staticmethod
+    def _validate_difficulty(difficulty: str) -> str:
+        if difficulty not in CEMANTIX_DIFFICULTIES:
+            raise ValueError("Difficulté invalide. Choisissez facile, moyen ou difficile.")
+        return difficulty
+
+    def _hint_words(self, target: str) -> List[str]:
+        candidates = (
+            set(FRENCH_SYNONYMS.get(target, set()))
+            | self._synonym_reverse.get(target, set())
+            | set(HARDCODED_SYNONYMS.get(target, set()))
+            | self._hardcoded_synonym_reverse.get(target, set())
+            | set(WORD_ASSOCIATIONS.get(target, {}))
+            | self._association_reverse.get(target, set())
+        )
+        for concept, _role in CONCEPT_LOOKUP.get(target, []):
+            candidates.update(concept["core"])
+            candidates.update(concept["extended"])
+        for cluster in THEMATIC_CLUSTERS.values():
+            if target in cluster:
+                candidates.update(cluster)
+        scored = [
+            (self._score(candidate, target)[0], candidate)
+            for candidate in candidates
+            if candidate != target
+            and candidate in self.dictionary
+            and candidate not in STOPWORDS_EXACT
+        ]
+        scored = [(score, word) for score, word in scored if score >= 48]
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        return [word for _, word in scored[:2]]
 
     def _normalize_valid_guess(self, raw_guess: str) -> str:
         word = normalize_text(clean_guess(raw_guess))
@@ -178,13 +240,19 @@ class CemantixManager:
             score = min(score, 99.9)
         return round(score, 1), solved
 
-    def create_solo(self, player_id: str, player_name: str) -> CemantixGame:
+    def create_solo(
+        self, player_id: str, player_name: str, difficulty: str = "moyen"
+    ) -> CemantixGame:
         with self._lock:
+            difficulty = self._validate_difficulty(difficulty)
+            target = self._pick_target()
             game = CemantixGame(
                 game_id=uuid.uuid4().hex,
-                target=self._pick_target(),
+                target=target,
                 player_id=player_id,
                 player_name=player_name,
+                difficulty=difficulty,
+                hint_words=self._hint_words(target),
             )
             self.solo_games[game.game_id] = game
             return game
@@ -220,8 +288,11 @@ class CemantixManager:
                 game.status = "finished"
             return game, result
 
-    def create_room(self, player_id: str, player_name: str) -> CemantixRoom:
+    def create_room(
+        self, player_id: str, player_name: str, difficulty: str = "moyen"
+    ) -> CemantixRoom:
         with self._lock:
+            difficulty = self._validate_difficulty(difficulty)
             room_id = uuid.uuid4().hex[:6].upper()
             while room_id in self.rooms:
                 room_id = uuid.uuid4().hex[:6].upper()
@@ -229,10 +300,32 @@ class CemantixManager:
                 room_id=room_id,
                 target=self._pick_target(),
                 host_player_id=player_id,
+                difficulty=difficulty,
             )
+            room.hint_words = self._hint_words(room.target)
             room.players[player_id] = CemantixPlayer(player_id, player_name)
             self.rooms[room_id] = room
             return room
+
+    def list_rooms(
+        self, player_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        with self._lock:
+            now = self._clock()
+            rooms = []
+            for room in self.rooms.values():
+                self._advance_room(room, now)
+                if room.status == "finished":
+                    continue
+                rooms.append({
+                    "room_id": room.room_id,
+                    "status": room.status,
+                    "player_count": len(room.players),
+                    "host_name": room.players[room.host_player_id].name,
+                    "difficulty": room.difficulty,
+                    "is_member": player_id in room.players if player_id else False,
+                })
+            return rooms
 
     def _advance_room(self, room: CemantixRoom, now: float) -> None:
         if room.status != "playing" or room.deadline_at is None:

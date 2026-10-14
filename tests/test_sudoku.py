@@ -87,6 +87,67 @@ class SudokuTests(unittest.TestCase):
         self.assertEqual(game.status, "finished")
         self.assertEqual(game.to_dict()["solution"], game.solution)
 
+    def test_solo_marks_wrong_entries_and_eliminates_after_three_errors(self):
+        game = self.manager.create_solo("solo", "Solo", "facile")
+        empty_cells = [
+            (row, column)
+            for row in range(9)
+            for column in range(9)
+            if game.puzzle[row][column] == 0
+        ]
+
+        row, column = empty_cells[0]
+        wrong_value = game.solution[row][column] % 9 + 1
+        game = self.manager.set_solo_cell(game.game_id, "solo", row, column, wrong_value)
+        self.assertEqual(game.player.lives, 2)
+        self.assertEqual(game.to_dict()["incorrect_cells"], [[row, column]])
+
+        game = self.manager.set_solo_cell(game.game_id, "solo", row, column, wrong_value)
+        self.assertEqual(game.player.lives, 2)
+        game = self.manager.set_solo_cell(game.game_id, "solo", row, column, 0)
+        self.assertEqual(game.player.lives, 2)
+        self.assertEqual(game.to_dict()["incorrect_cells"], [])
+
+        for row, column in empty_cells[:2]:
+            wrong_value = game.solution[row][column] % 9 + 1
+            game = self.manager.set_solo_cell(game.game_id, "solo", row, column, wrong_value)
+
+        self.assertEqual(game.player.lives, 0)
+        self.assertTrue(game.player.eliminated)
+        self.assertFalse(game.to_dict()["solved"])
+        self.assertEqual(game.finish_reason, "eliminated")
+        self.assertEqual(len(game.to_dict()["incorrect_cells"]), 2)
+        with self.assertRaisesRegex(ValueError, "terminée"):
+            self.manager.set_solo_cell(game.game_id, "solo", *empty_cells[3], 1)
+
+    def test_multiplayer_elimination_is_individual_and_other_players_can_finish(self):
+        room = self.manager.create_room("p1", "Joueur 1", "facile")
+        self.manager.join_room(room.room_id, "p2", "Joueur 2")
+        self.manager.start_room(room.room_id, "p1")
+        empty_cells = [
+            (row, column)
+            for row in range(9)
+            for column in range(9)
+            if room.puzzle[row][column] == 0
+        ]
+
+        for row, column in empty_cells[:3]:
+            wrong_value = room.solution[row][column] % 9 + 1
+            room, points = self.manager.set_room_cell(
+                room.room_id, "p1", row, column, wrong_value
+            )
+            self.assertEqual(points, 0)
+
+        self.assertTrue(room.players["p1"].eliminated)
+        self.assertEqual(room.status, "playing")
+        with self.assertRaisesRegex(ValueError, "éliminé"):
+            self.manager.set_room_cell(room.room_id, "p1", *empty_cells[3], 1)
+
+        room, points = self.solve_player(room, "p2")
+        self.assertEqual(points, 3)
+        self.assertEqual(room.status, "finished")
+        self.assertEqual(room.finish_reason, "all_finished")
+
     def test_multiplayer_awards_three_two_one_and_stops_after_third_solver(self):
         room = self.manager.create_room("p1", "Joueur 1", "moyen")
         self.manager.join_room(room.room_id, "p2", "Joueur 2")
@@ -131,6 +192,30 @@ class SudokuTests(unittest.TestCase):
             self.manager.start_room(room.room_id, "p2")
         self.assertEqual(len(room.players), 30)
         self.assertEqual(self.manager.start_room(room.room_id, "p1").status, "playing")
+
+    def test_room_directory_lists_open_rooms_and_rejoining_preserves_progress(self):
+        room = self.manager.create_room("host", "Hôte", "facile")
+        self.manager.join_room(room.room_id, "guest", "Invité")
+        self.manager.start_room(room.room_id, "host")
+        row, column = next(
+            (row, column)
+            for row in range(9)
+            for column in range(9)
+            if room.puzzle[row][column] == 0
+        )
+        self.manager.set_room_cell(
+            room.room_id, "guest", row, column, room.solution[row][column]
+        )
+
+        public_room = self.manager.list_rooms("visitor")[0]
+        member_room = self.manager.list_rooms("guest")[0]
+        resumed = self.manager.join_room(room.room_id, "guest", "Invité")
+
+        self.assertEqual(public_room["room_id"], room.room_id)
+        self.assertFalse(public_room["is_member"])
+        self.assertTrue(member_room["is_member"])
+        self.assertEqual(member_room["difficulty"], "facile")
+        self.assertEqual(resumed.players["guest"].board[row][column], room.solution[row][column])
 
 
 if __name__ == "__main__":

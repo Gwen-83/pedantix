@@ -6,6 +6,7 @@
   const playError = document.getElementById('sudoku-play-error');
   const difficultySelect = document.getElementById('sudoku-difficulty');
   const roomInput = document.getElementById('sudoku-room-code');
+  const roomDirectory = document.getElementById('sudoku-room-directory');
   const params = new URLSearchParams(window.location.search);
   let playerId = localStorage.getItem('sudoku_player_id');
   if (!playerId) {
@@ -81,6 +82,47 @@
     document.getElementById('sudoku-previous-game').hidden =
       !localStorage.getItem('sudoku_solo_game_id');
     history.replaceState(null, '', window.location.pathname);
+    refreshRoomDirectory();
+  }
+
+  function renderRoomDirectory(rooms) {
+    roomDirectory.replaceChildren();
+    if (!rooms.length) {
+      const empty = document.createElement('p');
+      empty.className = 'sudoku-room-empty';
+      empty.textContent = 'Aucun salon ouvert pour le moment.';
+      roomDirectory.append(empty);
+      return;
+    }
+    for (const room of rooms) {
+      const card = document.createElement('div');
+      card.className = 'sudoku-room-card';
+      const copy = document.createElement('span');
+      copy.className = 'sudoku-room-card-copy';
+      const title = document.createElement('strong');
+      title.textContent = `Salon ${room.room_id}`;
+      const details = document.createElement('small');
+      details.textContent = `${room.player_count} joueur${room.player_count === 1 ? '' : 's'} · ${room.difficulty} · ${room.status === 'playing' ? 'En cours' : 'En attente'}`;
+      copy.append(title, details);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sudoku-secondary-button';
+      button.textContent = room.is_member ? 'Reprendre' : room.status === 'lobby' ? 'Rejoindre' : 'En cours';
+      button.disabled = !room.is_member && room.status !== 'lobby';
+      if (!button.disabled) button.addEventListener('click', () => joinRoom(room.room_id));
+      card.append(copy, button);
+      roomDirectory.append(card);
+    }
+  }
+
+  async function refreshRoomDirectory() {
+    roomDirectory.textContent = 'Chargement des salons…';
+    try {
+      const data = await request(`/api/sudoku/rooms?player_id=${encodeURIComponent(playerId)}`);
+      renderRoomDirectory(data.rooms || []);
+    } catch (error) {
+      roomDirectory.textContent = `Impossible de charger les salons : ${error.message}`;
+    }
   }
 
   function showPlay() {
@@ -90,7 +132,7 @@
   }
 
   function ownPlayer() {
-    if (gameType === 'solo') return { solved: state?.solved };
+    if (gameType === 'solo') return state;
     return state?.player;
   }
 
@@ -125,11 +167,17 @@
 
   function canEdit() {
     if (!state || state.status !== 'playing') return false;
-    return gameType === 'solo' ? !state.solved : !ownPlayer()?.solved;
+    return !ownPlayer()?.solved && !ownPlayer()?.eliminated;
   }
 
   function renderGrid() {
-    const board = state.status === 'finished' && state.solution ? state.solution : state.board;
+    const player = ownPlayer();
+    const board = state.status === 'finished' && state.solution && !player?.eliminated
+      ? state.solution
+      : state.board;
+    const incorrectCells = new Set(
+      (player?.incorrect_cells || []).map(([row, column]) => `${row}:${column}`),
+    );
     const [selectedRow, selectedColumn] = selectedCell;
     const selectedValue = board[selectedRow]?.[selectedColumn] || 0;
     const grid = document.getElementById('sudoku-grid');
@@ -153,6 +201,7 @@
         }
         if (value && value === selectedValue) cell.classList.add('sudoku-same-value');
         if (hasConflict(board, row, column)) cell.classList.add('sudoku-conflict');
+        if (incorrectCells.has(`${row}:${column}`)) cell.classList.add('sudoku-incorrect');
         if (row === selectedRow && column === selectedColumn) cell.classList.add('sudoku-selected');
         cell.disabled = !canEdit();
         cell.addEventListener('click', () => {
@@ -200,7 +249,9 @@
       const name = document.createElement('span');
       name.textContent = player.name + (player.player_id === state.host_player_id ? ' (hôte)' : '');
       const status = document.createElement('small');
-      status.textContent = player.solved ? `Terminé · ${player.points} pt${player.points === 1 ? '' : 's'}` : 'Prêt';
+      status.textContent = player.solved
+        ? `Terminé · ${player.points} pt${player.points === 1 ? '' : 's'}`
+        : player.eliminated ? 'Éliminé · 0 vie' : `${player.lives} vies restantes`;
       item.append(name, status);
       return item;
     }));
@@ -245,13 +296,19 @@
     document.getElementById('sudoku-game-mode').textContent = room
       ? `Multijoueur · ${state.difficulty}`
       : `Solo · ${state.difficulty}`;
-    document.getElementById('sudoku-game-title').textContent =
-      state.status === 'finished' ? 'Grille résolue !' : 'Complétez la grille.';
+    document.getElementById('sudoku-game-title').textContent = player?.eliminated
+      ? 'Vous êtes éliminé'
+      : state.status === 'finished' ? 'Grille résolue !' : 'Complétez la grille.';
     document.getElementById('sudoku-game-hint').textContent = 'Chaque chiffre doit apparaître une seule fois par ligne, colonne et carré 3×3.';
+    const lives = document.getElementById('sudoku-lives');
+    lives.textContent = `Vies restantes : ${player.lives} / 3`;
+    lives.classList.toggle('sudoku-eliminated', player.eliminated);
     document.getElementById('sudoku-timer-panel').hidden = !room || !state.deadline_at;
     if (room && state.deadline_at && state.status === 'playing') updateCountdown();
     const message = document.getElementById('sudoku-round-message');
-    if (!room) {
+    if (player?.eliminated) {
+      message.textContent = 'Trois erreurs : vous êtes éliminé. Les chiffres incorrects restent affichés en rouge.';
+    } else if (!room) {
       message.textContent = state.solved
         ? `Bravo ! Vous avez résolu la grille en ${state.elapsed_seconds} secondes.`
         : 'À vous de jouer : il n’y a pas de limite de temps.';
@@ -394,6 +451,7 @@
 
   function enterRoom() {
     gameType = 'room';
+    difficultySelect.value = state.difficulty;
     selectedCell = [0, 0];
     history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
     updateView();
@@ -514,6 +572,7 @@
   document.getElementById('sudoku-resume-solo').addEventListener('click', resumeSolo);
   document.getElementById('sudoku-create-room').addEventListener('click', createRoom);
   document.getElementById('sudoku-join-room').addEventListener('click', () => joinRoom(roomInput.value));
+  document.getElementById('sudoku-refresh-rooms').addEventListener('click', refreshRoomDirectory);
   roomInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();

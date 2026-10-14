@@ -12,8 +12,10 @@
     cruiser: 'Croiseur',
     submarine: 'Sous-marin',
     destroyer: 'Torpilleur',
+    frigate: 'Frégate',
   };
-  const shipLengths = { carrier: 5, battleship: 4, cruiser: 3, submarine: 3, destroyer: 2 };
+  const difficultySelect = document.getElementById('naval-difficulty');
+  const roomDirectory = document.getElementById('naval-room-directory');
   const rows = 'ABCDEFGHIJ';
   let playerId = localStorage.getItem('battleship_player_id');
   if (!playerId) {
@@ -31,6 +33,7 @@
   let selectedShip = 'carrier';
   let vertical = false;
   let draftFleet = {};
+  let lastShotResult = null;
 
   document.getElementById('naval-player-name').textContent = playerName;
 
@@ -87,6 +90,47 @@
     home.hidden = false;
     play.hidden = true;
     history.replaceState(null, '', window.location.pathname);
+    refreshRoomDirectory();
+  }
+
+  function renderRoomDirectory(rooms) {
+    roomDirectory.replaceChildren();
+    if (!rooms.length) {
+      const empty = document.createElement('p');
+      empty.className = 'naval-room-empty';
+      empty.textContent = 'Aucun salon ouvert pour le moment.';
+      roomDirectory.append(empty);
+      return;
+    }
+    for (const room of rooms) {
+      const card = document.createElement('div');
+      card.className = 'naval-room-card';
+      const copy = document.createElement('span');
+      copy.className = 'naval-room-card-copy';
+      const title = document.createElement('strong');
+      title.textContent = `Salon ${room.room_id}`;
+      const details = document.createElement('small');
+      details.textContent = `${room.player_count} joueur${room.player_count === 1 ? '' : 's'} · ${room.difficulty} · ${room.status === 'playing' ? 'En cours' : 'En attente'}`;
+      copy.append(title, details);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'naval-secondary-button';
+      button.textContent = room.is_member ? 'Reprendre' : room.status === 'lobby' ? 'Rejoindre' : 'En cours';
+      button.disabled = !room.is_member && room.status !== 'lobby';
+      if (!button.disabled) button.addEventListener('click', () => joinRoom(room.room_id));
+      card.append(copy, button);
+      roomDirectory.append(card);
+    }
+  }
+
+  async function refreshRoomDirectory() {
+    roomDirectory.textContent = 'Chargement des salons…';
+    try {
+      const data = await request(`/api/battleship/rooms?player_id=${encodeURIComponent(playerId)}`);
+      renderRoomDirectory(data.rooms || []);
+    } catch (error) {
+      roomDirectory.textContent = `Impossible de charger les salons : ${error.message}`;
+    }
   }
 
   function showPlay() {
@@ -190,11 +234,11 @@
     const picker = document.getElementById('naval-ship-picker');
     picker.replaceChildren();
     const ready = myPlayer()?.ready;
-    for (const [shipId, name] of Object.entries(shipNames)) {
+    for (const [shipId, length] of Object.entries(state.ship_lengths)) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'naval-ship-button';
-      button.textContent = `${name} · ${shipLengths[shipId]}`;
+      button.textContent = `${shipNames[shipId]} · ${length}`;
       button.setAttribute('aria-pressed', String(selectedShip === shipId));
       button.disabled = ready;
       button.addEventListener('click', () => {
@@ -260,6 +304,31 @@
     const target = state.players.find((player) => player.player_id === state.target_player_id);
     const current = state.players.find((player) => player.player_id === state.current_player_id);
     const turnMessage = document.getElementById('naval-turn-message');
+    const shotMessage = document.getElementById('naval-shot-result');
+    shotMessage.className = 'naval-shot-result';
+    if (lastShotResult) {
+      const targetName = state.players.find(
+        (player) => player.player_id === lastShotResult.target_id,
+      )?.name || 'l’adversaire';
+      if (lastShotResult.hit) {
+        const sunk = lastShotResult.sunk_ship
+          ? ` Vous avez coulé le ${shipNames[lastShotResult.sunk_ship]}.`
+          : '';
+        const eliminated = lastShotResult.eliminated ? ` ${targetName} est éliminé.` : '';
+        const extraShot = state.status === 'playing' && isMyTurn()
+          ? ' Vous gardez la main.'
+          : '';
+        shotMessage.textContent =
+          `Touché sur ${targetName} en ${lastShotResult.coordinate}.${sunk}${eliminated}${extraShot}`;
+        shotMessage.classList.add('naval-shot-hit');
+      } else {
+        shotMessage.textContent =
+          `Dans l’eau en ${lastShotResult.coordinate}. Le tour passe à ${current?.name || 'l’adversaire'}.`;
+        shotMessage.classList.add('naval-shot-miss');
+      }
+    } else {
+      shotMessage.textContent = '';
+    }
     if (state.status === 'finished') {
       const winner = state.players.find((player) => player.player_id === state.winner_player_id);
       turnMessage.textContent = winner ? `${winner.name} remporte la bataille !` : 'La bataille est terminée.';
@@ -319,7 +388,11 @@
     setBusy(button, true, 'Création…');
     hideError(homeError);
     try {
-      state = await post('/api/battleship/room/create', { player_id: playerId, player_name: playerName });
+      state = await post('/api/battleship/room/create', {
+        player_id: playerId,
+        player_name: playerName,
+        difficulty: difficultySelect.value,
+      });
       enterRoom();
     } catch (error) {
       showError(homeError, error.message);
@@ -341,6 +414,7 @@
         player_id: playerId,
         player_name: playerName,
       });
+      difficultySelect.value = state.difficulty || 'moyen';
       enterRoom();
     } catch (error) {
       showError(homeError, error.message);
@@ -359,7 +433,7 @@
     const parts = coordinateParts(startCell);
     if (!parts) return;
     const [row, column] = parts;
-    const length = shipLengths[selectedShip];
+    const length = state.ship_lengths[selectedShip];
     const cells = [];
     for (let offset = 0; offset < length; offset += 1) {
       const nextRow = row + (vertical ? offset : 0);
@@ -441,7 +515,12 @@
     roomBusy = true;
     hideError(playError);
     try {
-      state = await post('/api/battleship/room/fire', { ...roomPayload(), coordinate: coordinateValue });
+      const response = await post('/api/battleship/room/fire', {
+        ...roomPayload(),
+        coordinate: coordinateValue,
+      });
+      lastShotResult = response.result;
+      state = response;
       updateView();
     } catch (error) {
       showError(playError, error.message);
@@ -464,6 +543,7 @@
   }
 
   document.getElementById('naval-create-room').addEventListener('click', createRoom);
+  document.getElementById('naval-refresh-rooms').addEventListener('click', refreshRoomDirectory);
   document.getElementById('naval-join-room').addEventListener('click', () => joinRoom(roomInput.value));
   roomInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {

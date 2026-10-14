@@ -30,6 +30,12 @@
       <p class="naval-eyebrow">Multijoueur uniquement</p>
       <h1 id="naval-heading">Préparez vos navires.</h1>
       <p class="naval-intro">Créez un salon et invitez au moins un adversaire. La flotte classique est placée au hasard ; chacun peut ensuite la déplacer avant le départ.</p>
+      <label class="naval-difficulty-label" for="naval-difficulty">Difficulté de la bataille</label>
+      <select id="naval-difficulty" class="naval-difficulty-select">
+        <option value="facile">Facile · flotte réduite</option>
+        <option value="moyen" selected>Moyen · flotte classique</option>
+        <option value="difficile">Difficile · une frégate en plus</option>
+      </select>
       <div class="naval-mode-card">
         <span class="naval-mode-icon" aria-hidden="true">🌊</span>
         <span class="naval-mode-content">
@@ -43,6 +49,13 @@
           </span>
         </span>
       </div>
+      <section class="naval-room-browser" aria-labelledby="naval-room-browser-title">
+        <div class="naval-room-browser-heading">
+          <div><h2 id="naval-room-browser-title">Salons ouverts</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
+          <button type="button" id="naval-refresh-rooms" class="naval-secondary-button">Actualiser</button>
+        </div>
+        <div id="naval-room-directory" class="naval-room-directory" aria-live="polite"></div>
+      </section>
       <p id="naval-home-error" class="naval-error" role="alert" hidden></p>
     </section>
 
@@ -81,6 +94,12 @@
 
       <section id="naval-battle" class="naval-battle" hidden>
         <p id="naval-turn-message" class="naval-turn-message" aria-live="polite"></p>
+        <p id="naval-shot-result" class="naval-shot-result" aria-live="polite"></p>
+        <div class="naval-legend" aria-label="Légende des tirs">
+          <span><i class="naval-legend-hit">×</i> Touché</span>
+          <span><i class="naval-legend-miss">•</i> Dans l’eau</span>
+          <span><i class="naval-legend-ship">■</i> Votre navire</span>
+        </div>
         <div class="naval-battle-boards">
           <section class="naval-board-card">
             <div class="naval-board-heading">
@@ -105,7 +124,7 @@
       </section>
       <p id="naval-play-error" class="naval-error" role="alert" hidden></p>
     </section>
-    <footer>Un tir par tour. Le dernier navire à flot remporte la bataille.</footer>
+    <footer>Continuez de tirer après un toucher ; un tir dans l’eau passe la main. Le dernier capitaine à flot gagne.</footer>
   </main>
   <script src="/static/shared/config.js"></script>
   <script src="/static/games/battleship/app.js"></script>

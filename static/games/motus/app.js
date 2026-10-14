@@ -7,6 +7,8 @@
   const guessInput = document.getElementById('motus-guess');
   const guessForm = document.getElementById('motus-guess-form');
   const keyboard = document.getElementById('motus-keyboard');
+  const difficultySelect = document.getElementById('motus-difficulty');
+  const roomDirectory = document.getElementById('motus-room-directory');
   const alphabet = 'AZERTYUIOPQSDFGHJKLMWXCVBN';
   const params = new URLSearchParams(window.location.search);
   let playerId = localStorage.getItem('motus_player_id');
@@ -22,6 +24,8 @@
   let pollingTimer = null;
   let renderedGuesses = '';
   let roomBusy = false;
+  let entry = [];
+  let lockedLetters = {};
 
   document.getElementById('motus-player-name').textContent = playerName;
 
@@ -80,6 +84,47 @@
     const hasSavedGame = !!localStorage.getItem('motus_solo_game_id');
     document.getElementById('motus-previous-game').hidden = !hasSavedGame;
     history.replaceState(null, '', window.location.pathname);
+    refreshRoomDirectory();
+  }
+
+  function renderRoomDirectory(rooms) {
+    roomDirectory.replaceChildren();
+    if (!rooms.length) {
+      const empty = document.createElement('p');
+      empty.className = 'motus-room-empty';
+      empty.textContent = 'Aucun salon ouvert pour le moment.';
+      roomDirectory.append(empty);
+      return;
+    }
+    for (const room of rooms) {
+      const card = document.createElement('div');
+      card.className = 'motus-room-card';
+      const copy = document.createElement('span');
+      copy.className = 'motus-room-card-copy';
+      const title = document.createElement('strong');
+      title.textContent = `Salon ${room.room_id}`;
+      const details = document.createElement('small');
+      details.textContent = `${room.player_count} joueur${room.player_count === 1 ? '' : 's'} · ${room.difficulty} · ${room.status === 'playing' ? 'En cours' : 'En attente'}`;
+      copy.append(title, details);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'motus-secondary-button';
+      button.textContent = room.is_member ? 'Reprendre' : room.status === 'lobby' ? 'Rejoindre' : 'En cours';
+      button.disabled = !room.is_member && room.status !== 'lobby';
+      if (!button.disabled) button.addEventListener('click', () => joinRoom(room.room_id));
+      card.append(copy, button);
+      roomDirectory.append(card);
+    }
+  }
+
+  async function refreshRoomDirectory() {
+    roomDirectory.textContent = 'Chargement des salons…';
+    try {
+      const data = await request(`/api/motus/rooms?player_id=${encodeURIComponent(playerId)}`);
+      renderRoomDirectory(data.rooms || []);
+    } catch (error) {
+      roomDirectory.textContent = `Impossible de charger les salons : ${error.message}`;
+    }
   }
 
   function showPlay() {
@@ -130,7 +175,11 @@
     const player = state.player;
     const guessesKey = JSON.stringify(player.guesses);
     if (guessesKey !== renderedGuesses) {
-      renderBoard(player.guesses, state.first_letter, state.max_attempts);
+      lockedLetters = getLockedLetters(player.guesses, state.first_letter);
+      entry = Array(state.word_length).fill('');
+      for (const [index, letter] of Object.entries(lockedLetters)) {
+        entry[Number(index)] = letter;
+      }
       renderKeyboard(player.guesses);
       renderedGuesses = guessesKey;
     }
@@ -138,8 +187,12 @@
     const message = document.getElementById('motus-round-message');
     const roundFinished = player.finished || state.status === 'finished';
     guessInput.disabled = roundFinished;
-    guessForm.querySelector('button').disabled = roundFinished;
+    const displayedEntry = entry.map((letter) => letter || ' ').join('');
+    if (guessInput.value !== displayedEntry) guessInput.value = displayedEntry;
+    guessForm.querySelector('button').disabled =
+      roundFinished || entry.some((letter) => !letter);
     guessInput.placeholder = `${state.first_letter}_____`;
+    renderBoard(player.guesses, state.first_letter, state.max_attempts, entry);
 
     if (state.status === 'finished') {
       message.textContent = state.target
@@ -156,7 +209,17 @@
     renderScoreboard();
   }
 
-  function renderBoard(guesses, firstLetter, maxAttempts) {
+  function getLockedLetters(guesses, firstLetter) {
+    const locked = { 0: firstLetter };
+    for (const guess of guesses) {
+      guess.feedback.forEach((feedback, index) => {
+        if (feedback === 'correct') locked[index] = guess.word[index].toUpperCase();
+      });
+    }
+    return locked;
+  }
+
+  function renderBoard(guesses, firstLetter, maxAttempts, currentEntry) {
     const board = document.getElementById('motus-board');
     board.replaceChildren();
     for (let rowIndex = 0; rowIndex < maxAttempts; rowIndex += 1) {
@@ -171,6 +234,11 @@
         if (guess) {
           tile.textContent = guess.word[column].toUpperCase();
           tile.classList.add(`motus-${guess.feedback[column]}`);
+        } else if (rowIndex === guesses.length && currentEntry[column]) {
+          tile.textContent = currentEntry[column];
+          tile.classList.add(
+            lockedLetters[column] ? 'motus-hint-tile' : 'motus-entry-tile',
+          );
         } else if (column === 0) {
           tile.textContent = firstLetter;
           tile.classList.add('motus-hint-tile');
@@ -254,6 +322,87 @@
     scoreboard.append(title, results);
   }
 
+  function nextEditableIndex(startIndex) {
+    for (let index = Math.max(0, startIndex); index < entry.length; index += 1) {
+      if (!lockedLetters[index] && !entry[index]) return index;
+    }
+    for (let index = 0; index < entry.length; index += 1) {
+      if (!lockedLetters[index] && !entry[index]) return index;
+    }
+    return entry.length;
+  }
+
+  function updateEntry(nextIndex) {
+    guessInput.value = entry.map((letter) => letter || ' ').join('');
+    renderBoard(state.player.guesses, state.first_letter, state.max_attempts, entry);
+    guessForm.querySelector('button').disabled =
+      state.player.finished || entry.some((letter) => !letter);
+    guessInput.focus();
+    guessInput.setSelectionRange(nextIndex, nextIndex);
+  }
+
+  function insertEntryText(text, start, end) {
+    const letters = normalizeInput(text);
+    if (!letters) return;
+    if (start !== end) {
+      for (let index = start; index < end; index += 1) {
+        if (!lockedLetters[index]) entry[index] = '';
+      }
+    }
+    let nextIndex = start;
+    for (const letter of letters) {
+      const index = nextEditableIndex(nextIndex);
+      if (index >= entry.length) break;
+      entry[index] = letter;
+      nextIndex = index + 1;
+    }
+    updateEntry(nextEditableIndex(nextIndex));
+  }
+
+  function deleteEntryText(start, end, direction) {
+    let changed = false;
+    let nextIndex = start;
+    if (start !== end) {
+      for (let index = start; index < end; index += 1) {
+        if (!lockedLetters[index]) {
+          entry[index] = '';
+          changed = true;
+        }
+      }
+    } else {
+      let index = direction < 0 ? start - 1 : start;
+      while (
+        index >= 0
+        && index < entry.length
+        && (lockedLetters[index] || !entry[index])
+      ) {
+        index += direction;
+      }
+      if (index >= 0 && index < entry.length) {
+        entry[index] = '';
+        changed = true;
+        nextIndex = index;
+      }
+    }
+    if (changed) updateEntry(nextIndex);
+  }
+
+  function editEntry(inputEvent) {
+    if (guessInput.disabled) return;
+    const start = guessInput.selectionStart ?? entry.length;
+    const end = guessInput.selectionEnd ?? start;
+    if (inputEvent.inputType.startsWith('insert') && inputEvent.data) {
+      inputEvent.preventDefault();
+      insertEntryText(inputEvent.data, start, end);
+    } else if (inputEvent.inputType === 'deleteContentBackward') {
+      inputEvent.preventDefault();
+      deleteEntryText(start, end, -1);
+    } else if (inputEvent.inputType === 'deleteContentForward') {
+      inputEvent.preventDefault();
+      deleteEntryText(start, end, 1);
+    }
+  }
+
   function renderBoardFromState() {
     renderedGuesses = '';
     updateView();
@@ -264,8 +413,13 @@
     setBusy(button, true, 'Préparation…');
     hideError(homeError);
     try {
-      state = await post('/api/motus/solo/new', { player_id: playerId, player_name: playerName });
+      state = await post('/api/motus/solo/new', {
+        player_id: playerId,
+        player_name: playerName,
+        difficulty: difficultySelect.value,
+      });
       gameType = 'solo';
+      renderedGuesses = '';
       localStorage.setItem('motus_solo_game_id', state.game_id);
       updateView();
       guessInput.focus();
@@ -283,6 +437,8 @@
     try {
       state = await request(`/api/motus/solo/${encodeURIComponent(gameId)}?player_id=${encodeURIComponent(playerId)}`);
       gameType = 'solo';
+      difficultySelect.value = state.difficulty || 'moyen';
+      renderedGuesses = '';
       updateView();
     } catch (error) {
       localStorage.removeItem('motus_solo_game_id');
@@ -295,8 +451,13 @@
     setBusy(button, true, 'Création…');
     hideError(homeError);
     try {
-      state = await post('/api/motus/room/create', { player_id: playerId, player_name: playerName });
+      state = await post('/api/motus/room/create', {
+        player_id: playerId,
+        player_name: playerName,
+        difficulty: difficultySelect.value,
+      });
       gameType = 'room';
+      renderedGuesses = '';
       history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
       updateView();
       startPolling();
@@ -321,6 +482,8 @@
         player_name: playerName,
       });
       gameType = 'room';
+      difficultySelect.value = state.difficulty || 'moyen';
+      renderedGuesses = '';
       history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
       updateView();
       startPolling();
@@ -356,7 +519,11 @@
     event.preventDefault();
     if (!state || state.player.finished) return;
     hideError(playError);
-    const guess = guessInput.value.trim();
+    if (entry.some((letter) => !letter)) {
+      showError(playError, 'Complétez les cases vides avant de valider.');
+      return;
+    }
+    const guess = entry.join('');
     const submit = guessForm.querySelector('button');
     setBusy(submit, true, '…');
     try {
@@ -376,7 +543,6 @@
           guess,
         });
       }
-      guessInput.value = '';
       renderedGuesses = '';
       updateView();
       if (state.status === 'finished' && gameType === 'solo') {
@@ -416,6 +582,7 @@
   document.getElementById('motus-solo-button').addEventListener('click', startSolo);
   document.getElementById('motus-resume-solo').addEventListener('click', resumeSolo);
   document.getElementById('motus-create-room').addEventListener('click', createRoom);
+  document.getElementById('motus-refresh-rooms').addEventListener('click', refreshRoomDirectory);
   document.getElementById('motus-join-room').addEventListener('click', () =>
     joinRoom(document.getElementById('motus-room-code').value));
   document.getElementById('motus-room-code').addEventListener('keydown', (event) => {
@@ -437,21 +604,20 @@
     }
   });
   guessForm.addEventListener('submit', submitGuess);
-  guessInput.addEventListener('input', () => {
-    const normalized = normalizeInput(guessInput.value);
-    if (guessInput.value !== normalized) guessInput.value = normalized;
-  });
+  guessInput.addEventListener('beforeinput', editEntry);
   keyboard.addEventListener('click', (event) => {
     const button = event.target.closest('button');
     if (!button || guessInput.disabled) return;
     if (button.dataset.action === 'submit') {
       guessForm.requestSubmit();
     } else if (button.dataset.action === 'backspace') {
-      guessInput.value = guessInput.value.slice(0, -1);
-      guessInput.focus();
-    } else if (button.dataset.letter && guessInput.value.length < 6) {
-      guessInput.value += button.dataset.letter;
-      guessInput.focus();
+      const start = guessInput.selectionStart ?? entry.length;
+      const end = guessInput.selectionEnd ?? start;
+      deleteEntryText(start, end, -1);
+    } else if (button.dataset.letter) {
+      const start = guessInput.selectionStart ?? entry.length;
+      const end = guessInput.selectionEnd ?? start;
+      insertEntryText(button.dataset.letter, start, end);
     }
   });
   document.getElementById('motus-scoreboard').addEventListener('click', (event) => {

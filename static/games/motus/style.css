@@ -10,7 +10,6 @@
 * { box-sizing: border-box; }
 
 body {
-  min-width: 320px;
   min-height: 100vh;
   margin: 0;
   background:
@@ -71,6 +70,16 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.6rem); letter-spacing: -0.045em; }
 .motus-intro { max-width: 54ch; margin: 12px 0 28px; color: #aab3c5; line-height: 1.65; }
+.motus-difficulty-label { display: block; margin-bottom: 7px; color: #dbe3ef; font-size: 0.8rem; font-weight: 800; }
+.motus-difficulty-select {
+  min-width: 220px;
+  margin-bottom: 18px;
+  padding: 9px 32px 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9px;
+  background: #111827;
+  color: #f8fafc;
+}
 
 .motus-mode-grid { display: grid; gap: 12px; }
 
@@ -171,6 +180,7 @@ button.motus-mode-card:hover { transform: translateY(-2px); border-color: rgba(2
 .motus-tile.motus-present { border-color: #c39418; background: #c39418; }
 .motus-tile.motus-absent { border-color: #41495a; background: #41495a; }
 .motus-tile.motus-hint-tile { border-color: #667085; color: #fca5a5; }
+.motus-tile.motus-entry-tile { border-color: #737f94; }
 .motus-round-message { min-height: 24px; margin: 14px 0; color: #cbd5e1; text-align: center; font-size: 0.88rem; }
 .motus-guess-form { display: flex; max-width: 420px; gap: 8px; margin: 0 auto 15px; }
 .motus-guess-form input { flex: 1; padding: 11px 13px; font-size: 1rem; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -203,6 +213,16 @@ footer { padding-top: 18px; color: #707b8e; font-size: 0.72rem; text-align: cent
   .motus-room-controls { gap: 7px; }
   .motus-room-controls input { flex: 1 1 100px; }
   .motus-room-controls button { flex: 1; }
+  .motus-room-browser { margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.09); }
+  .motus-room-browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .motus-room-browser-heading h2 { margin: 0; font-size: 0.95rem; }
+  .motus-room-browser-heading p { margin: 4px 0 0; color: #aab3c5; font-size: 0.76rem; }
+  .motus-room-directory { display: grid; gap: 8px; margin-top: 12px; }
+  .motus-room-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.09); border-radius: 11px; background: rgba(255,255,255,.035); }
+  .motus-room-card-copy { min-width: 0; display: grid; gap: 4px; }
+  .motus-room-card-copy strong { font-size: 0.84rem; }
+  .motus-room-card-copy small, .motus-room-empty { color: #aab3c5; font-size: 0.74rem; }
+  .motus-room-empty { margin: 0; padding: 8px 2px; }
   .motus-board-row { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; }
   .motus-tile { width: min(11vw, 46px); height: min(11vw, 46px); font-size: 1.12rem; }
   .motus-board { gap: 5px; }

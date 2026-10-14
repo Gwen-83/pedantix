@@ -30,6 +30,12 @@
       <p class="cemantix-eyebrow">Un mot secret. Une proximité à explorer.</p>
       <h1 id="cemantix-heading">À vous de trouver le mot.</h1>
       <p class="cemantix-intro">Proposez un mot et recevez un score de proximité : plus il est élevé, plus votre idée se rapproche du mot secret.</p>
+      <label class="cemantix-difficulty-label" for="cemantix-difficulty">Difficulté de la partie</label>
+      <select id="cemantix-difficulty" class="cemantix-difficulty-select">
+        <option value="facile">Facile · indices plus tôt</option>
+        <option value="moyen" selected>Moyen · indices après 2 essais</option>
+        <option value="difficile">Difficile · indice après 5 essais</option>
+      </select>
       <div class="cemantix-mode-grid">
         <button type="button" id="cemantix-solo-button" class="cemantix-mode-card">
           <span class="cemantix-mode-icon" aria-hidden="true">🎯</span>
@@ -50,6 +56,13 @@
           </span>
         </div>
       </div>
+      <section class="cemantix-room-browser" aria-labelledby="cemantix-room-browser-title">
+        <div class="cemantix-room-browser-heading">
+          <div><h2 id="cemantix-room-browser-title">Salons ouverts</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
+          <button type="button" id="cemantix-refresh-rooms" class="cemantix-secondary-button">Actualiser</button>
+        </div>
+        <div id="cemantix-room-directory" class="cemantix-room-directory" aria-live="polite"></div>
+      </section>
       <p id="cemantix-home-error" class="cemantix-error" role="alert" hidden></p>
       <p id="cemantix-previous-game" class="cemantix-previous-game" hidden>
         <button type="button" id="cemantix-resume-solo" class="cemantix-text-button">Reprendre ma partie solo</button>
@@ -91,6 +104,7 @@
           <div class="cemantix-timer-track"><span id="cemantix-timer-bar"></span></div>
         </div>
         <p id="cemantix-round-message" class="cemantix-round-message" aria-live="polite"></p>
+        <div id="cemantix-hints" class="cemantix-hints" hidden></div>
         <form id="cemantix-guess-form" class="cemantix-guess-form">
           <label class="sr-only" for="cemantix-guess">Votre proposition</label>
           <input id="cemantix-guess" name="guess" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Votre mot…" required>

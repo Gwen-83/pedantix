@@ -10,6 +10,7 @@ from app.nlp import FRENCH_DICTIONARY, normalize_text
 
 MOTUS_WORD_LENGTH = 6
 MOTUS_MAX_ATTEMPTS = 6
+MOTUS_DIFFICULTIES = {"facile": 8, "moyen": 6, "difficile": 4}
 
 # Keep answer selection to familiar words; the larger dictionary is used for guesses.
 MOTUS_ANSWERS = frozenset(
@@ -94,7 +95,13 @@ class MotusPlayer:
     score: int = 0
     connected: bool = True
 
-    def submit(self, raw_guess: str, target: str, dictionary: set[str]) -> Dict[str, Any]:
+    def submit(
+        self,
+        raw_guess: str,
+        target: str,
+        dictionary: set[str],
+        max_attempts: int = MOTUS_MAX_ATTEMPTS,
+    ) -> Dict[str, Any]:
         guess = normalize_text(raw_guess.strip())
         if not re.fullmatch(r"[a-z]+", guess):
             raise ValueError("Utilisez uniquement des lettres.")
@@ -112,9 +119,9 @@ class MotusPlayer:
         feedback = evaluate_guess(guess, target)
         self.guesses.append({"word": guess, "feedback": feedback})
         self.solved = guess == target
-        self.finished = self.solved or len(self.guesses) >= MOTUS_MAX_ATTEMPTS
+        self.finished = self.solved or len(self.guesses) >= max_attempts
         if self.solved:
-            self.score = (MOTUS_MAX_ATTEMPTS - len(self.guesses) + 1) * 100
+            self.score = (max_attempts - len(self.guesses) + 1) * 100
 
         return {
             "word": guess,
@@ -142,6 +149,7 @@ class MotusGame:
     game_id: str
     target: str
     player: MotusPlayer
+    difficulty: str = "moyen"
     status: str = "playing"
     created_at: float = field(default_factory=time.time)
 
@@ -150,7 +158,8 @@ class MotusGame:
             "game_id": self.game_id,
             "status": self.status,
             "word_length": len(self.target),
-            "max_attempts": MOTUS_MAX_ATTEMPTS,
+            "max_attempts": MOTUS_DIFFICULTIES[self.difficulty],
+            "difficulty": self.difficulty,
             "first_letter": self.target[0].upper(),
             "target": self.target.upper() if self.player.finished else None,
             "player": self.player.to_dict(),
@@ -162,6 +171,7 @@ class MotusRoom:
     room_id: str
     target: str
     host_player_id: str
+    difficulty: str = "moyen"
     players: Dict[str, MotusPlayer] = field(default_factory=dict)
     status: str = "lobby"
     created_at: float = field(default_factory=time.time)
@@ -179,7 +189,8 @@ class MotusRoom:
             "status": self.status,
             "host_player_id": self.host_player_id,
             "word_length": len(self.target),
-            "max_attempts": MOTUS_MAX_ATTEMPTS,
+            "max_attempts": MOTUS_DIFFICULTIES[self.difficulty],
+            "difficulty": self.difficulty,
             "first_letter": self.target[0].upper(),
             "target": self.target.upper() if self.status == "finished" else None,
             "player": player.to_dict(),
@@ -215,13 +226,23 @@ class MotusManager:
     def _pick_target(self) -> str:
         return random.choice(self.answers)
 
-    def create_solo(self, player_id: str, player_name: str) -> MotusGame:
+    @staticmethod
+    def _validate_difficulty(difficulty: str) -> str:
+        if difficulty not in MOTUS_DIFFICULTIES:
+            raise ValueError("Difficulté invalide. Choisissez facile, moyen ou difficile.")
+        return difficulty
+
+    def create_solo(
+        self, player_id: str, player_name: str, difficulty: str = "moyen"
+    ) -> MotusGame:
         with self._lock:
+            difficulty = self._validate_difficulty(difficulty)
             player = MotusPlayer(player_id=player_id, name=player_name)
             game = MotusGame(
                 game_id=uuid.uuid4().hex,
                 target=self._pick_target(),
                 player=player,
+                difficulty=difficulty,
             )
             self.solo_games[game.game_id] = game
             return game
@@ -236,13 +257,21 @@ class MotusManager:
     def guess_solo(self, game_id: str, player_id: str, guess: str) -> tuple[MotusGame, Dict[str, Any]]:
         with self._lock:
             game = self.get_solo(game_id, player_id)
-            result = game.player.submit(guess, game.target, self.dictionary)
+            result = game.player.submit(
+                guess,
+                game.target,
+                self.dictionary,
+                MOTUS_DIFFICULTIES[game.difficulty],
+            )
             if game.player.finished:
                 game.status = "finished"
             return game, result
 
-    def create_room(self, player_id: str, player_name: str) -> MotusRoom:
+    def create_room(
+        self, player_id: str, player_name: str, difficulty: str = "moyen"
+    ) -> MotusRoom:
         with self._lock:
+            difficulty = self._validate_difficulty(difficulty)
             room_id = uuid.uuid4().hex[:6].upper()
             while room_id in self.rooms:
                 room_id = uuid.uuid4().hex[:6].upper()
@@ -250,6 +279,7 @@ class MotusManager:
                 room_id=room_id,
                 target=self._pick_target(),
                 host_player_id=player_id,
+                difficulty=difficulty,
             )
             room.players[player_id] = MotusPlayer(player_id=player_id, name=player_name)
             self.rooms[room_id] = room
@@ -278,6 +308,21 @@ class MotusManager:
                 raise KeyError("Salon ou joueur introuvable.")
             return room
 
+    def list_rooms(self, player_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [
+                {
+                    "room_id": room.room_id,
+                    "status": room.status,
+                    "player_count": len(room.players),
+                    "host_name": room.players[room.host_player_id].name,
+                    "difficulty": room.difficulty,
+                    "is_member": player_id in room.players if player_id else False,
+                }
+                for room in self.rooms.values()
+                if room.status != "finished"
+            ]
+
     def start_room(self, room_id: str, player_id: str) -> MotusRoom:
         with self._lock:
             room = self.get_room(room_id, player_id)
@@ -295,7 +340,12 @@ class MotusManager:
             room = self.get_room(room_id, player_id)
             if room.status != "playing":
                 raise ValueError("La partie n'est pas en cours.")
-            result = room.players[player_id].submit(guess, room.target, self.dictionary)
+            result = room.players[player_id].submit(
+                guess,
+                room.target,
+                self.dictionary,
+                MOTUS_DIFFICULTIES[room.difficulty],
+            )
             if all(player.finished for player in room.players.values()):
                 room.status = "finished"
             return room, result

@@ -9,7 +9,6 @@
 
 * { box-sizing: border-box; }
 body {
-  min-width: 320px;
   min-height: 100vh;
   margin: 0;
   background: radial-gradient(ellipse at 16% 0%, rgba(56, 189, 248, 0.16), transparent 38rem),
@@ -67,6 +66,16 @@ h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em;
   background: #111827;
   color: #f8fafc;
 }
+.sudoku-room-browser { margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.09); }
+.sudoku-room-browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sudoku-room-browser-heading h2 { margin: 0; font-size: 0.95rem; }
+.sudoku-room-browser-heading p { margin: 4px 0 0; color: #aab3c5; font-size: 0.76rem; }
+.sudoku-room-directory { display: grid; gap: 8px; margin-top: 12px; }
+.sudoku-room-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.09); border-radius: 11px; background: rgba(255,255,255,.035); }
+.sudoku-room-card-copy { min-width: 0; display: grid; gap: 4px; }
+.sudoku-room-card-copy strong { font-size: 0.84rem; }
+.sudoku-room-card-copy small, .sudoku-room-empty { color: #aab3c5; font-size: 0.74rem; }
+.sudoku-room-empty { margin: 0; padding: 8px 2px; }
 .sudoku-mode-grid { display: grid; gap: 12px; margin-top: 18px; }
 .sudoku-mode-card {
   width: 100%;
@@ -138,6 +147,8 @@ button.sudoku-mode-card:hover { transform: translateY(-2px); border-color: rgba(
 .sudoku-countdown { font-size: 1.3rem !important; font-variant-numeric: tabular-nums; }
 .sudoku-countdown.sudoku-low-time { color: #fca5a5; }
 .sudoku-round-message { min-height: 1.3em; margin: 10px 0 13px; color: #cbd5e1; font-size: 0.85rem; text-align: center; }
+.sudoku-lives { margin: 0 0 14px; color: #dbe3ef; font-size: 0.82rem; font-weight: 800; text-align: center; }
+.sudoku-lives.sudoku-eliminated { color: #fca5a5; }
 .sudoku-board-layout { display: grid; grid-template-columns: minmax(280px, 530px) minmax(190px, 230px); justify-content: center; align-items: start; gap: 22px; }
 .sudoku-grid {
   display: grid;
@@ -174,8 +185,10 @@ button.sudoku-mode-card:hover { transform: translateY(-2px); border-color: rgba(
 .sudoku-cell.sudoku-related { background: #25364b; }
 .sudoku-cell.sudoku-same-value { background: #17475d; }
 .sudoku-cell.sudoku-conflict { color: #fda4af; }
+.sudoku-cell.sudoku-incorrect { color: #fecaca; background: #7f1d1d; }
 .sudoku-cell.sudoku-selected { position: relative; z-index: 1; outline: 2px solid #38bdf8; outline-offset: -2px; background: #174e68; }
 .sudoku-cell.sudoku-fixed.sudoku-selected { background: #34506a; }
+.sudoku-cell.sudoku-incorrect.sudoku-selected { background: #991b1b; }
 .sudoku-cell:disabled { opacity: 1; cursor: default; }
 .sudoku-controls { display: grid; gap: 11px; }
 .sudoku-instructions { margin: 0; color: #aab3c5; font-size: 0.77rem; line-height: 1.5; }

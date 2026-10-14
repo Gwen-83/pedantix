@@ -1,6 +1,6 @@
 import unittest
 
-from app.cemantix import CemantixManager
+from app.cemantix import CemantixManager, _visible_hint_count
 
 
 class CemantixTests(unittest.TestCase):
@@ -31,6 +31,26 @@ class CemantixTests(unittest.TestCase):
         self.assertGreaterEqual(len(manager.answers), 1_000)
         self.assertIn("arbre", manager.answers)
         self.assertNotIn("zzqxxyz", manager.answers)
+        self.assertGreaterEqual(
+            sum(bool(manager._hint_words(target)) for target in manager.answers),
+            len(manager.answers) * 0.99,
+        )
+
+    def test_difficulty_controls_hint_reveal_schedule(self):
+        self.assertEqual(_visible_hint_count("facile", 0), 1)
+        self.assertEqual(_visible_hint_count("facile", 2), 1)
+        self.assertEqual(_visible_hint_count("facile", 3), 2)
+        self.assertEqual(_visible_hint_count("moyen", 1), 0)
+        self.assertEqual(_visible_hint_count("moyen", 2), 1)
+        self.assertEqual(_visible_hint_count("difficile", 5), 1)
+
+    def test_room_directory_lists_lobbies_and_active_games_for_members(self):
+        room = self.create_started_room()
+        rooms = self.manager.list_rooms("host")
+        self.assertEqual(len(rooms), 1)
+        self.assertEqual(rooms[0]["room_id"], room.room_id)
+        self.assertTrue(rooms[0]["is_member"])
+        self.assertEqual(rooms[0]["difficulty"], "moyen")
 
     def test_solo_game_can_be_resumed_and_rejects_invalid_or_repeated_words(self):
         game = self.manager.create_solo("player-1", "Joueur")

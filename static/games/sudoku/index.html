@@ -30,7 +30,7 @@
       <p class="sudoku-eyebrow">Le classique des jeux de logique</p>
       <h1 id="sudoku-home-title">Une grille, neuf chiffres.</h1>
       <p class="sudoku-intro">Complétez chaque ligne, colonne et carré 3×3 avec les chiffres de 1 à 9.</p>
-      <label class="sudoku-difficulty-label" for="sudoku-difficulty">Difficulté</label>
+      <label class="sudoku-difficulty-label" for="sudoku-difficulty">Choisissez la difficulté avant de commencer (solo ou salon)</label>
       <select id="sudoku-difficulty" class="sudoku-select">
         <option value="facile">Facile</option>
         <option value="moyen" selected>Moyen</option>
@@ -56,6 +56,13 @@
           </span>
         </div>
       </div>
+      <section class="sudoku-room-browser" aria-labelledby="sudoku-room-browser-title">
+        <div class="sudoku-room-browser-heading">
+          <div><h2 id="sudoku-room-browser-title">Salons ouverts</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
+          <button type="button" id="sudoku-refresh-rooms" class="sudoku-secondary-button">Actualiser</button>
+        </div>
+        <div id="sudoku-room-directory" class="sudoku-room-directory" aria-live="polite"></div>
+      </section>
       <p id="sudoku-home-error" class="sudoku-error" role="alert" hidden></p>
       <p id="sudoku-previous-game" class="sudoku-previous-game" hidden>
         <button type="button" id="sudoku-resume-solo" class="sudoku-text-button">Reprendre ma partie solo</button>
@@ -91,6 +98,7 @@
           <strong id="sudoku-countdown" class="sudoku-countdown" aria-live="off"></strong>
         </div>
         <p id="sudoku-round-message" class="sudoku-round-message" aria-live="polite"></p>
+        <p id="sudoku-lives" class="sudoku-lives" aria-live="polite"></p>
         <div class="sudoku-board-layout">
           <div id="sudoku-grid" class="sudoku-grid" role="grid" aria-label="Grille de Sudoku"></div>
           <aside class="sudoku-controls">

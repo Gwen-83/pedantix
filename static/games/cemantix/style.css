@@ -10,7 +10,6 @@
 * { box-sizing: border-box; }
 
 body {
-  min-width: 320px;
   min-height: 100vh;
   margin: 0;
   background:
@@ -71,6 +70,16 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.55rem); letter-spacing: -0.045em; }
 .cemantix-intro { max-width: 58ch; margin: 12px 0 28px; color: #aab3c5; line-height: 1.65; }
+.cemantix-difficulty-label { display: block; margin-bottom: 7px; color: #dbe3ef; font-size: 0.8rem; font-weight: 800; }
+.cemantix-difficulty-select {
+  min-width: 250px;
+  margin-bottom: 18px;
+  padding: 9px 32px 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9px;
+  background: #111827;
+  color: #f8fafc;
+}
 .cemantix-mode-grid { display: grid; gap: 12px; }
 
 .cemantix-mode-card {
@@ -125,6 +134,16 @@ button.cemantix-mode-card:hover { transform: translateY(-2px); border-color: rgb
 .cemantix-text-button { padding: 4px 0; border: 0; background: none; color: #a5b4fc; text-decoration: underline; }
 .cemantix-error { margin: 14px 0 0; color: #fca5a5; font-size: 0.86rem; }
 .cemantix-previous-game { margin: 18px 0 0; }
+.cemantix-room-browser { margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.09); }
+.cemantix-room-browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cemantix-room-browser-heading h2 { margin: 0; font-size: 0.95rem; }
+.cemantix-room-browser-heading p { margin: 4px 0 0; color: #aab3c5; font-size: 0.76rem; }
+.cemantix-room-directory { display: grid; gap: 8px; margin-top: 12px; }
+.cemantix-room-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.09); border-radius: 11px; background: rgba(255,255,255,.035); }
+.cemantix-room-card-copy { min-width: 0; display: grid; gap: 4px; }
+.cemantix-room-card-copy strong { font-size: 0.84rem; }
+.cemantix-room-card-copy small, .cemantix-room-empty { color: #aab3c5; font-size: 0.74rem; }
+.cemantix-room-empty { margin: 0; padding: 8px 2px; }
 
 .cemantix-score-legend { display: flex; flex-wrap: wrap; gap: 12px 18px; margin-top: 27px; color: #aab3c5; font-size: 0.72rem; }
 .cemantix-score-legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -157,6 +176,10 @@ button.cemantix-mode-card:hover { transform: translateY(-2px); border-color: rgb
 .cemantix-timer-track span { display: block; width: 100%; height: 100%; transform-origin: left; background: #818cf8; transition: transform 250ms linear; }
 
 .cemantix-round-message { min-height: 24px; margin: 16px 0 12px; color: #cbd5e1; text-align: center; font-size: 0.88rem; }
+.cemantix-hints { margin: 0 auto 14px; padding: 12px 14px; border: 1px solid rgba(129,140,248,.22); border-radius: 11px; background: rgba(129,140,248,.08); color: #dbe3ef; font-size: 0.82rem; }
+.cemantix-hints strong { display: block; margin-bottom: 5px; color: #c7d2fe; }
+.cemantix-hints ul { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.cemantix-hints li { padding: 4px 9px; border-radius: 999px; background: rgba(129,140,248,.16); color: #e0e7ff; }
 .cemantix-guess-form { display: flex; max-width: 480px; gap: 8px; margin: 0 auto 20px; }
 .cemantix-guess-form input { flex: 1; padding: 11px 13px; font-size: 1rem; }
 .cemantix-history { display: grid; gap: 10px; }

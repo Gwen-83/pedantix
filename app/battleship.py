@@ -19,8 +19,20 @@ SHIP_NAMES = {
     "cruiser": "Croiseur",
     "submarine": "Sous-marin",
     "destroyer": "Torpilleur",
+    "frigate": "Frégate",
 }
 ROWS = "ABCDEFGHIJ"
+BATTLESHIP_DIFFICULTIES = {
+    "facile": {
+        "carrier": 4,
+        "battleship": 3,
+        "cruiser": 2,
+        "submarine": 2,
+        "destroyer": 1,
+    },
+    "moyen": SHIP_LENGTHS,
+    "difficile": {**SHIP_LENGTHS, "frigate": 2},
+}
 
 
 def parse_coordinate(value: str) -> str:
@@ -51,10 +63,12 @@ def _adjacent_coordinates(coordinate: str) -> Set[str]:
     return adjacent
 
 
-def _generate_fleet() -> Dict[str, List[str]]:
+def _generate_fleet(
+    ship_lengths: Dict[str, int] = SHIP_LENGTHS,
+) -> Dict[str, List[str]]:
     occupied: Set[str] = set()
     fleet: Dict[str, List[str]] = {}
-    for ship_id, length in SHIP_LENGTHS.items():
+    for ship_id, length in ship_lengths.items():
         while True:
             vertical = bool(random.getrandbits(1))
             row = random.randrange(BOARD_SIZE)
@@ -104,7 +118,7 @@ class BattleshipPlayer:
 
     @property
     def eliminated(self) -> bool:
-        return len(self.sunk_ships) == len(SHIP_LENGTHS)
+        return len(self.sunk_ships) == len(self.fleet)
 
     def public_state(self) -> Dict[str, Any]:
         return {
@@ -112,7 +126,7 @@ class BattleshipPlayer:
             "name": self.name,
             "ready": self.ready,
             "eliminated": self.eliminated,
-            "ships_remaining": len(SHIP_LENGTHS) - len(self.sunk_ships),
+            "ships_remaining": len(self.fleet) - len(self.sunk_ships),
             "ships_sunk": len(self.sunk_ships),
         }
 
@@ -121,6 +135,8 @@ class BattleshipPlayer:
 class BattleshipRoom:
     room_id: str
     host_player_id: str
+    difficulty: str = "moyen"
+    ship_lengths: Dict[str, int] = field(default_factory=lambda: dict(SHIP_LENGTHS))
     players: Dict[str, BattleshipPlayer] = field(default_factory=dict)
     status: str = "lobby"
     current_player_id: Optional[str] = None
@@ -153,7 +169,7 @@ class BattleshipRoom:
             {
                 "ship_id": ship_id,
                 "name": SHIP_NAMES[ship_id],
-                "length": SHIP_LENGTHS[ship_id],
+                "length": self.ship_lengths[ship_id],
                 "cells": cells,
                 "sunk": ship_id in player.sunk_ships,
             }
@@ -162,6 +178,8 @@ class BattleshipRoom:
         return {
             "room_id": self.room_id,
             "status": self.status,
+            "difficulty": self.difficulty,
+            "ship_lengths": self.ship_lengths,
             "host_player_id": self.host_player_id,
             "player_id": player_id,
             "players": [item.public_state() for item in self.players.values()],
@@ -209,12 +227,15 @@ class BattleshipManager:
         self._lock = threading.RLock()
 
     @staticmethod
-    def validate_fleet(fleet: Dict[str, Iterable[str]]) -> Dict[str, List[str]]:
-        if set(fleet) != set(SHIP_LENGTHS):
-            raise ValueError("La flotte doit contenir les cinq navires classiques.")
+    def validate_fleet(
+        fleet: Dict[str, Iterable[str]],
+        ship_lengths: Dict[str, int] = SHIP_LENGTHS,
+    ) -> Dict[str, List[str]]:
+        if set(fleet) != set(ship_lengths):
+            raise ValueError("La flotte doit contenir exactement les navires de cette difficulté.")
         normalized: Dict[str, List[str]] = {}
         occupied: Dict[str, str] = {}
-        for ship_id, length in SHIP_LENGTHS.items():
+        for ship_id, length in ship_lengths.items():
             cells = [parse_coordinate(value) for value in fleet[ship_id]]
             if len(cells) != length or len(set(cells)) != length:
                 raise ValueError(f"{SHIP_NAMES[ship_id]} : placez exactement {length} cases.")
@@ -236,13 +257,30 @@ class BattleshipManager:
                 raise ValueError("Les navires ne peuvent pas se toucher, même en diagonale.")
         return normalized
 
-    def create_room(self, player_id: str, player_name: str) -> BattleshipRoom:
+    @staticmethod
+    def _validate_difficulty(difficulty: str) -> str:
+        if difficulty not in BATTLESHIP_DIFFICULTIES:
+            raise ValueError("Difficulté invalide. Choisissez facile, moyen ou difficile.")
+        return difficulty
+
+    def create_room(
+        self, player_id: str, player_name: str, difficulty: str = "moyen"
+    ) -> BattleshipRoom:
         with self._lock:
+            difficulty = self._validate_difficulty(difficulty)
+            ship_lengths = dict(BATTLESHIP_DIFFICULTIES[difficulty])
             room_id = uuid.uuid4().hex[:6].upper()
             while room_id in self.rooms:
                 room_id = uuid.uuid4().hex[:6].upper()
-            room = BattleshipRoom(room_id=room_id, host_player_id=player_id)
-            room.players[player_id] = BattleshipPlayer(player_id, player_name)
+            room = BattleshipRoom(
+                room_id=room_id,
+                host_player_id=player_id,
+                difficulty=difficulty,
+                ship_lengths=ship_lengths,
+            )
+            room.players[player_id] = BattleshipPlayer(
+                player_id, player_name, fleet=_generate_fleet(ship_lengths)
+            )
             self.rooms[room_id] = room
             return room
 
@@ -256,7 +294,11 @@ class BattleshipManager:
                 return room
             if room.status != "lobby":
                 raise ValueError("La partie a commencé. Seuls les joueurs déjà inscrits peuvent revenir.")
-            room.players[player_id] = BattleshipPlayer(player_id, player_name)
+            room.players[player_id] = BattleshipPlayer(
+                player_id,
+                player_name,
+                fleet=_generate_fleet(room.ship_lengths),
+            )
             return room
 
     def get_room(self, room_id: str, player_id: str) -> BattleshipRoom:
@@ -266,6 +308,21 @@ class BattleshipManager:
                 raise KeyError("Salon ou joueur introuvable.")
             return room
 
+    def list_rooms(self, player_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [
+                {
+                    "room_id": room.room_id,
+                    "status": room.status,
+                    "player_count": len(room.players),
+                    "host_name": room.players[room.host_player_id].name,
+                    "difficulty": room.difficulty,
+                    "is_member": player_id in room.players if player_id else False,
+                }
+                for room in self.rooms.values()
+                if room.status != "finished"
+            ]
+
     def set_fleet(
         self, room_id: str, player_id: str, fleet: Dict[str, Iterable[str]]
     ) -> BattleshipRoom:
@@ -273,7 +330,9 @@ class BattleshipManager:
             room = self.get_room(room_id, player_id)
             if room.status != "lobby":
                 raise ValueError("La flotte ne peut plus être modifiée après le départ.")
-            room.players[player_id].fleet = self.validate_fleet(fleet)
+            room.players[player_id].fleet = self.validate_fleet(
+                fleet, room.ship_lengths
+            )
             room.players[player_id].ready = False
             return room
 
@@ -282,7 +341,7 @@ class BattleshipManager:
             room = self.get_room(room_id, player_id)
             if room.status != "lobby":
                 raise ValueError("La flotte ne peut plus être modifiée après le départ.")
-            room.players[player_id].fleet = _generate_fleet()
+            room.players[player_id].fleet = _generate_fleet(room.ship_lengths)
             room.players[player_id].ready = False
             return room
 
@@ -347,6 +406,9 @@ class BattleshipManager:
                 room.status = "finished"
                 room.winner_player_id = alive[0] if alive else None
                 room.current_player_id = None
+            elif hit:
+                room.current_player_id = player_id
+                room.turn_number += 1
             else:
                 room.current_player_id = room.next_alive(player_id)
                 room.turn_number += 1

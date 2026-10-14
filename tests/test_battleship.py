@@ -39,6 +39,34 @@ class BattleshipTests(unittest.TestCase):
         self.assertNotIn("own_fleet", second_state["players"][0])
         self.assertEqual(sum(ship["length"] for ship in first_state["own_fleet"]), 17)
 
+    def test_difficulty_presets_change_the_fleet_for_every_player(self):
+        easy = self.manager.create_room("easy", "Facile", "facile")
+        self.assertEqual(easy.difficulty, "facile")
+        self.assertEqual(easy.to_dict("easy")["ship_lengths"], {
+            "carrier": 4,
+            "battleship": 3,
+            "cruiser": 2,
+            "submarine": 2,
+            "destroyer": 1,
+        })
+        hard = self.manager.create_room("hard", "Difficile", "difficile")
+        self.assertEqual(len(hard.to_dict("hard")["own_fleet"]), 6)
+        self.assertEqual(hard.to_dict("hard")["ship_lengths"]["frigate"], 2)
+        self.assertEqual(hard.to_dict("hard")["players"][0]["ships_remaining"], 6)
+        self.manager.join_room(hard.room_id, "guest", "Invité")
+        self.assertEqual(len(hard.players["guest"].fleet), 6)
+
+    def test_room_directory_lists_open_rooms_and_marks_membership(self):
+        room = self.manager.create_room("host", "Hôte", "facile")
+
+        public_room = self.manager.list_rooms("visitor")[0]
+        member_room = self.manager.list_rooms("host")[0]
+
+        self.assertEqual(public_room["room_id"], room.room_id)
+        self.assertFalse(public_room["is_member"])
+        self.assertTrue(member_room["is_member"])
+        self.assertEqual(member_room["difficulty"], "facile")
+
     def test_manual_fleet_validation_rejects_overlap_touching_and_invalid_ships(self):
         room = self.create_room()
         invalid = simple_fleet()
@@ -78,17 +106,40 @@ class BattleshipTests(unittest.TestCase):
             self.manager.start_room(room.room_id, "p2")
         self.manager.start_room(room.room_id, "p1")
 
-    def test_two_player_turns_alternate_and_one_shot_is_allowed(self):
+    def test_hits_grant_extra_shots_and_miss_passes_the_turn(self):
         room = self.create_room()
         self.ready_room(room)
         room.players["p2"].fleet = simple_fleet()
 
         room, result = self.manager.fire(room.room_id, "p1", "A1")
         self.assertTrue(result["hit"])
+        self.assertEqual(room.current_player_id, "p1")
+        room, result = self.manager.fire(room.room_id, "p1", "A2")
+        self.assertTrue(result["hit"])
+        self.assertEqual(room.current_player_id, "p1")
+        room, result = self.manager.fire(room.room_id, "p1", "B10")
+        self.assertFalse(result["hit"])
         self.assertEqual(room.current_player_id, "p2")
         self.assertEqual(room.target_for("p2"), "p1")
         with self.assertRaisesRegex(ValueError, "pas votre tour"):
-            self.manager.fire(room.room_id, "p1", "A2")
+            self.manager.fire(room.room_id, "p1", "B9")
+
+    def test_sinking_a_ship_is_reported_and_keeps_the_shooters_turn(self):
+        room = self.create_room()
+        self.ready_room(room)
+        room.players["p2"].fleet = simple_fleet()
+
+        for coordinate in ("A1", "A2", "A3", "A4"):
+            room, result = self.manager.fire(room.room_id, "p1", coordinate)
+            self.assertTrue(result["hit"])
+            self.assertIsNone(result["sunk_ship"])
+
+        room, result = self.manager.fire(room.room_id, "p1", "A5")
+
+        self.assertEqual(result["sunk_ship"], "carrier")
+        self.assertTrue(result["hit"])
+        self.assertEqual(room.current_player_id, "p1")
+        self.assertEqual(room.to_dict("p1")["players"][1]["ships_remaining"], 4)
 
     def test_n_player_turn_order_skips_eliminated_players(self):
         room = self.create_room(4)

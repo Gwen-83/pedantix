@@ -29,11 +29,17 @@
     <section id="motus-home" class="motus-panel" aria-labelledby="motus-heading">
       <p class="motus-eyebrow">Un mot mystère vous attend</p>
       <h1 id="motus-heading">À vous de jouer !</h1>
-      <p class="motus-intro">Trouvez le mot de 6 lettres en six essais. La première lettre est révélée ; les couleurs vous guident.</p>
+      <p class="motus-intro">Trouvez le mot de 6 lettres. La première lettre est révélée ; choisissez le nombre d’essais qui vous convient.</p>
+      <label class="motus-difficulty-label" for="motus-difficulty">Difficulté de la partie</label>
+      <select id="motus-difficulty" class="motus-difficulty-select">
+        <option value="facile">Facile · 8 essais</option>
+        <option value="moyen" selected>Moyen · 6 essais</option>
+        <option value="difficile">Difficile · 4 essais</option>
+      </select>
       <div class="motus-mode-grid">
         <button type="button" id="motus-solo-button" class="motus-mode-card">
           <span class="motus-mode-icon" aria-hidden="true">🎯</span>
-          <span><strong>Jouer en solo</strong><small>À votre rythme, avec six essais.</small></span>
+          <span><strong>Jouer en solo</strong><small>À votre rythme, avec la difficulté choisie.</small></span>
           <span class="motus-arrow" aria-hidden="true">→</span>
         </button>
         <div class="motus-mode-card motus-multiplayer-card">
@@ -50,6 +56,13 @@
           </span>
         </div>
       </div>
+      <section class="motus-room-browser" aria-labelledby="motus-room-browser-title">
+        <div class="motus-room-browser-heading">
+          <div><h2 id="motus-room-browser-title">Salons ouverts</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
+          <button type="button" id="motus-refresh-rooms" class="motus-secondary-button">Actualiser</button>
+        </div>
+        <div id="motus-room-directory" class="motus-room-directory" aria-live="polite"></div>
+      </section>
       <p id="motus-home-error" class="motus-error" role="alert" hidden></p>
       <p id="motus-previous-game" class="motus-previous-game" hidden>
         <button type="button" id="motus-resume-solo" class="motus-text-button">Reprendre ma partie solo</button>

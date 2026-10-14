@@ -35,6 +35,18 @@ class MotusTests(unittest.TestCase):
         self.assertEqual(game.status, "finished")
         self.assertEqual(game.to_dict()["target"], "TALENT")
 
+    def test_difficulty_controls_attempts_and_room_directory(self):
+        game = self.manager.create_solo("player-1", "Joueur", "facile")
+        self.assertEqual(game.to_dict()["max_attempts"], 8)
+
+        room = self.manager.create_room("host", "Hôte", "difficile")
+        public_room = self.manager.list_rooms("visitor")[0]
+        member_room = self.manager.list_rooms("host")[0]
+        self.assertEqual(public_room["room_id"], room.room_id)
+        self.assertFalse(public_room["is_member"])
+        self.assertTrue(member_room["is_member"])
+        self.assertEqual(member_room["difficulty"], "difficile")
+
     def test_solo_game_can_be_resumed_by_the_same_player_only(self):
         game = self.manager.create_solo("player-1", "Joueur")
         self.manager.guess_solo(game.game_id, "player-1", "tartes")

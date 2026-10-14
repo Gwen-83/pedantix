@@ -14,6 +14,7 @@ SUDOKU_DIFFICULTIES = {
 SUDOKU_RANKING_POINTS = (3, 2, 1)
 SUDOKU_AFTER_FIRST_SECONDS = 180
 SUDOKU_GENERATION_ATTEMPTS = 64
+SUDOKU_MAX_LIVES = 3
 
 
 def _pattern(row: int, column: int) -> int:
@@ -138,6 +139,24 @@ def _is_solved(board: List[List[int]], solution: List[List[int]]) -> bool:
     return board == solution
 
 
+def _set_player_cell(
+    player: "SudokuPlayer",
+    solution: List[List[int]],
+    row: int,
+    column: int,
+    value: int,
+) -> None:
+    if player.board[row][column] == value:
+        return
+    player.board[row][column] = value
+    cell = (row, column)
+    if value and value != solution[row][column]:
+        player.lives -= 1
+        player.incorrect_cells.add(cell)
+    else:
+        player.incorrect_cells.discard(cell)
+
+
 @dataclass
 class SudokuPlayer:
     player_id: str
@@ -146,6 +165,12 @@ class SudokuPlayer:
     solved_at: Optional[float] = None
     rank: Optional[int] = None
     points: int = 0
+    lives: int = SUDOKU_MAX_LIVES
+    incorrect_cells: set[tuple[int, int]] = field(default_factory=set)
+
+    @property
+    def eliminated(self) -> bool:
+        return self.lives == 0
 
 
 @dataclass
@@ -156,6 +181,7 @@ class SudokuGame:
     solution: List[List[int]]
     player: SudokuPlayer
     status: str = "playing"
+    finish_reason: Optional[str] = None
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> Dict:
@@ -165,7 +191,11 @@ class SudokuGame:
             "difficulty": self.difficulty,
             "puzzle": self.puzzle,
             "board": self.player.board,
-            "solved": self.status == "finished",
+            "solved": self.finish_reason == "solved",
+            "finish_reason": self.finish_reason,
+            "lives": self.player.lives,
+            "eliminated": self.player.eliminated,
+            "incorrect_cells": [list(cell) for cell in sorted(self.player.incorrect_cells)],
             "elapsed_seconds": max(0, int(time.time() - self.created_at)),
             "solution": self.solution if self.status == "finished" else None,
         }
@@ -208,6 +238,9 @@ class SudokuRoom:
                 "player_id": player.player_id,
                 "name": player.name,
                 "solved": player.rank is not None,
+                "lives": player.lives,
+                "eliminated": player.eliminated,
+                "incorrect_cells": [list(cell) for cell in sorted(player.incorrect_cells)],
                 "rank": player.rank,
                 "points": player.points,
                 "filled_cells": sum(value != 0 for row in player.board for value in row)
@@ -218,6 +251,8 @@ class SudokuRoom:
                     "player_id": item.player_id,
                     "name": item.name,
                     "solved": item.rank is not None,
+                    "lives": item.lives,
+                    "eliminated": item.eliminated,
                     "rank": item.rank,
                     "points": item.points,
                 }
@@ -283,12 +318,19 @@ class SudokuManager:
             game = self.get_solo(game_id, player_id)
             if game.status != "playing":
                 raise ValueError("Cette partie est déjà terminée.")
+            if game.player.eliminated:
+                raise ValueError("Vous êtes éliminé de cette partie.")
             _valid_cell(row, column, value)
             if game.puzzle[row][column]:
                 raise ValueError("Cette case fait partie de la grille de départ.")
-            game.player.board[row][column] = value
+            _set_player_cell(game.player, game.solution, row, column, value)
+            if game.player.eliminated:
+                game.status = "finished"
+                game.finish_reason = "eliminated"
+                return game
             if _is_solved(game.player.board, game.solution):
                 game.status = "finished"
+                game.finish_reason = "solved"
             return game
 
     def create_room(self, player_id: str, player_name: str, difficulty: str) -> SudokuRoom:
@@ -324,6 +366,24 @@ class SudokuManager:
             room.advance(self._clock())
             return room
 
+    def list_rooms(self, player_id: Optional[str] = None) -> List[Dict]:
+        with self._lock:
+            now = self._clock()
+            rooms = []
+            for room in self.rooms.values():
+                room.advance(now)
+                if room.status == "finished":
+                    continue
+                rooms.append({
+                    "room_id": room.room_id,
+                    "status": room.status,
+                    "player_count": len(room.players),
+                    "host_name": room.players[room.host_player_id].name,
+                    "difficulty": room.difficulty,
+                    "is_member": player_id in room.players if player_id else False,
+                })
+            return rooms
+
     def start_room(self, room_id: str, player_id: str) -> SudokuRoom:
         with self._lock:
             room = self.get_room(room_id, player_id)
@@ -349,7 +409,9 @@ class SudokuManager:
             player = room.players[player_id]
             if player.rank is not None:
                 raise ValueError("Vous avez déjà terminé cette grille.")
-            player.board[row][column] = value
+            if player.eliminated:
+                raise ValueError("Vous êtes éliminé de cette manche.")
+            _set_player_cell(player, room.solution, row, column, value)
             awarded = 0
             if _is_solved(player.board, room.solution):
                 solved_count = sum(item.rank is not None for item in room.players.values())
@@ -363,9 +425,18 @@ class SudokuManager:
                 if player.rank >= 3:
                     room.status = "finished"
                     room.finish_reason = "podium"
-                elif all(item.rank is not None for item in room.players.values()):
+                elif all(
+                    item.rank is not None or item.eliminated
+                    for item in room.players.values()
+                ):
                     room.status = "finished"
-                    room.finish_reason = "all_solved"
+                    room.finish_reason = "all_finished"
+            elif player.eliminated and all(
+                item.rank is not None or item.eliminated
+                for item in room.players.values()
+            ):
+                room.status = "finished"
+                room.finish_reason = "all_finished"
             return room, awarded
 
 
