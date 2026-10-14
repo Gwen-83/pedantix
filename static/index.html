@@ -642,27 +642,61 @@
               <span class="stats-user-score-tag">Score persistant : <b id="stats-user-score">0 pt</b></span>
             </div>
           </div>
-          <button type="button" id="btn-auth-logout" class="btn-logout-small" title="Changer de compte utilisateur">
-            🚪 Changer de compte
-          </button>
-          <button type="button" id="btn-admin-users" class="btn-logout-small" style="display: none;">
-            🔐 Gérer les mots de passe
-          </button>
+          <div class="stats-user-actions">
+            <button type="button" id="btn-admin-users" class="btn-logout-small" style="display: none;" aria-expanded="false" aria-controls="admin-users-panel">
+              🔐 Gérer les mots de passe
+            </button>
+            <button type="button" id="btn-auth-logout" class="btn-logout-small" title="Changer de compte utilisateur">
+              🚪 Changer de compte
+            </button>
+          </div>
         </div>
 
-        <section id="admin-users-panel" class="admin-users-panel" style="display: none;">
-          <h4>Réinitialiser un mot de passe</h4>
-          <label for="admin-current-password">Mot de passe actuel du compte Gwen</label>
-          <input type="password" id="admin-current-password" class="auth-text-input" autocomplete="current-password">
-          <button type="button" id="btn-admin-load-users" class="btn-auth-primary">Charger les comptes</button>
-          <label for="admin-target-user">Compte utilisateur</label>
-          <select id="admin-target-user" class="auth-text-input" disabled>
-            <option value="">Chargez d’abord les comptes</option>
-          </select>
-          <label for="admin-new-password">Nouveau mot de passe</label>
-          <input type="password" id="admin-new-password" class="auth-text-input" minlength="3" autocomplete="new-password">
-          <button type="button" id="btn-admin-reset-password" class="btn-auth-primary">Réinitialiser le mot de passe</button>
-          <p id="admin-users-message" role="status" aria-live="polite"></p>
+        <section id="admin-users-panel" class="admin-users-panel" aria-labelledby="admin-users-title" hidden>
+          <header class="admin-panel-header">
+            <span class="admin-panel-icon" aria-hidden="true">🔐</span>
+            <div>
+              <h4 id="admin-users-title">Réinitialiser un mot de passe</h4>
+              <p>Confirmez votre identité, puis choisissez le compte à mettre à jour.</p>
+            </div>
+          </header>
+
+          <div class="admin-users-step">
+            <span class="admin-step-number" aria-hidden="true">1</span>
+            <div class="admin-step-content">
+              <h5>Vérification administrateur</h5>
+              <p>Entrez le mot de passe actuel du compte Gwen pour afficher les comptes.</p>
+              <label for="admin-current-password">Mot de passe de Gwen</label>
+              <div class="admin-step-controls">
+                <input type="password" id="admin-current-password" class="auth-text-input" autocomplete="current-password" placeholder="Mot de passe actuel">
+                <button type="button" id="btn-admin-load-users" class="btn-auth-primary">Vérifier et continuer</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="admin-reset-step" class="admin-users-step is-disabled" aria-disabled="true">
+            <span class="admin-step-number" aria-hidden="true">2</span>
+            <div class="admin-step-content">
+              <h5>Choisir le compte et le nouveau mot de passe</h5>
+              <div class="admin-reset-fields">
+                <div class="admin-field">
+                  <label for="admin-target-user">Compte à réinitialiser</label>
+                  <select id="admin-target-user" class="auth-text-input" disabled>
+                    <option value="">Vérifiez d’abord votre compte</option>
+                  </select>
+                </div>
+                <div class="admin-field">
+                  <label for="admin-new-password">Nouveau mot de passe</label>
+                  <input type="password" id="admin-new-password" class="auth-text-input" minlength="3" autocomplete="new-password" placeholder="3 caractères minimum" disabled>
+                </div>
+              </div>
+              <button type="button" id="btn-admin-reset-password" class="btn-auth-primary" disabled>
+                Réinitialiser le mot de passe
+              </button>
+            </div>
+          </div>
+
+          <p id="admin-users-message" class="admin-users-message" role="status" aria-live="polite"></p>
         </section>
 
         <div class="stats-row">
@@ -994,25 +1028,28 @@
         </form>
       </div>
 
-      <!-- Ready & Start Buttons -->
+      <!-- Ready, spectator, and leave actions -->
       <div class="lobby-control-buttons">
-        <button type="button" id="btn-lobby-toggle-ready" class="btn-lobby-ready">
-          <span id="lobby-ready-icon">⏳</span>
-          <span id="lobby-ready-label">Je suis prêt !</span>
-        </button>
+        <div class="lobby-primary-actions">
+          <button type="button" id="btn-lobby-toggle-ready" class="btn-lobby-ready">
+            <span id="lobby-ready-icon">⏳</span>
+            <span id="lobby-ready-label">Je suis prêt !</span>
+          </button>
 
-        <button type="button" id="btn-lobby-spectator" class="btn-lobby-spectator" title="Passer en spectateur pour faire une pause">
-          <span id="lobby-spec-icon">👁️</span>
-          <span id="lobby-spec-label">Mode Spectateur (Pause)</span>
-        </button>
+          <button type="button" id="btn-lobby-start-game" class="btn-lobby-start" style="display: none;">
+            <span>🚀</span> Démarrer la partie
+          </button>
+        </div>
+        <div class="lobby-secondary-actions" aria-label="Autres actions du salon">
+          <button type="button" id="btn-lobby-spectator" class="btn-lobby-spectator" title="Passer en spectateur pour faire une pause">
+            <span id="lobby-spec-icon">👁️</span>
+            <span id="lobby-spec-label">Mode Spectateur (Pause)</span>
+          </button>
 
-        <button type="button" id="btn-lobby-leave-room" class="btn-lobby-leave" title="Quitter ce salon et revenir en mode solo">
-          <span>🚪</span> Quitter le salon
-        </button>
-
-        <button type="button" id="btn-lobby-start-game" class="btn-lobby-start" style="display: none;">
-          <span>🚀</span> Démarrer la partie
-        </button>
+          <button type="button" id="btn-lobby-leave-room" class="btn-lobby-leave" title="Quitter ce salon et revenir en mode solo">
+            <span>🚪</span> Quitter le salon
+          </button>
+        </div>
       </div>
 
       <!-- Real-time Status Hint -->
@@ -1148,33 +1185,52 @@
         </div>
       </div>
       <div class="modal-body">
-        <!-- Quick Actions Bar -->
-        <div class="rooms-action-bar">
-          <button type="button" id="btn-modal-create-room" class="btn-create-highlight">
-            <span>➕</span> Créer un nouveau salon
-          </button>
-          
-          <div class="join-by-code-box">
-            <input type="text" id="input-join-code" placeholder="Nom ou code du salon..." maxlength="30" autocomplete="off" />
-            <button type="button" id="btn-modal-join-code" class="btn-join-code">Rejoindre</button>
-          </div>
+        <div class="rooms-action-grid">
+          <section class="rooms-action-card rooms-create-card" aria-labelledby="rooms-create-title">
+            <span class="rooms-action-icon" aria-hidden="true">✨</span>
+            <div class="rooms-action-copy">
+              <h4 id="rooms-create-title">Créer une partie</h4>
+              <p>Ouvrez un nouveau salon et invitez vos amis.</p>
+            </div>
+            <button type="button" id="btn-modal-create-room" class="btn-create-highlight">
+              Créer un salon
+            </button>
+          </section>
 
-          <button type="button" id="btn-refresh-rooms" class="btn-refresh-rooms" title="Actualiser la liste des salons">
-            <span>🔄</span> Actualiser
-          </button>
+          <section class="rooms-action-card rooms-join-card" aria-labelledby="rooms-join-title">
+            <span class="rooms-action-icon" aria-hidden="true">🔑</span>
+            <div class="rooms-action-copy">
+              <h4 id="rooms-join-title">Rejoindre avec un code</h4>
+              <p>Entrez le nom ou le code partagé par l’hôte.</p>
+            </div>
+            <div class="join-by-code-box">
+              <input type="text" id="input-join-code" aria-label="Nom ou code du salon" placeholder="Ex. salon-123" maxlength="30" autocomplete="off" />
+              <button type="button" id="btn-modal-join-code" class="btn-join-code">Rejoindre</button>
+            </div>
+          </section>
         </div>
 
-        <!-- Current Room Info Bar -->
         <div class="current-room-bar">
-          <span>Vous êtes dans le salon : <strong id="current-room-name-text">Aucun salon sélectionné</strong></span>
-          <button type="button" id="btn-copy-current-link" class="btn-copy-small">📋 Copier le lien d'invitation</button>
+          <div class="current-room-info">
+            <span class="current-room-label">Votre salon actuel</span>
+            <strong id="current-room-name-text">Aucun salon sélectionné</strong>
+          </div>
+          <button type="button" id="btn-copy-current-link" class="btn-copy-small">📋 Copier le lien d’invitation</button>
         </div>
 
         <!-- Active Rooms List -->
         <div class="rooms-list-container">
           <div class="rooms-list-header">
-            <h4>Salons actifs sur le serveur :</h4>
-            <span id="rooms-count-badge" class="rooms-count-badge">0 salon disponible</span>
+            <div>
+              <h4>Parties publiques</h4>
+              <p>Parcourez les salons ouverts et rejoignez celui qui vous convient.</p>
+            </div>
+            <div class="rooms-list-tools">
+              <span id="rooms-count-badge" class="rooms-count-badge">0 salon disponible</span>
+              <button type="button" id="btn-refresh-rooms" class="btn-refresh-rooms" title="Actualiser la liste des salons">
+                <span>🔄</span> Actualiser
+              </button>
+            </div>
           </div>
           <div id="rooms-list" class="rooms-list-grid">
             <div class="rooms-loading-placeholder">Chargement des salons en ligne...</div>

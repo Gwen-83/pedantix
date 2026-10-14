@@ -821,6 +821,12 @@ async def unmask_room(req: RoomUnmaskRequest):
     if "error" in res:
         status_code = 403 if "manche terminée" in res["error"] else 404
         raise HTTPException(status_code=status_code, detail=res["error"])
+    await room.broadcast({
+        "type": "article_unmasked",
+        "player_id": req.player_id,
+        "player_name": room.players[req.player_id].name,
+        "tokens": res.get("tokens", {}),
+    })
     return res
 
 

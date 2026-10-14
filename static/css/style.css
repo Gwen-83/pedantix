@@ -5811,11 +5811,20 @@ body.solo-mode #host-pill {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
   padding: 10px 16px;
   margin-bottom: 1.25rem;
+}
+
+.stats-user-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .stats-user-info {
@@ -5871,44 +5880,198 @@ body.solo-mode #host-pill {
 }
 
 .admin-users-panel {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-  align-items: center;
-  gap: 10px 14px;
+  display: grid;
+  gap: 16px;
   margin: 0 0 1.25rem;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 20px;
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.94));
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+.admin-users-panel[hidden] {
+  display: none;
+}
+
+.admin-panel-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.admin-panel-icon {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgba(56, 189, 248, 0.28);
   border-radius: 12px;
+  background: rgba(56, 189, 248, 0.12);
+  font-size: 1.15rem;
 }
 
-.admin-users-panel h4,
-.admin-users-panel p {
-  grid-column: 1 / -1;
+.admin-panel-header h4,
+.admin-users-step h5 {
   margin: 0;
+  color: #f8fafc;
 }
 
-.admin-users-panel label {
+.admin-panel-header h4 {
+  font-size: 1.05rem;
+}
+
+.admin-panel-header p,
+.admin-users-step p {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.admin-users-step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  transition: opacity 0.18s ease, border-color 0.18s ease;
+}
+
+.admin-users-step:not(.is-disabled) {
+  border-color: rgba(56, 189, 248, 0.24);
+}
+
+.admin-users-step.is-disabled {
+  opacity: 0.48;
+}
+
+.admin-step-number {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.admin-step-content {
+  min-width: 0;
+}
+
+.admin-users-step h5 {
+  font-size: 0.92rem;
+}
+
+.admin-users-step label {
+  display: block;
+  margin: 12px 0 6px;
   color: #cbd5e1;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.admin-step-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-reset-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.admin-field {
+  min-width: 0;
+}
+
+.admin-field label {
+  margin-top: 12px;
 }
 
 .admin-users-panel .auth-text-input {
   width: 100%;
   min-width: 0;
+  box-sizing: border-box;
+  padding: 11px 13px;
+  border-radius: 9px;
+  font-size: 0.92rem;
 }
 
-.admin-users-panel p.error {
+.admin-users-panel .btn-auth-primary {
+  width: auto;
+  min-height: 42px;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+
+.admin-users-panel .btn-auth-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
+.admin-users-message {
+  min-height: 1.2em;
+  margin: 0;
+  color: #86efac;
+  font-size: 0.85rem;
+}
+
+.admin-users-message.error {
   color: #fca5a5;
 }
 
-@media (max-width: 560px) {
-  .admin-users-panel {
+@media (max-width: 640px) {
+  .stats-user-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .stats-user-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .admin-step-controls {
     grid-template-columns: 1fr;
   }
 
-  .admin-users-panel h4,
-  .admin-users-panel p {
-    grid-column: auto;
+  .admin-users-panel .btn-auth-primary {
+    width: 100%;
+  }
+
+  .admin-reset-fields {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-users-panel {
+    padding: 14px;
+  }
+
+  .admin-users-step {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 9px;
+    padding: 12px;
+  }
+
+  .admin-step-number {
+    width: 24px;
+    height: 24px;
   }
 }
 
@@ -7685,5 +7848,323 @@ button:disabled {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Multiplayer room discovery and lobby actions */
+.header-room-badges {
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.header-room-badges #btn-browse-rooms,
+.header-room-badges #btn-create-room,
+.header-room-badges #btn-header-leave-room {
+  min-height: 34px;
+  padding: 0.4rem 0.8rem;
+  border-radius: 10px;
+  font-size: 0.82rem;
+}
+
+.header-room-badges #btn-browse-rooms {
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  color: #bfdbfe;
+}
+
+.header-room-badges #btn-create-room {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(52, 211, 153, 0.32);
+  color: #a7f3d0;
+}
+
+.rooms-modal-content {
+  max-width: 900px !important;
+}
+
+.rooms-modal-content .modal-body {
+  display: grid;
+  gap: 18px;
+}
+
+.rooms-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rooms-action-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.rooms-create-card {
+  border-color: rgba(52, 211, 153, 0.25);
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.09), rgba(255, 255, 255, 0.025));
+}
+
+.rooms-action-icon {
+  display: grid;
+  grid-row: auto;
+  align-self: start;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.55);
+  font-size: 1.15rem;
+}
+
+.rooms-create-card .rooms-action-icon {
+  border-color: rgba(52, 211, 153, 0.25);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.rooms-action-copy {
+  min-width: 0;
+}
+
+.rooms-action-copy h4 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 0.95rem;
+}
+
+.rooms-action-copy p {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.rooms-action-card > .btn-create-highlight {
+  grid-column: 2;
+  justify-self: start;
+  min-height: 40px;
+  padding: 0.6rem 1rem;
+}
+
+.rooms-action-card .join-by-code-box {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+.join-by-code-box input {
+  min-width: 0;
+  box-sizing: border-box;
+  border-radius: 10px;
+}
+
+.join-by-code-box .btn-join-code {
+  min-width: 108px;
+  border-radius: 10px;
+}
+
+.current-room-bar {
+  gap: 12px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+.current-room-info {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.current-room-label {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.current-room-info strong {
+  overflow: hidden;
+  color: #e2e8f0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rooms-list-container {
+  padding-top: 4px;
+}
+
+.rooms-list-header {
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.rooms-list-header h4 {
+  color: #f8fafc;
+  font-size: 1.02rem;
+}
+
+.rooms-list-header p {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 0.82rem;
+}
+
+.rooms-list-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-refresh-rooms {
+  border-radius: 9px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.rooms-list-grid {
+  max-height: min(42vh, 430px);
+  padding: 2px 5px 8px 2px;
+}
+
+.room-card {
+  border-radius: 14px;
+  padding: 1rem;
+}
+
+.btn-join-room-card {
+  min-height: 36px;
+  padding: 0.45rem 0.95rem;
+  border-radius: 9px;
+}
+
+.lobby-control-buttons {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 16px;
+  background: rgba(8, 14, 26, 0.28);
+}
+
+.lobby-primary-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.lobby-primary-actions .btn-lobby-ready,
+.lobby-primary-actions .btn-lobby-start {
+  min-height: 46px;
+  padding: 0.75rem 1.2rem;
+  border-radius: 12px;
+  font-size: 0.96rem;
+  justify-content: center;
+}
+
+.lobby-secondary-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.lobby-secondary-actions .btn-lobby-spectator,
+.lobby-secondary-actions .btn-lobby-leave {
+  min-height: 42px;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  font-size: 0.84rem;
+}
+
+.lobby-secondary-actions .btn-lobby-leave {
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.07);
+}
+
+@media (max-width: 760px) {
+  .rooms-action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lobby-control-buttons {
+    grid-template-columns: 1fr;
+  }
+
+  .lobby-primary-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lobby-secondary-actions {
+    justify-content: flex-start;
+    padding: 10px 0 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .rooms-action-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 9px;
+    padding: 13px;
+  }
+
+  .rooms-action-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .join-by-code-box {
+    flex-direction: column;
+  }
+
+  .join-by-code-box .btn-join-code {
+    min-height: 40px;
+  }
+
+  .current-room-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rooms-list-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .rooms-list-tools {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .lobby-primary-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .lobby-secondary-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lobby-secondary-actions > button {
+    width: 100%;
+    justify-content: center;
   }
 }

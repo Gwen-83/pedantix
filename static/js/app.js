@@ -182,6 +182,10 @@ class PedantixApp {
   }
 
   getBackendUrl() {
+    if (!this.isHostedMode()) {
+      const saved = localStorage.getItem('pedantix_backend_url');
+      return saved ? saved.replace(/\/+$/, '') : '';
+    }
     if (window.PEDANTIX_CONFIG && window.PEDANTIX_CONFIG.BACKEND_URL) {
       return window.PEDANTIX_CONFIG.BACKEND_URL.replace(/\/+$/, '');
     }
@@ -448,6 +452,7 @@ class PedantixApp {
       adminUsersPanel: document.getElementById('admin-users-panel'),
       adminCurrentPassword: document.getElementById('admin-current-password'),
       btnAdminLoadUsers: document.getElementById('btn-admin-load-users'),
+      adminResetStep: document.getElementById('admin-reset-step'),
       adminTargetUser: document.getElementById('admin-target-user'),
       adminNewPassword: document.getElementById('admin-new-password'),
       btnAdminResetPassword: document.getElementById('btn-admin-reset-password'),
@@ -814,16 +819,13 @@ class PedantixApp {
       this.dom.btnAdminUsers.addEventListener('click', () => {
         const panel = this.dom.adminUsersPanel;
         if (panel) {
-          const isOpen = panel.style.display === 'grid';
-          panel.style.display = isOpen ? 'none' : 'grid';
+          const isOpen = !panel.hidden;
+          panel.hidden = isOpen;
+          this.dom.btnAdminUsers.setAttribute('aria-expanded', String(!isOpen));
           if (isOpen) {
-            if (this.dom.adminCurrentPassword) this.dom.adminCurrentPassword.value = '';
-            if (this.dom.adminNewPassword) this.dom.adminNewPassword.value = '';
-            if (this.dom.adminTargetUser) {
-              this.dom.adminTargetUser.replaceChildren(new Option('Chargez d’abord les comptes', ''));
-              this.dom.adminTargetUser.disabled = true;
-            }
-            this.setAdminUsersMessage('');
+            this.clearAdminUsersPanel();
+          } else if (this.dom.adminCurrentPassword) {
+            this.dom.adminCurrentPassword.focus();
           }
         }
       });
@@ -833,6 +835,12 @@ class PedantixApp {
     }
     if (this.dom.btnAdminResetPassword) {
       this.dom.btnAdminResetPassword.addEventListener('click', () => this.adminResetPassword());
+    }
+    if (this.dom.adminTargetUser) {
+      this.dom.adminTargetUser.addEventListener('change', () => this.updateAdminResetAvailability());
+    }
+    if (this.dom.adminNewPassword) {
+      this.dom.adminNewPassword.addEventListener('input', () => this.updateAdminResetAvailability());
     }
 
     // Surrender buttons
@@ -1068,6 +1076,9 @@ class PedantixApp {
     if (modalElem) {
       const alreadyOpen = modalElem.classList.contains('active');
       modalElem.classList.add('active');
+      if (modalElem === this.dom.lobbyModal) {
+        this.markChatAsRead();
+      }
       if (!alreadyOpen) {
         const inner = modalElem.querySelector('.modal');
         if (inner) inner.scrollTop = 0;
@@ -1665,14 +1676,34 @@ class PedantixApp {
     if (this.dom.compTabChat) this.dom.compTabChat.style.display = (tabName === 'chat') ? 'flex' : 'none';
 
     if (tabName === 'chat') {
-      this.unreadChatCount = 0;
-      if (this.dom.chatUnreadBadge) {
-        this.dom.chatUnreadBadge.style.display = 'none';
-        this.dom.chatUnreadBadge.textContent = '0';
-      }
+      this.markChatAsRead();
       this.scrollChatToBottom();
       if (this.dom.chatInputSidebar) this.dom.chatInputSidebar.focus();
     }
+  }
+
+  isChatVisible() {
+    const lobbyChatVisible = this.dom.lobbyModal?.classList.contains('active');
+    const sidebarChatVisible = this.activeSidebarTab === 'chat'
+      && this.dom.compTabChat
+      && this.dom.compTabChat.style.display !== 'none';
+    return !!(lobbyChatVisible || sidebarChatVisible);
+  }
+
+  markChatAsRead() {
+    this.unreadChatCount = 0;
+    if (this.dom.chatUnreadBadge) {
+      this.dom.chatUnreadBadge.style.display = 'none';
+      this.dom.chatUnreadBadge.textContent = '0';
+    }
+    if (this._chatToastTimeout) clearTimeout(this._chatToastTimeout);
+    if (this.dom.chatFloatingToast) this.dom.chatFloatingToast.style.display = 'none';
+  }
+
+  updateChatUnreadBadge() {
+    if (!this.dom.chatUnreadBadge) return;
+    this.dom.chatUnreadBadge.textContent = this.unreadChatCount > 9 ? '9+' : this.unreadChatCount;
+    this.dom.chatUnreadBadge.style.display = this.unreadChatCount > 0 ? 'inline-flex' : 'none';
   }
 
   async sendChatMessage(text) {
@@ -1725,12 +1756,11 @@ class PedantixApp {
 
     if (!isMine) {
       this.playTone('message');
-      if (this.activeSidebarTab !== 'chat') {
+      if (this.isChatVisible()) {
+        this.markChatAsRead();
+      } else {
         this.unreadChatCount += 1;
-        if (this.dom.chatUnreadBadge) {
-          this.dom.chatUnreadBadge.textContent = this.unreadChatCount > 9 ? '9+' : this.unreadChatCount;
-          this.dom.chatUnreadBadge.style.display = 'inline-flex';
-        }
+        this.updateChatUnreadBadge();
         this.showFloatingChatToast(msg);
       }
     }
@@ -2432,6 +2462,13 @@ class PedantixApp {
         this.startWordHintTimer(this.nextWordHintTime);
       } else {
         this.stopWordHintTimer();
+      }
+
+    } else if (msg.type === 'article_unmasked') {
+      this.applyUnmaskedTokens(msg.tokens);
+      this.markUnmaskButtonComplete();
+      if (msg.player_id !== this.playerId) {
+        this.showToast(`👁️ ${msg.player_name || 'Un joueur'} a démasqué l'article pour tout le monde.`);
       }
 
     } else if (msg.type === 'surrender_update') {
@@ -4507,96 +4544,49 @@ class PedantixApp {
         this.dom.seeFullPageBtn.innerHTML = '<span>⏳</span> Démasquage en cours...';
       }
 
-      let tokensMap = {};
-
-      // 1. Try room unmask endpoint
+      let endpoint;
+      let requestBody;
       if (this.roomId) {
-        try {
-          const resp = await fetch(this.getApiUrl('/api/room/unmask'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              room_id: this.roomId,
-              player_id: this.playerId
-            })
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            tokensMap = data.tokens || {};
-          }
-        } catch (e) {
-          console.warn('Erreur room unmask, tentative game unmask:', e);
-        }
+        endpoint = '/api/room/unmask';
+        requestBody = {
+          room_id: this.roomId,
+          player_id: this.playerId
+        };
+      } else if (this.sessionId) {
+        endpoint = '/api/game/unmask';
+        requestBody = { session_id: this.sessionId };
+      } else {
+        throw new Error("La partie en cours est introuvable.");
       }
 
-      // 2. Fallback to solo game unmask endpoint if needed
-      if (Object.keys(tokensMap).length === 0 && this.sessionId) {
-        try {
-          const resp = await fetch(this.getApiUrl('/api/game/unmask'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: this.sessionId })
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            tokensMap = data.tokens || {};
-          }
-        } catch (e) {
-          console.warn('Erreur game unmask:', e);
-        }
-      }
-
-      // 3. Reveal all tokens using the map
-      let unmaskedCount = 0;
-      Object.entries(tokensMap).forEach(([tid, text]) => {
-        const token = this.tokensById[tid];
-        if (token) {
-          token.revealed = true;
-          token.text = text;
-        }
-        const el = document.getElementById(`token-${tid}`);
-        if (el) {
-          el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
-          el.style.backgroundColor = '';
-          el.style.borderColor = '';
-          el.style.color = '';
-          el.title = '';
-          delete el.dataset.heat;
-          delete el.dataset.word;
-          el.classList.add('revealed');
-          el.textContent = text;
-          unmaskedCount++;
-        }
+      const resp = await fetch(this.getApiUrl(endpoint), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
       });
-
-      // 4. Also unmask any client tokens that already have text
-      this.tokens.forEach(t => {
-        const el = document.getElementById(`token-${t.id}`);
-        if (el && (t.type === 'word' || t.is_word)) {
-          el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
-          el.style.backgroundColor = '';
-          el.style.borderColor = '';
-          el.style.color = '';
-          el.title = '';
-          delete el.dataset.heat;
-          delete el.dataset.word;
-          el.classList.add('revealed');
-          if (t.text) {
-            el.textContent = t.text;
-          }
-        }
-      });
-
-      if (this.dom.seeFullPageBtn) {
-        this.dom.seeFullPageBtn.disabled = true;
-        this.dom.seeFullPageBtn.innerHTML = '<span>✅</span> Article démasqué';
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        throw new Error(data?.detail || `Erreur serveur (${resp.status}).`);
       }
+      if (!data || !data.tokens || typeof data.tokens !== 'object' || Object.keys(data.tokens).length === 0) {
+        throw new Error("Le serveur n'a renvoyé aucun mot à démasquer.");
+      }
+
+      this.applyUnmaskedTokens(data.tokens);
+      this.markUnmaskButtonComplete();
       this.showToast('Article entièrement démasqué 📖');
     } catch (err) {
       console.error('Erreur démasquage complet:', err);
       this.resetUnmaskButton();
-      this.showToast('Erreur lors du démasquage de l\'article.');
+      const errorMessage = err instanceof Error ? err.message : 'réessayez.';
+      this.showToast(`Erreur lors du démasquage : ${errorMessage}`);
     }
+  }
+
+  markUnmaskButtonComplete() {
+    if (!this.dom.seeFullPageBtn) return;
+    this.dom.seeFullPageBtn.disabled = true;
+    this.dom.seeFullPageBtn.innerHTML = '<span>✅</span> Article démasqué';
   }
 
   resetUnmaskButton() {
@@ -5015,6 +5005,24 @@ class PedantixApp {
       this.setAdminUsersMessage('Saisissez le mot de passe actuel de Gwen.', true);
       return;
     }
+    if (this.dom.adminNewPassword) {
+      this.dom.adminNewPassword.value = '';
+      this.dom.adminNewPassword.disabled = true;
+    }
+    if (this.dom.adminTargetUser) {
+      this.dom.adminTargetUser.replaceChildren(new Option('Vérifiez d’abord votre compte', ''));
+      this.dom.adminTargetUser.disabled = true;
+    }
+    if (this.dom.adminResetStep) {
+      this.dom.adminResetStep.classList.add('is-disabled');
+      this.dom.adminResetStep.setAttribute('aria-disabled', 'true');
+    }
+    if (this.dom.btnAdminResetPassword) this.dom.btnAdminResetPassword.disabled = true;
+    const button = this.dom.btnAdminLoadUsers;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Vérification…';
+    }
     try {
       const resp = await fetch(this.getApiUrl('/api/admin/users'), {
         method: 'POST',
@@ -5028,9 +5036,20 @@ class PedantixApp {
       select.replaceChildren(new Option('Sélectionner un compte', ''));
       data.users.forEach(username => select.add(new Option(username, username)));
       select.disabled = false;
+      if (this.dom.adminNewPassword) this.dom.adminNewPassword.disabled = false;
+      if (this.dom.adminResetStep) {
+        this.dom.adminResetStep.classList.remove('is-disabled');
+        this.dom.adminResetStep.setAttribute('aria-disabled', 'false');
+      }
+      this.updateAdminResetAvailability();
       this.setAdminUsersMessage(`${data.users.length} compte(s) chargé(s).`);
     } catch (error) {
       this.setAdminUsersMessage(error.message || 'Erreur lors du chargement des comptes.', true);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Vérifier et continuer';
+      }
     }
   }
 
@@ -5043,6 +5062,11 @@ class PedantixApp {
       return;
     }
     if (!confirm(`Réinitialiser le mot de passe de « ${targetUsername} » ?`)) return;
+    const button = this.dom.btnAdminResetPassword;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Réinitialisation…';
+    }
     try {
       const resp = await fetch(this.getApiUrl('/api/admin/reset-password'), {
         method: 'POST',
@@ -5060,6 +5084,9 @@ class PedantixApp {
       this.setAdminUsersMessage(`Mot de passe de « ${data.username} » réinitialisé.`);
     } catch (error) {
       this.setAdminUsersMessage(error.message || 'Erreur lors de la réinitialisation.', true);
+    } finally {
+      if (button) button.textContent = 'Réinitialiser le mot de passe';
+      this.updateAdminResetAvailability();
     }
   }
 
@@ -5072,13 +5099,32 @@ class PedantixApp {
 
   clearAdminUsersPanel() {
     if (this.dom.adminCurrentPassword) this.dom.adminCurrentPassword.value = '';
-    if (this.dom.adminNewPassword) this.dom.adminNewPassword.value = '';
+    if (this.dom.adminNewPassword) {
+      this.dom.adminNewPassword.value = '';
+      this.dom.adminNewPassword.disabled = true;
+    }
     if (this.dom.adminTargetUser) {
-      this.dom.adminTargetUser.replaceChildren(new Option('Chargez d’abord les comptes', ''));
+      this.dom.adminTargetUser.replaceChildren(new Option('Vérifiez d’abord votre compte', ''));
       this.dom.adminTargetUser.disabled = true;
     }
-    if (this.dom.adminUsersPanel) this.dom.adminUsersPanel.style.display = 'none';
+    if (this.dom.adminResetStep) {
+      this.dom.adminResetStep.classList.add('is-disabled');
+      this.dom.adminResetStep.setAttribute('aria-disabled', 'true');
+    }
+    if (this.dom.btnAdminResetPassword) this.dom.btnAdminResetPassword.disabled = true;
+    if (this.dom.adminUsersPanel) this.dom.adminUsersPanel.hidden = true;
+    if (this.dom.btnAdminUsers) this.dom.btnAdminUsers.setAttribute('aria-expanded', 'false');
     this.setAdminUsersMessage('');
+  }
+
+  updateAdminResetAvailability() {
+    if (!this.dom.btnAdminResetPassword) return;
+    this.dom.btnAdminResetPassword.disabled = !(
+      this.dom.adminTargetUser &&
+      this.dom.adminTargetUser.value &&
+      this.dom.adminNewPassword &&
+      this.dom.adminNewPassword.value.length >= 3
+    );
   }
 
   // =========================================================================
