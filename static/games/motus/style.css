@@ -1,0 +1,218 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  background: #111522;
+  color: #f8fafc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(ellipse at 15% 0%, rgba(99, 102, 241, 0.18), transparent 38rem),
+    radial-gradient(ellipse at 90% 20%, rgba(16, 185, 129, 0.1), transparent 32rem),
+    #111522;
+}
+
+button, input { font: inherit; }
+button { color: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+[hidden] { display: none !important; }
+
+.motus-shell {
+  width: min(760px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 20px 24px 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.motus-header {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.motus-back, .motus-brand {
+  color: #e2e8f0;
+  text-decoration: none;
+  font-weight: 800;
+}
+
+.motus-back { font-size: 0.86rem; }
+.motus-brand { margin: 0; font-size: 1rem; letter-spacing: 0.14em; }
+.motus-brand span { margin-right: 5px; }
+.motus-player-name { justify-self: end; color: #aab3c5; font-size: 0.82rem; }
+
+.motus-panel {
+  margin: auto 0;
+  padding: clamp(24px, 6vw, 54px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  background: rgba(23, 29, 44, 0.92);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.26);
+}
+
+.motus-eyebrow {
+  margin: 0 0 8px;
+  color: #fca5a5;
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.6rem); letter-spacing: -0.045em; }
+.motus-intro { max-width: 54ch; margin: 12px 0 28px; color: #aab3c5; line-height: 1.65; }
+
+.motus-mode-grid { display: grid; gap: 12px; }
+
+.motus-mode-card {
+  width: 100%;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 17px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.045);
+  text-align: left;
+}
+
+button.motus-mode-card { transition: border-color 150ms ease, background 150ms ease, transform 150ms ease; }
+button.motus-mode-card:hover { transform: translateY(-2px); border-color: rgba(248, 113, 113, 0.5); background: rgba(248, 113, 113, 0.07); }
+.motus-mode-icon { width: 45px; flex: 0 0 45px; font-size: 1.8rem; text-align: center; }
+.motus-mode-card strong, .motus-mode-card small { display: block; }
+.motus-mode-card strong { font-size: 1rem; }
+.motus-mode-card small { margin-top: 5px; color: #aab3c5; font-size: 0.8rem; line-height: 1.4; }
+.motus-arrow { margin-left: auto; color: #fca5a5; font-size: 1.3rem; }
+.motus-multiplayer-card { align-items: flex-start; }
+.motus-multiplayer-options { flex: 1; min-width: 0; }
+
+.motus-room-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.motus-room-controls input, .motus-guess-form input {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  outline: none;
+  background: rgba(8, 12, 22, 0.72);
+  color: #f8fafc;
+}
+.motus-room-controls input { width: 130px; padding: 9px 11px; text-transform: uppercase; }
+.motus-room-controls input:focus, .motus-guess-form input:focus { border-color: #f87171; box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.14); }
+
+.motus-primary-button, .motus-secondary-button {
+  min-height: 42px;
+  padding: 9px 15px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+.motus-primary-button { background: #dc414c; color: #fff; }
+.motus-primary-button:hover:not(:disabled) { background: #ef5963; }
+.motus-secondary-button { border-color: rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.06); }
+.motus-secondary-button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.11); }
+.motus-text-button { padding: 4px 0; border: 0; background: none; color: #fca5a5; text-decoration: underline; }
+.motus-error { margin: 14px 0 0; color: #fca5a5; font-size: 0.86rem; }
+.motus-previous-game { margin: 18px 0 0; }
+
+.motus-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-top: 27px;
+  color: #aab3c5;
+  font-size: 0.72rem;
+}
+.motus-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.motus-legend i { width: 11px; height: 11px; border-radius: 3px; }
+.motus-correct { background: #169b62; }
+.motus-present { background: #c39418; }
+.motus-absent { background: #41495a; }
+
+.motus-play-panel { padding: clamp(20px, 5vw, 36px); }
+.motus-game-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.motus-game-heading h1 { font-size: clamp(1.6rem, 5vw, 2rem); }
+.motus-hint { margin: 8px 0 0; color: #aab3c5; font-size: 0.86rem; }
+.motus-lobby { margin-top: 24px; padding: 20px; border-radius: 16px; background: rgba(255, 255, 255, 0.045); }
+.motus-lobby > p { margin: 0 0 14px; color: #cbd5e1; }
+.motus-invite-row { display: flex; align-items: center; gap: 10px; }
+.motus-invite-row code { padding: 10px 12px; border-radius: 8px; background: #101522; color: #fca5a5; font-size: 1.05rem; letter-spacing: 0.12em; }
+.motus-player-list { display: grid; gap: 8px; margin: 16px 0; padding: 0; list-style: none; }
+.motus-player-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 9px; color: #dbe3ef; }
+.motus-player-list small { color: #aab3c5; }
+
+.motus-round { margin-top: 22px; }
+.motus-board { display: grid; gap: 7px; justify-content: center; }
+.motus-board-row { display: grid; grid-template-columns: repeat(6, 48px); gap: 7px; }
+.motus-tile {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #424a5b;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #fff;
+  font-size: 1.28rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.motus-tile.motus-correct { border-color: #169b62; background: #169b62; }
+.motus-tile.motus-present { border-color: #c39418; background: #c39418; }
+.motus-tile.motus-absent { border-color: #41495a; background: #41495a; }
+.motus-tile.motus-hint-tile { border-color: #667085; color: #fca5a5; }
+.motus-round-message { min-height: 24px; margin: 14px 0; color: #cbd5e1; text-align: center; font-size: 0.88rem; }
+.motus-guess-form { display: flex; max-width: 420px; gap: 8px; margin: 0 auto 15px; }
+.motus-guess-form input { flex: 1; padding: 11px 13px; font-size: 1rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.motus-keyboard { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 5px; max-width: 480px; margin: 0 auto; }
+.motus-key {
+  min-height: 39px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 7px;
+  background: #50596b;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+.motus-key.motus-correct { background: #169b62; }
+.motus-key.motus-present { background: #c39418; }
+.motus-key.motus-absent { background: #303747; color: #8f99aa; }
+.motus-key-wide { grid-column: span 2; font-size: 0.72rem; }
+.motus-scoreboard { margin-top: 20px; padding: 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); }
+.motus-scoreboard h2 { margin: 0 0 10px; font-size: 1rem; }
+.motus-scoreboard ol { display: grid; gap: 7px; margin: 0; padding-left: 24px; color: #dbe3ef; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+footer { padding-top: 18px; color: #707b8e; font-size: 0.72rem; text-align: center; }
+
+@media (max-width: 540px) {
+  .motus-shell { padding: 12px 14px 16px; }
+  .motus-panel { border-radius: 18px; }
+  .motus-mode-card { gap: 10px; padding: 13px; }
+  .motus-mode-icon { width: 36px; flex-basis: 36px; font-size: 1.55rem; }
+  .motus-room-controls { gap: 7px; }
+  .motus-room-controls input { flex: 1 1 100px; }
+  .motus-room-controls button { flex: 1; }
+  .motus-board-row { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; }
+  .motus-tile { width: min(11vw, 46px); height: min(11vw, 46px); font-size: 1.12rem; }
+  .motus-board { gap: 5px; }
+  .motus-keyboard { gap: 4px; }
+  .motus-key { min-height: 36px; font-size: 0.76rem; }
+  .motus-legend { gap: 8px 12px; }
+  .motus-invite-row { flex-wrap: wrap; }
+  .motus-invite-row .motus-secondary-button { flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+}

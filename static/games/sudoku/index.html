@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111522">
+  <title>Sudoku — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/games/sudoku/style.css">
+</head>
+<body>
+  <main class="sudoku-shell">
+    <header class="sudoku-header">
+      <a class="sudoku-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
+      <p class="sudoku-brand"><span aria-hidden="true">🔢</span> SUDOKU</p>
+      <span id="sudoku-player-name" class="sudoku-player-name"></span>
+    </header>
+
+    <section id="sudoku-home" class="sudoku-panel" aria-labelledby="sudoku-home-title">
+      <p class="sudoku-eyebrow">Le classique des jeux de logique</p>
+      <h1 id="sudoku-home-title">Une grille, neuf chiffres.</h1>
+      <p class="sudoku-intro">Complétez chaque ligne, colonne et carré 3×3 avec les chiffres de 1 à 9.</p>
+      <label class="sudoku-difficulty-label" for="sudoku-difficulty">Difficulté</label>
+      <select id="sudoku-difficulty" class="sudoku-select">
+        <option value="facile">Facile</option>
+        <option value="moyen" selected>Moyen</option>
+        <option value="difficile">Difficile</option>
+      </select>
+      <div class="sudoku-mode-grid">
+        <button type="button" id="sudoku-solo-button" class="sudoku-mode-card">
+          <span class="sudoku-mode-icon" aria-hidden="true">🧩</span>
+          <span><strong>Jouer en solo</strong><small>À votre rythme, avec la difficulté de votre choix.</small></span>
+          <span class="sudoku-arrow" aria-hidden="true">→</span>
+        </button>
+        <div class="sudoku-mode-card sudoku-multiplayer-card">
+          <span class="sudoku-mode-icon" aria-hidden="true">👥</span>
+          <span class="sudoku-multiplayer-options">
+            <strong>Défier des amis</strong>
+            <small>Jusqu’à trois joueurs gagnent des points : 3, 2 et 1. Après le premier solveur, il reste au plus 3 minutes.</small>
+            <span class="sudoku-room-controls">
+              <button type="button" id="sudoku-create-room" class="sudoku-primary-button">Créer un salon</button>
+              <label class="sr-only" for="sudoku-room-code">Code du salon</label>
+              <input id="sudoku-room-code" maxlength="6" autocomplete="off" placeholder="Code salon">
+              <button type="button" id="sudoku-join-room" class="sudoku-secondary-button">Rejoindre</button>
+            </span>
+          </span>
+        </div>
+      </div>
+      <p id="sudoku-home-error" class="sudoku-error" role="alert" hidden></p>
+      <p id="sudoku-previous-game" class="sudoku-previous-game" hidden>
+        <button type="button" id="sudoku-resume-solo" class="sudoku-text-button">Reprendre ma partie solo</button>
+      </p>
+    </section>
+
+    <section id="sudoku-play" class="sudoku-panel sudoku-play-panel" hidden>
+      <div class="sudoku-game-heading">
+        <div>
+          <p id="sudoku-game-mode" class="sudoku-eyebrow">Partie solo</p>
+          <h1 id="sudoku-game-title">À vous de jouer.</h1>
+          <p id="sudoku-game-hint" class="sudoku-hint"></p>
+        </div>
+        <button type="button" id="sudoku-home-button" class="sudoku-secondary-button">Quitter</button>
+      </div>
+
+      <section id="sudoku-lobby" class="sudoku-lobby" hidden aria-label="Salon multijoueur">
+        <p id="sudoku-lobby-status"></p>
+        <div class="sudoku-invite-row">
+          <code id="sudoku-invite-code"></code>
+          <button type="button" id="sudoku-copy-invite" class="sudoku-secondary-button">Copier le lien</button>
+        </div>
+        <ul id="sudoku-player-list" class="sudoku-player-list"></ul>
+        <button type="button" id="sudoku-start-game" class="sudoku-primary-button" hidden>Démarrer la partie</button>
+      </section>
+
+      <section id="sudoku-round" class="sudoku-round" hidden>
+        <div id="sudoku-timer-panel" class="sudoku-timer-panel" hidden>
+          <div>
+            <strong id="sudoku-timer-title">Course au podium</strong>
+            <span id="sudoku-timer-description"></span>
+          </div>
+          <strong id="sudoku-countdown" class="sudoku-countdown" aria-live="off"></strong>
+        </div>
+        <p id="sudoku-round-message" class="sudoku-round-message" aria-live="polite"></p>
+        <div class="sudoku-board-layout">
+          <div id="sudoku-grid" class="sudoku-grid" role="grid" aria-label="Grille de Sudoku"></div>
+          <aside class="sudoku-controls">
+            <p class="sudoku-instructions">Sélectionnez une case vide, puis un chiffre. Les flèches et les touches 1 à 9 fonctionnent aussi.</p>
+            <div id="sudoku-number-pad" class="sudoku-number-pad" aria-label="Choisir un chiffre"></div>
+            <button type="button" id="sudoku-clear-cell" class="sudoku-clear-button">Effacer la case</button>
+            <div id="sudoku-scoreboard" class="sudoku-scoreboard" hidden></div>
+          </aside>
+        </div>
+        <section id="sudoku-ranking-section" class="sudoku-ranking-section" hidden>
+          <h2>Classement de la manche</h2>
+          <ol id="sudoku-ranking" class="sudoku-ranking"></ol>
+        </section>
+      </section>
+
+      <p id="sudoku-play-error" class="sudoku-error" role="alert" hidden></p>
+    </section>
+    <footer>Un chiffre par ligne, colonne et carré.</footer>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/games/sudoku/app.js"></script>
+</body>
+</html>

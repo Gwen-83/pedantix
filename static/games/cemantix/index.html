@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111522">
+  <title>Cémantix — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/games/cemantix/style.css">
+</head>
+<body>
+  <main class="cemantix-shell">
+    <header class="cemantix-header">
+      <a class="cemantix-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
+      <p class="cemantix-brand"><span aria-hidden="true">🧠</span> CÉMANTIX</p>
+      <span id="cemantix-player-name" class="cemantix-player-name"></span>
+    </header>
+
+    <section id="cemantix-home" class="cemantix-panel" aria-labelledby="cemantix-heading">
+      <p class="cemantix-eyebrow">Un mot secret. Une proximité à explorer.</p>
+      <h1 id="cemantix-heading">À vous de trouver le mot.</h1>
+      <p class="cemantix-intro">Proposez un mot et recevez un score de proximité : plus il est élevé, plus votre idée se rapproche du mot secret.</p>
+      <div class="cemantix-mode-grid">
+        <button type="button" id="cemantix-solo-button" class="cemantix-mode-card">
+          <span class="cemantix-mode-icon" aria-hidden="true">🎯</span>
+          <span><strong>Jouer en solo</strong><small>À votre rythme, autant d’essais que nécessaire.</small></span>
+          <span class="cemantix-arrow" aria-hidden="true">→</span>
+        </button>
+        <div class="cemantix-mode-card cemantix-multiplayer-card">
+          <span class="cemantix-mode-icon" aria-hidden="true">👥</span>
+          <span class="cemantix-multiplayer-options">
+            <strong>Défier des amis</strong>
+            <small>Une minute par manche et une proposition par joueur.</small>
+            <span class="cemantix-room-controls">
+              <button type="button" id="cemantix-create-room" class="cemantix-primary-button">Créer un salon</button>
+              <label class="sr-only" for="cemantix-room-code">Code du salon</label>
+              <input id="cemantix-room-code" maxlength="6" autocomplete="off" placeholder="Code salon">
+              <button type="button" id="cemantix-join-room" class="cemantix-secondary-button">Rejoindre</button>
+            </span>
+          </span>
+        </div>
+      </div>
+      <p id="cemantix-home-error" class="cemantix-error" role="alert" hidden></p>
+      <p id="cemantix-previous-game" class="cemantix-previous-game" hidden>
+        <button type="button" id="cemantix-resume-solo" class="cemantix-text-button">Reprendre ma partie solo</button>
+      </p>
+      <div class="cemantix-score-legend">
+        <span><i class="cemantix-cold"></i>0–47 : froid</span>
+        <span><i class="cemantix-warm"></i>48–79 : chaud</span>
+        <span><i class="cemantix-hot"></i>80+ : brûlant</span>
+      </div>
+    </section>
+
+    <section id="cemantix-play" class="cemantix-panel cemantix-play-panel" hidden>
+      <div class="cemantix-game-heading">
+        <div>
+          <p id="cemantix-game-mode" class="cemantix-eyebrow">Partie solo</p>
+          <h1 id="cemantix-game-title">Quel est le mot secret ?</h1>
+          <p id="cemantix-hint" class="cemantix-hint"></p>
+        </div>
+        <button type="button" id="cemantix-home-button" class="cemantix-secondary-button">Quitter</button>
+      </div>
+
+      <section id="cemantix-lobby" class="cemantix-lobby" hidden aria-label="Salon multijoueur">
+        <p id="cemantix-lobby-status">En attente de joueurs…</p>
+        <div class="cemantix-invite-row">
+          <code id="cemantix-invite-code"></code>
+          <button type="button" id="cemantix-copy-invite" class="cemantix-secondary-button">Copier le lien</button>
+        </div>
+        <ul id="cemantix-player-list" class="cemantix-player-list"></ul>
+        <button type="button" id="cemantix-start-game" class="cemantix-primary-button" hidden>Démarrer</button>
+      </section>
+
+      <section id="cemantix-round" class="cemantix-round" hidden>
+        <div id="cemantix-timer-panel" class="cemantix-timer-panel" hidden>
+          <div class="cemantix-timer-copy">
+            <strong>Manche <span id="cemantix-round-number">1</span></strong>
+            <span id="cemantix-submission-count"></span>
+          </div>
+          <strong id="cemantix-countdown" class="cemantix-countdown" aria-live="off">1:00</strong>
+          <div class="cemantix-timer-track"><span id="cemantix-timer-bar"></span></div>
+        </div>
+        <p id="cemantix-round-message" class="cemantix-round-message" aria-live="polite"></p>
+        <form id="cemantix-guess-form" class="cemantix-guess-form">
+          <label class="sr-only" for="cemantix-guess">Votre proposition</label>
+          <input id="cemantix-guess" name="guess" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Votre mot…" required>
+          <button type="submit" class="cemantix-primary-button">Proposer</button>
+        </form>
+        <div id="cemantix-history" class="cemantix-history"></div>
+        <div id="cemantix-scoreboard" class="cemantix-scoreboard" hidden></div>
+      </section>
+
+      <p id="cemantix-play-error" class="cemantix-error" role="alert" hidden></p>
+    </section>
+    <footer>Un mot peut tout rapprocher.</footer>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/games/cemantix/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111522">
+  <title>Motus — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/games/motus/style.css">
+</head>
+<body>
+  <main class="motus-shell">
+    <header class="motus-header">
+      <a class="motus-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
+      <p class="motus-brand"><span aria-hidden="true">🔴</span> MOTUS</p>
+      <span id="motus-player-name" class="motus-player-name"></span>
+    </header>
+
+    <section id="motus-home" class="motus-panel" aria-labelledby="motus-heading">
+      <p class="motus-eyebrow">Un mot mystère vous attend</p>
+      <h1 id="motus-heading">À vous de jouer !</h1>
+      <p class="motus-intro">Trouvez le mot de 6 lettres en six essais. La première lettre est révélée ; les couleurs vous guident.</p>
+      <div class="motus-mode-grid">
+        <button type="button" id="motus-solo-button" class="motus-mode-card">
+          <span class="motus-mode-icon" aria-hidden="true">🎯</span>
+          <span><strong>Jouer en solo</strong><small>À votre rythme, avec six essais.</small></span>
+          <span class="motus-arrow" aria-hidden="true">→</span>
+        </button>
+        <div class="motus-mode-card motus-multiplayer-card">
+          <span class="motus-mode-icon" aria-hidden="true">👥</span>
+          <span class="motus-multiplayer-options">
+            <strong>Défier des amis</strong>
+            <small>Le même mot pour tous, chacun sa grille.</small>
+            <span class="motus-room-controls">
+              <button type="button" id="motus-create-room" class="motus-primary-button">Créer un salon</button>
+              <label class="sr-only" for="motus-room-code">Code du salon</label>
+              <input id="motus-room-code" maxlength="6" autocomplete="off" placeholder="Code salon">
+              <button type="button" id="motus-join-room" class="motus-secondary-button">Rejoindre</button>
+            </span>
+          </span>
+        </div>
+      </div>
+      <p id="motus-home-error" class="motus-error" role="alert" hidden></p>
+      <p id="motus-previous-game" class="motus-previous-game" hidden>
+        <button type="button" id="motus-resume-solo" class="motus-text-button">Reprendre ma partie solo</button>
+      </p>
+      <div class="motus-legend">
+        <span><i class="motus-correct"></i>Bonne lettre, bonne place</span>
+        <span><i class="motus-present"></i>Bonne lettre, autre place</span>
+        <span><i class="motus-absent"></i>Lettre absente</span>
+      </div>
+    </section>
+
+    <section id="motus-play" class="motus-panel motus-play-panel" hidden>
+      <div class="motus-game-heading">
+        <div>
+          <p id="motus-game-mode" class="motus-eyebrow">Partie solo</p>
+          <h1 id="motus-game-title">Trouvez le mot</h1>
+          <p id="motus-hint" class="motus-hint"></p>
+        </div>
+        <button type="button" id="motus-home-button" class="motus-secondary-button">Quitter</button>
+      </div>
+
+      <div id="motus-lobby" class="motus-lobby" hidden>
+        <p id="motus-lobby-status">En attente de joueurs…</p>
+        <div class="motus-invite-row">
+          <code id="motus-invite-code"></code>
+          <button type="button" id="motus-copy-invite" class="motus-secondary-button">Copier le lien</button>
+        </div>
+        <ul id="motus-player-list" class="motus-player-list"></ul>
+        <button type="button" id="motus-start-game" class="motus-primary-button" hidden>Démarrer la partie</button>
+      </div>
+
+      <div id="motus-round" class="motus-round" hidden>
+        <div id="motus-board" class="motus-board" role="grid" aria-label="Grille de jeu Motus"></div>
+        <p id="motus-round-message" class="motus-round-message" aria-live="polite"></p>
+        <form id="motus-guess-form" class="motus-guess-form">
+          <label class="sr-only" for="motus-guess">Votre mot de six lettres</label>
+          <input id="motus-guess" name="guess" maxlength="6" minlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="MOT EN 6 LETTRES" required>
+          <button type="submit" class="motus-primary-button">Valider</button>
+        </form>
+        <div id="motus-keyboard" class="motus-keyboard" aria-label="Clavier de lettres"></div>
+        <div id="motus-scoreboard" class="motus-scoreboard" hidden></div>
+      </div>
+
+      <p id="motus-play-error" class="motus-error" role="alert" hidden></p>
+    </section>
+    <footer>Un mot commun, six essais, à vous de le trouver.</footer>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/games/motus/app.js"></script>
+</body>
+</html>

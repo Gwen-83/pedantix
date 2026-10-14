@@ -1,0 +1,206 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  background: #111522;
+  color: #f8fafc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(ellipse at 15% 0%, rgba(99, 102, 241, 0.18), transparent 38rem),
+    radial-gradient(ellipse at 90% 20%, rgba(16, 185, 129, 0.1), transparent 32rem),
+    #111522;
+}
+
+button, input { font: inherit; }
+button { color: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.55; }
+[hidden] { display: none !important; }
+
+.cemantix-shell {
+  width: min(800px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 20px 24px 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cemantix-header {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.cemantix-back, .cemantix-brand {
+  color: #e2e8f0;
+  text-decoration: none;
+  font-weight: 800;
+}
+
+.cemantix-back { font-size: 0.86rem; }
+.cemantix-brand { margin: 0; font-size: 1rem; letter-spacing: 0.12em; }
+.cemantix-brand span { margin-right: 5px; }
+.cemantix-player-name { justify-self: end; color: #aab3c5; font-size: 0.82rem; }
+
+.cemantix-panel {
+  margin: auto 0;
+  padding: clamp(24px, 6vw, 54px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  background: rgba(23, 29, 44, 0.92);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.26);
+}
+
+.cemantix-eyebrow {
+  margin: 0 0 8px;
+  color: #a5b4fc;
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.55rem); letter-spacing: -0.045em; }
+.cemantix-intro { max-width: 58ch; margin: 12px 0 28px; color: #aab3c5; line-height: 1.65; }
+.cemantix-mode-grid { display: grid; gap: 12px; }
+
+.cemantix-mode-card {
+  width: 100%;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 17px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.045);
+  text-align: left;
+}
+
+button.cemantix-mode-card { transition: border-color 150ms ease, background 150ms ease, transform 150ms ease; }
+button.cemantix-mode-card:hover { transform: translateY(-2px); border-color: rgba(129, 140, 248, 0.6); background: rgba(129, 140, 248, 0.08); }
+.cemantix-mode-icon { width: 45px; flex: 0 0 45px; font-size: 1.8rem; text-align: center; }
+.cemantix-mode-card strong, .cemantix-mode-card small { display: block; }
+.cemantix-mode-card strong { font-size: 1rem; }
+.cemantix-mode-card small { margin-top: 5px; color: #aab3c5; font-size: 0.8rem; line-height: 1.4; }
+.cemantix-arrow { margin-left: auto; color: #a5b4fc; font-size: 1.3rem; }
+.cemantix-multiplayer-card { align-items: flex-start; }
+.cemantix-multiplayer-options { flex: 1; min-width: 0; }
+.cemantix-room-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+.cemantix-room-controls input, .cemantix-guess-form input {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  outline: none;
+  background: rgba(8, 12, 22, 0.72);
+  color: #f8fafc;
+}
+
+.cemantix-room-controls input { width: 130px; padding: 9px 11px; text-transform: uppercase; }
+.cemantix-room-controls input:focus, .cemantix-guess-form input:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15); }
+
+.cemantix-primary-button, .cemantix-secondary-button {
+  min-height: 42px;
+  padding: 9px 15px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.cemantix-primary-button { background: #4f46e5; color: #fff; }
+.cemantix-primary-button:hover:not(:disabled) { background: #6366f1; }
+.cemantix-secondary-button { border-color: rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.06); }
+.cemantix-secondary-button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.11); }
+.cemantix-text-button { padding: 4px 0; border: 0; background: none; color: #a5b4fc; text-decoration: underline; }
+.cemantix-error { margin: 14px 0 0; color: #fca5a5; font-size: 0.86rem; }
+.cemantix-previous-game { margin: 18px 0 0; }
+
+.cemantix-score-legend { display: flex; flex-wrap: wrap; gap: 12px 18px; margin-top: 27px; color: #aab3c5; font-size: 0.72rem; }
+.cemantix-score-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cemantix-score-legend i { width: 11px; height: 11px; border-radius: 3px; }
+.cemantix-cold { background: #50596b; }
+.cemantix-warm { background: #d39d36; }
+.cemantix-hot { background: #d85972; }
+
+.cemantix-play-panel { padding: clamp(20px, 5vw, 36px); }
+.cemantix-game-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.cemantix-game-heading h1 { font-size: clamp(1.55rem, 5vw, 2rem); }
+.cemantix-hint { margin: 8px 0 0; color: #aab3c5; font-size: 0.86rem; }
+
+.cemantix-lobby { margin-top: 24px; padding: 20px; border-radius: 16px; background: rgba(255, 255, 255, 0.045); }
+.cemantix-lobby > p { margin: 0 0 14px; color: #cbd5e1; }
+.cemantix-invite-row { display: flex; align-items: center; gap: 10px; }
+.cemantix-invite-row code { padding: 10px 12px; border-radius: 8px; background: #101522; color: #c7d2fe; font-size: 1.05rem; letter-spacing: 0.12em; }
+.cemantix-player-list { display: grid; gap: 8px; margin: 16px 0; padding: 0; list-style: none; }
+.cemantix-player-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 9px; color: #dbe3ef; }
+.cemantix-player-list small { color: #aab3c5; }
+
+.cemantix-round { margin-top: 20px; }
+.cemantix-timer-panel { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px 19px; border: 1px solid rgba(129, 140, 248, 0.2); border-radius: 14px; background: rgba(99, 102, 241, 0.07); }
+.cemantix-timer-copy { display: grid; gap: 3px; }
+.cemantix-timer-copy strong { color: #e0e7ff; font-size: 0.9rem; }
+.cemantix-timer-copy span { color: #aab3c5; font-size: 0.75rem; }
+.cemantix-countdown { color: #c7d2fe; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.cemantix-countdown.cemantix-low-time { color: #fca5a5; }
+.cemantix-timer-track { position: absolute; right: 16px; bottom: 8px; left: 16px; height: 3px; overflow: hidden; border-radius: 4px; background: rgba(255, 255, 255, 0.1); }
+.cemantix-timer-track span { display: block; width: 100%; height: 100%; transform-origin: left; background: #818cf8; transition: transform 250ms linear; }
+
+.cemantix-round-message { min-height: 24px; margin: 16px 0 12px; color: #cbd5e1; text-align: center; font-size: 0.88rem; }
+.cemantix-guess-form { display: flex; max-width: 480px; gap: 8px; margin: 0 auto 20px; }
+.cemantix-guess-form input { flex: 1; padding: 11px 13px; font-size: 1rem; }
+.cemantix-history { display: grid; gap: 10px; }
+.cemantix-history:empty { display: none; }
+.cemantix-player-history { padding: 14px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(255, 255, 255, 0.03); }
+.cemantix-player-history h2 { margin: 0 0 10px; font-size: 0.9rem; }
+.cemantix-guess-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.cemantix-guess-row { display: grid; grid-template-columns: minmax(100px, 1fr) auto minmax(90px, 1.2fr); align-items: center; gap: 10px; }
+.cemantix-guess-word { overflow-wrap: anywhere; color: #e2e8f0; font-size: 0.84rem; }
+.cemantix-guess-score { min-width: 42px; color: #cbd5e1; font-size: 0.76rem; font-variant-numeric: tabular-nums; text-align: right; }
+.cemantix-score-track { height: 7px; overflow: hidden; border-radius: 8px; background: rgba(255, 255, 255, 0.08); }
+.cemantix-score-track span { display: block; height: 100%; border-radius: inherit; background: #8b93a4; }
+.cemantix-score-track span.cemantix-score-warm { background: #d39d36; }
+.cemantix-score-track span.cemantix-score-hot { background: #d85972; }
+.cemantix-score-track span.cemantix-score-solved { background: #2da779; }
+.cemantix-passed { grid-column: 1 / -1; color: #8e98aa; font-size: 0.8rem; font-style: italic; }
+.cemantix-scoreboard { margin-top: 16px; padding: 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); }
+.cemantix-scoreboard h2 { margin: 0 0 8px; font-size: 1rem; }
+.cemantix-scoreboard p { margin: 0; color: #cbd5e1; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+footer { padding-top: 18px; color: #707b8e; font-size: 0.72rem; text-align: center; }
+
+@media (max-width: 540px) {
+  .cemantix-shell { padding: 12px 14px 16px; }
+  .cemantix-panel { border-radius: 18px; }
+  .cemantix-mode-card { gap: 10px; padding: 13px; }
+  .cemantix-mode-icon { width: 36px; flex-basis: 36px; font-size: 1.55rem; }
+  .cemantix-room-controls { gap: 7px; }
+  .cemantix-room-controls input { flex: 1 1 100px; }
+  .cemantix-room-controls button { flex: 1; }
+  .cemantix-score-legend { gap: 8px 12px; }
+  .cemantix-invite-row { flex-wrap: wrap; }
+  .cemantix-invite-row .cemantix-secondary-button { flex: 1; }
+  .cemantix-guess-row { grid-template-columns: minmax(70px, 1fr) auto minmax(54px, 0.7fr); gap: 7px; }
+  .cemantix-timer-panel { gap: 8px; padding-right: 12px; padding-left: 12px; }
+}
+
+@media (max-width: 380px) {
+  .cemantix-back span { display: none; }
+  .cemantix-brand { font-size: 0.88rem; }
+  .cemantix-guess-form { flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+}

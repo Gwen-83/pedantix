@@ -12,7 +12,7 @@
   const accountName = document.getElementById('store-account-name');
   const accountButton = document.getElementById('store-account-button');
   const logoutButton = document.getElementById('store-logout-button');
-  const gameLink = document.querySelector('.store-game-card-available');
+  const gameLinks = [...document.querySelectorAll('.store-game-card-available')];
   const params = new URLSearchParams(window.location.search);
   const requestedNext = params.get('next');
   const launchTarget = requestedNext ? new URL(requestedNext, window.location.origin) : null;
@@ -20,17 +20,27 @@
     && launchTarget.origin === window.location.origin
     && launchTarget.pathname === '/'
     && (launchTarget.searchParams.get('game') === 'pedantix'
+      || launchTarget.searchParams.get('game') === 'motus'
+      || launchTarget.searchParams.get('game') === 'cemantix'
+      || launchTarget.searchParams.get('game') === 'battleship'
+      || launchTarget.searchParams.get('game') === 'sudoku'
       || launchTarget.searchParams.has('assist')
       || launchTarget.searchParams.has('room')
       || launchTarget.searchParams.get('mode') === 'solo'
       || launchTarget.searchParams.get('mode') === 'multi');
   if (legacyLaunchTarget) {
-    launchTarget.pathname = '/games/pedantix/';
+    launchTarget.pathname = {
+      pedantix: '/games/pedantix/',
+      motus: '/games/motus/',
+      cemantix: '/games/cemantix/',
+      battleship: '/games/battleship/',
+      sudoku: '/games/sudoku/',
+    }[launchTarget.searchParams.get('game')] || '/games/pedantix/';
     launchTarget.searchParams.delete('game');
   }
   const safeLaunchTarget = launchTarget
     && launchTarget.origin === window.location.origin
-    && launchTarget.pathname === '/games/pedantix/'
+    && ['/games/pedantix/', '/games/motus/', '/games/cemantix/', '/games/battleship/', '/games/sudoku/'].includes(launchTarget.pathname)
     ? launchTarget
     : null;
   let pendingLaunch = params.get('login') === '1' && !!safeLaunchTarget;
@@ -78,9 +88,6 @@
     accountName.textContent = username ? `Bonjour, ${username}` : '';
     accountButton.hidden = !!username;
     logoutButton.hidden = !username;
-    if (username) {
-      gameLink.href = '/games/pedantix/';
-    }
   }
 
   async function submitUsername(event) {
@@ -150,7 +157,7 @@
       syncAccount();
       const shouldLaunch = pendingLaunch;
       closeDialog();
-      if (shouldLaunch) window.location.href = safeLaunchTarget?.href || gameLink.href;
+      if (shouldLaunch) window.location.href = safeLaunchTarget?.href || gameLinks[0].href;
     } catch (error) {
       showError(error.message || 'Erreur de communication avec le serveur.');
     } finally {
@@ -176,10 +183,12 @@
   });
   usernameForm.addEventListener('submit', submitUsername);
   passwordForm.addEventListener('submit', submitPassword);
-  gameLink.addEventListener('click', event => {
-    if (localStorage.getItem('pedantix_auth_user')) return;
-    event.preventDefault();
-    openDialog(true);
+  gameLinks.forEach(link => {
+    link.addEventListener('click', event => {
+      if (localStorage.getItem('pedantix_auth_user')) return;
+      event.preventDefault();
+      openDialog(true);
+    });
   });
 
   syncAccount();

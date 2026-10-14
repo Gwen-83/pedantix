@@ -6720,6 +6720,7 @@ button, input, select, .w, .pin-button, .nav-icon {
   .nav-bar {
     order: 1;
     display: inline-flex;
+    justify-content: flex-start;
     margin: 0.25rem auto 0.55rem;
     max-width: 100%;
     overflow-x: auto;
@@ -8668,5 +8669,19 @@ button:disabled {
 
   body.solo-mode .main {
     grid-column: 2;
+  }
+}
+
+@media (min-width: 880px) {
+  .nav-bar {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .nav-icon {
+    width: 100%;
+    min-width: 0;
   }
 }

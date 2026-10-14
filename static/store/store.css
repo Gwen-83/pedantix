@@ -236,6 +236,10 @@ html.store-mode .game-store {
   background: linear-gradient(145deg, rgba(56, 189, 248, 0.25), rgba(2, 132, 199, 0.12));
 }
 
+.store-battleship-icon {
+  background: linear-gradient(145deg, rgba(45, 212, 191, 0.25), rgba(13, 148, 136, 0.12));
+}
+
 .store-game-info {
   display: flex;
   min-width: 0;

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111522">
+  <title>Bataille navale — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/games/battleship/style.css">
+</head>
+<body>
+  <main class="naval-shell">
+    <header class="naval-header">
+      <a class="naval-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
+      <p class="naval-brand"><span aria-hidden="true">🚢</span> BATAILLE NAVALE</p>
+      <span id="naval-player-name" class="naval-player-name"></span>
+    </header>
+
+    <section id="naval-home" class="naval-panel" aria-labelledby="naval-heading">
+      <p class="naval-eyebrow">Multijoueur uniquement</p>
+      <h1 id="naval-heading">Préparez vos navires.</h1>
+      <p class="naval-intro">Créez un salon et invitez au moins un adversaire. La flotte classique est placée au hasard ; chacun peut ensuite la déplacer avant le départ.</p>
+      <div class="naval-mode-card">
+        <span class="naval-mode-icon" aria-hidden="true">🌊</span>
+        <span class="naval-mode-content">
+          <strong>Jouer en multijoueur</strong>
+          <small>À votre tour, tirez une fois sur le prochain joueur encore en lice. Le dernier capitaine restant gagne.</small>
+          <span class="naval-room-controls">
+            <button type="button" id="naval-create-room" class="naval-primary-button">Créer un salon</button>
+            <label class="sr-only" for="naval-room-code">Code du salon</label>
+            <input id="naval-room-code" maxlength="6" autocomplete="off" placeholder="Code salon">
+            <button type="button" id="naval-join-room" class="naval-secondary-button">Rejoindre</button>
+          </span>
+        </span>
+      </div>
+      <p id="naval-home-error" class="naval-error" role="alert" hidden></p>
+    </section>
+
+    <section id="naval-play" class="naval-panel naval-play-panel" hidden>
+      <div class="naval-heading-row">
+        <div>
+          <p id="naval-status-label" class="naval-eyebrow">Salon de préparation</p>
+          <h1 id="naval-title">Bataille navale</h1>
+        </div>
+        <button type="button" id="naval-home-button" class="naval-secondary-button">Quitter</button>
+      </div>
+
+      <section id="naval-lobby" class="naval-lobby" hidden>
+        <p id="naval-lobby-status"></p>
+        <div class="naval-invite-row">
+          <code id="naval-invite-code"></code>
+          <button type="button" id="naval-copy-invite" class="naval-secondary-button">Copier le lien</button>
+        </div>
+        <ul id="naval-player-list" class="naval-player-list"></ul>
+        <div class="naval-setup">
+          <div class="naval-setup-copy">
+            <h2>Votre flotte</h2>
+            <p>Choisissez un navire, une orientation, puis une case de départ pour le déplacer.</p>
+          </div>
+          <div id="naval-ship-picker" class="naval-ship-picker" aria-label="Choisir un navire"></div>
+          <div class="naval-setup-controls">
+            <button type="button" id="naval-orientation" class="naval-secondary-button">Orientation : horizontale</button>
+            <button type="button" id="naval-randomize" class="naval-secondary-button">Nouvelle flotte aléatoire</button>
+          </div>
+          <div id="naval-setup-grid" class="naval-grid-wrap"></div>
+          <p id="naval-setup-help" class="naval-help" aria-live="polite"></p>
+          <button type="button" id="naval-ready-button" class="naval-primary-button">Confirmer ma flotte</button>
+          <button type="button" id="naval-start-button" class="naval-primary-button" hidden>Démarrer la bataille</button>
+        </div>
+      </section>
+
+      <section id="naval-battle" class="naval-battle" hidden>
+        <p id="naval-turn-message" class="naval-turn-message" aria-live="polite"></p>
+        <div class="naval-battle-boards">
+          <section class="naval-board-card">
+            <div class="naval-board-heading">
+              <div><h2>Votre flotte</h2><p>Les impacts subis apparaissent ici.</p></div>
+              <span id="naval-own-ships-count" class="naval-board-badge"></span>
+            </div>
+            <div id="naval-own-grid" class="naval-grid-wrap"></div>
+          </section>
+          <section class="naval-board-card">
+            <div class="naval-board-heading">
+              <div><h2 id="naval-target-title">Plateau adverse</h2><p>Choisissez une case pour tirer.</p></div>
+              <span id="naval-turn-badge" class="naval-board-badge"></span>
+            </div>
+            <div id="naval-target-grid" class="naval-grid-wrap"></div>
+          </section>
+        </div>
+        <section class="naval-status-section">
+          <h2>Capitaines</h2>
+          <ul id="naval-battle-player-list" class="naval-player-list"></ul>
+        </section>
+        <div id="naval-scoreboard" class="naval-scoreboard" hidden></div>
+      </section>
+      <p id="naval-play-error" class="naval-error" role="alert" hidden></p>
+    </section>
+    <footer>Un tir par tour. Le dernier navire à flot remporte la bataille.</footer>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/games/battleship/app.js"></script>
+</body>
+</html>

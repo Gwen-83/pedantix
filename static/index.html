@@ -8,10 +8,18 @@
   <script>
     (() => {
       const params = new URLSearchParams(window.location.search);
-      const isLegacyGameLink = params.get('game') === 'pedantix' || params.has('assist')
+      const requestedGame = params.get('game');
+      const legacyGamePath = {
+        pedantix: '/games/pedantix/',
+        motus: '/games/motus/',
+        cemantix: '/games/cemantix/',
+        battleship: '/games/battleship/',
+        sudoku: '/games/sudoku/',
+      }[requestedGame];
+      const legacyGameLink = !!legacyGamePath || params.has('assist')
         || params.has('room') || params.get('mode') === 'solo' || params.get('mode') === 'multi';
-      if (isLegacyGameLink) {
-        window.location.replace(`/games/pedantix/${window.location.search}${window.location.hash}`);
+      if (legacyGameLink) {
+        window.location.replace(`${legacyGamePath || '/games/pedantix/'}${window.location.search}${window.location.hash}`);
         return;
       }
       document.documentElement.classList.add('store-mode');
@@ -50,7 +58,7 @@
           <h2 id="store-library-title">La collection</h2>
           <p>Choisissez une tuile pour ouvrir le jeu.</p>
         </div>
-        <span class="store-game-count">1 jeu disponible</span>
+        <span class="store-game-count">5 jeux disponibles</span>
       </div>
 
       <div class="store-game-grid">
@@ -64,32 +72,45 @@
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
 
-        <div class="store-game-card store-game-card-soon" aria-disabled="true">
+        <a class="store-game-card store-game-card-available" href="/games/cemantix/">
           <span class="store-game-icon store-cemantix-icon" aria-hidden="true">🧠</span>
           <span class="store-game-info">
             <span class="store-game-title">Cémantix</span>
             <span class="store-game-description">Devinez le mot secret grâce à sa proximité de sens.</span>
-            <span class="store-coming-soon">Bientôt disponible</span>
+            <span class="store-game-tags"><span>Réflexion</span><span>Solo & multijoueur</span></span>
           </span>
-        </div>
+          <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
+        </a>
 
-        <div class="store-game-card store-game-card-soon" aria-disabled="true">
+        <a class="store-game-card store-game-card-available" href="/games/motus/">
           <span class="store-game-icon store-motus-icon" aria-hidden="true">🔴</span>
           <span class="store-game-info">
             <span class="store-game-title">Motus</span>
             <span class="store-game-description">Retrouvez le mot caché lettre après lettre.</span>
-            <span class="store-coming-soon">Bientôt disponible</span>
+            <span class="store-game-tags"><span>Réflexion</span><span>Solo & multijoueur</span></span>
           </span>
-        </div>
+          <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
+        </a>
 
-        <div class="store-game-card store-game-card-soon" aria-disabled="true">
+        <a class="store-game-card store-game-card-available" href="/games/sudoku/">
           <span class="store-game-icon store-sudoku-icon" aria-hidden="true">🔢</span>
           <span class="store-game-info">
             <span class="store-game-title">Sudoku</span>
-            <span class="store-game-description">Un classique de logique avec plusieurs niveaux.</span>
-            <span class="store-coming-soon">Bientôt disponible</span>
+            <span class="store-game-description">Complétez une grille classique, seul ou en course contre vos amis.</span>
+            <span class="store-game-tags"><span>Logique</span><span>Solo & multijoueur</span></span>
           </span>
-        </div>
+          <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
+        </a>
+
+        <a class="store-game-card store-game-card-available" href="/games/battleship/">
+          <span class="store-game-icon store-battleship-icon" aria-hidden="true">🚢</span>
+          <span class="store-game-info">
+            <span class="store-game-title">Bataille navale</span>
+            <span class="store-game-description">Placez votre flotte et coulez les navires adverses.</span>
+            <span class="store-game-tags"><span>Stratégie</span><span>Multijoueur</span></span>
+          </span>
+          <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
+        </a>
       </div>
     </section>
 

@@ -36,6 +36,10 @@ from app.database import (
     is_valid_user_identifier,
 )
 from app.nlp import normalize_wiki_title
+from app.motus import motus_manager
+from app.cemantix import cemantix_manager
+from app.battleship import battleship_manager
+from app.sudoku import sudoku_manager
 from app.game import GameManager, GameSession
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
@@ -219,6 +223,74 @@ class RoomUnmaskRequest(BaseModel):
 class GameUnmaskRequest(BaseModel):
     session_id: str
 
+class MotusPlayerRequest(BaseModel):
+    player_id: str
+    player_name: str
+
+class MotusSoloGuessRequest(MotusPlayerRequest):
+    game_id: str
+    guess: str
+
+class MotusRoomPlayerRequest(MotusPlayerRequest):
+    room_id: str
+
+class MotusRoomGuessRequest(MotusRoomPlayerRequest):
+    guess: str
+
+class CemantixPlayerRequest(BaseModel):
+    player_id: str
+    player_name: str
+
+class CemantixSoloGuessRequest(CemantixPlayerRequest):
+    game_id: str
+    guess: str
+
+class CemantixRoomPlayerRequest(CemantixPlayerRequest):
+    room_id: str
+
+class CemantixRoomGuessRequest(CemantixRoomPlayerRequest):
+    guess: str
+
+class BattleshipPlayerRequest(BaseModel):
+    player_id: str
+    player_name: str
+
+class BattleshipRoomPlayerRequest(BattleshipPlayerRequest):
+    room_id: str
+
+class BattleshipFleetRequest(BattleshipRoomPlayerRequest):
+    fleet: Dict[str, List[str]]
+
+class BattleshipReadyRequest(BattleshipRoomPlayerRequest):
+    ready: bool
+
+class BattleshipFireRequest(BattleshipRoomPlayerRequest):
+    coordinate: str
+
+class SudokuPlayerRequest(BaseModel):
+    player_id: str
+    player_name: str
+
+class SudokuSoloCreateRequest(SudokuPlayerRequest):
+    difficulty: str
+
+class SudokuSoloCellRequest(SudokuPlayerRequest):
+    game_id: str
+    row: int
+    column: int
+    value: int
+
+class SudokuRoomCreateRequest(SudokuPlayerRequest):
+    difficulty: str
+
+class SudokuRoomPlayerRequest(SudokuPlayerRequest):
+    room_id: str
+
+class SudokuRoomCellRequest(SudokuRoomPlayerRequest):
+    row: int
+    column: int
+    value: int
+
 class RoomChatRequest(BaseModel):
     room_id: str = "default"
     player_id: str
@@ -269,6 +341,34 @@ async def pedantix_page():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page Pédantix est introuvable.")
+
+@app.get("/games/motus/")
+async def motus_page():
+    index_path = os.path.join(STATIC_DIR, "games", "motus", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Motus est introuvable.")
+
+@app.get("/games/cemantix/")
+async def cemantix_page():
+    index_path = os.path.join(STATIC_DIR, "games", "cemantix", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Cémantix est introuvable.")
+
+@app.get("/games/battleship/")
+async def battleship_page():
+    index_path = os.path.join(STATIC_DIR, "games", "battleship", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Bataille navale est introuvable.")
+
+@app.get("/games/sudoku/")
+async def sudoku_page():
+    index_path = os.path.join(STATIC_DIR, "games", "sudoku", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Sudoku est introuvable.")
 
 
 @app.get("/health")
@@ -1007,6 +1107,330 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
 # ============================================================================
 # SOLO / STANDARD GAME ENDPOINTS
 # ============================================================================
+
+@app.post("/api/motus/solo/new")
+async def new_motus_solo(req: MotusPlayerRequest):
+    game = motus_manager.create_solo(req.player_id, req.player_name)
+    return game.to_dict()
+
+
+@app.get("/api/motus/solo/{game_id}")
+async def get_motus_solo(game_id: str, player_id: str = Query(...)):
+    try:
+        return motus_manager.get_solo(game_id, player_id).to_dict()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/motus/solo/guess")
+async def guess_motus_solo(req: MotusSoloGuessRequest):
+    try:
+        game, result = motus_manager.guess_solo(req.game_id, req.player_id, req.guess)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"result": result, **game.to_dict()}
+
+
+@app.post("/api/motus/room/create")
+async def create_motus_room(req: MotusPlayerRequest):
+    room = motus_manager.create_room(req.player_id, req.player_name)
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/motus/room/join")
+async def join_motus_room(req: MotusRoomPlayerRequest):
+    try:
+        room = motus_manager.join_room(req.room_id, req.player_id, req.player_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/motus/room/start")
+async def start_motus_room(req: MotusRoomPlayerRequest):
+    try:
+        room = motus_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/motus/room/guess")
+async def guess_motus_room(req: MotusRoomGuessRequest):
+    try:
+        room, result = motus_manager.guess_room(req.room_id, req.player_id, req.guess)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"result": result, **room.to_dict(req.player_id)}
+
+
+@app.get("/api/motus/room/{room_id}")
+async def get_motus_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = motus_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return room.to_dict(player_id)
+
+
+@app.post("/api/cemantix/solo/new")
+async def new_cemantix_solo(req: CemantixPlayerRequest):
+    return cemantix_manager.create_solo(req.player_id, req.player_name).to_dict()
+
+
+@app.get("/api/cemantix/solo/{game_id}")
+async def get_cemantix_solo(game_id: str, player_id: str = Query(...)):
+    try:
+        return cemantix_manager.get_solo(game_id, player_id).to_dict()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/cemantix/solo/guess")
+async def guess_cemantix_solo(req: CemantixSoloGuessRequest):
+    try:
+        game, result = cemantix_manager.guess_solo(req.game_id, req.player_id, req.guess)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"result": result, **game.to_dict()}
+
+
+@app.post("/api/cemantix/room/create")
+async def create_cemantix_room(req: CemantixPlayerRequest):
+    room = cemantix_manager.create_room(req.player_id, req.player_name)
+    return room.to_dict(req.player_id, time.time())
+
+
+@app.post("/api/cemantix/room/join")
+async def join_cemantix_room(req: CemantixRoomPlayerRequest):
+    try:
+        room = cemantix_manager.join_room(req.room_id, req.player_id, req.player_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id, time.time())
+
+
+@app.post("/api/cemantix/room/start")
+async def start_cemantix_room(req: CemantixRoomPlayerRequest):
+    try:
+        room = cemantix_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id, time.time())
+
+
+@app.post("/api/cemantix/room/guess")
+async def guess_cemantix_room(req: CemantixRoomGuessRequest):
+    try:
+        room, result = cemantix_manager.submit_room_guess(
+            req.room_id, req.player_id, req.guess
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"result": result, **room.to_dict(req.player_id, time.time())}
+
+
+@app.get("/api/cemantix/room/{room_id}")
+async def get_cemantix_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = cemantix_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return room.to_dict(player_id, time.time())
+
+
+@app.post("/api/battleship/room/create")
+async def create_battleship_room(req: BattleshipPlayerRequest):
+    room = battleship_manager.create_room(req.player_id, req.player_name)
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/join")
+async def join_battleship_room(req: BattleshipRoomPlayerRequest):
+    try:
+        room = battleship_manager.join_room(req.room_id, req.player_id, req.player_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.get("/api/battleship/room/{room_id}")
+async def get_battleship_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = battleship_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return room.to_dict(player_id)
+
+@app.post("/api/sudoku/solo/new")
+async def new_sudoku_solo(req: SudokuSoloCreateRequest):
+    try:
+        game = sudoku_manager.create_solo(req.player_id, req.player_name, req.difficulty)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return game.to_dict()
+
+
+@app.get("/api/sudoku/solo/{game_id}")
+async def get_sudoku_solo(game_id: str, player_id: str = Query(...)):
+    try:
+        return sudoku_manager.get_solo(game_id, player_id).to_dict()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/sudoku/solo/cell")
+async def set_sudoku_solo_cell(req: SudokuSoloCellRequest):
+    try:
+        game = sudoku_manager.set_solo_cell(
+            req.game_id, req.player_id, req.row, req.column, req.value
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return game.to_dict()
+
+
+@app.post("/api/sudoku/room/create")
+async def create_sudoku_room(req: SudokuRoomCreateRequest):
+    try:
+        room = sudoku_manager.create_room(req.player_id, req.player_name, req.difficulty)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return room.to_dict(req.player_id, time.time())
+
+
+@app.post("/api/sudoku/room/join")
+async def join_sudoku_room(req: SudokuRoomPlayerRequest):
+    try:
+        room = sudoku_manager.join_room(req.room_id, req.player_id, req.player_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id, time.time())
+
+
+@app.post("/api/sudoku/room/start")
+async def start_sudoku_room(req: SudokuRoomPlayerRequest):
+    try:
+        room = sudoku_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id, time.time())
+
+
+@app.post("/api/sudoku/room/cell")
+async def set_sudoku_room_cell(req: SudokuRoomCellRequest):
+    try:
+        room, awarded = sudoku_manager.set_room_cell(
+            req.room_id, req.player_id, req.row, req.column, req.value
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if awarded:
+        increment_player_score(req.player_name, awarded)
+    return room.to_dict(req.player_id, time.time())
+
+
+@app.get("/api/sudoku/room/{room_id}")
+async def get_sudoku_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = sudoku_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return room.to_dict(player_id, time.time())
+
+
+@app.post("/api/battleship/room/fleet")
+async def set_battleship_fleet(req: BattleshipFleetRequest):
+    try:
+        room = battleship_manager.set_fleet(req.room_id, req.player_id, req.fleet)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/randomize")
+async def randomize_battleship_fleet(req: BattleshipRoomPlayerRequest):
+    try:
+        room = battleship_manager.randomize_fleet(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/ready")
+async def ready_battleship_player(req: BattleshipReadyRequest):
+    try:
+        room = battleship_manager.set_ready(req.room_id, req.player_id, req.ready)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/start")
+async def start_battleship_room(req: BattleshipRoomPlayerRequest):
+    try:
+        room = battleship_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/fire")
+async def fire_battleship_shot(req: BattleshipFireRequest):
+    try:
+        room, result = battleship_manager.fire(req.room_id, req.player_id, req.coordinate)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"result": result, **room.to_dict(req.player_id)}
+
 
 @app.get("/api/game/new")
 async def new_game(
