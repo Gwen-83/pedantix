@@ -46,6 +46,8 @@ class GeoGuessrTests(unittest.TestCase):
             self.assertEqual(result["guess_latitude"], guess_latitude)
             self.assertEqual(result["guess_longitude"], guess_longitude)
             self.assertEqual(result["round_number"], round_number + 1)
+            self.assertEqual(result["city"], target[0])
+            self.assertEqual(game.to_dict()["last_result"]["city"], target[0])
             if round_number < ROUND_COUNT - 1:
                 self.assertEqual(game.status, "playing")
                 self.assertIsNone(game.to_dict()["target"])

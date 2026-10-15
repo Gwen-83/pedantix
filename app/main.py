@@ -1260,7 +1260,7 @@ async def guess_motus_solo(req: MotusSoloGuessRequest):
     if game.status == "finished":
         player = game.player
         if player.score:
-            increment_player_score(player.name, player.score)
+            increment_player_score(player.name, player.score, "motus")
         record_user_game_finish(
             player.name,
             won=player.solved,
@@ -1329,7 +1329,7 @@ async def guess_motus_room(req: MotusRoomGuessRequest):
     if room.status == "finished":
         for player in room.players.values():
             if player.score:
-                increment_player_score(player.name, player.score)
+                increment_player_score(player.name, player.score, "motus")
             record_user_game_finish(
                 player.name,
                 won=player.solved,
@@ -1680,7 +1680,7 @@ async def set_sudoku_room_cell(req: SudokuRoomCellRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if awarded:
-        increment_player_score(req.player_name, awarded)
+        increment_player_score(req.player_name, awarded, "sudoku")
     _record_sudoku_room_results(room)
     return room.to_dict(req.player_id, time.time())
 
@@ -1715,7 +1715,7 @@ def _record_geoguessr_solo_result(game) -> None:
         return
     duration = max(0, int(time.time() - game.created_at))
     metrics = _geoguessr_metrics(game.results, game.total_score, game.region, game.variant)
-    increment_player_score(game.player_name, game.total_score)
+    increment_player_score(game.player_name, game.total_score, "geoguessr")
     record_user_game_finish(
         game.player_name,
         won=game.total_score >= GEOGUESSR_ROUND_COUNT * GEOGUESSR_MAX_SCORE_PER_ROUND // 2,
@@ -1738,7 +1738,7 @@ def _record_geoguessr_room_results(room) -> None:
     best_score = max(player.total_score for player in room.players.values())
     for player in room.players.values():
         metrics = _geoguessr_metrics(player.results, player.total_score, room.region, room.variant)
-        increment_player_score(player.name, player.total_score)
+        increment_player_score(player.name, player.total_score, "geoguessr")
         record_user_game_finish(
             player.name,
             won=player.total_score == best_score,
@@ -2214,8 +2214,11 @@ async def stats_game_catalog():
 
 
 @app.get("/api/scores")
-async def leaderboard_scores():
-    return get_top_player_scores()
+async def leaderboard_scores(game_id: str = Query("pedantix")):
+    try:
+        return get_top_player_scores(game_id=game_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/game/unmask")

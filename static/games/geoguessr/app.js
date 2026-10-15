@@ -30,6 +30,9 @@
   let guessMarker = null;
   let targetMarker = null;
   let answerLine = null;
+  let countryBoundaryLayer = null;
+  let countryBoundaryLoading = null;
+  let mapLabelsLayer = null;
   let selectedPosition = null;
   let pollingTimer = null;
   let roomRefreshing = false;
@@ -111,8 +114,7 @@
   function isWaitingForNextRound() {
     const round = currentRoundResult();
     const signature = roundResultSignature(round);
-    return state?.variant === 'cities'
-      && state.status === 'playing'
+    return state?.status === 'playing'
       && !!signature
       && round.round_number === state.round_number - 1
       && localStorage.getItem(roundResultStorageKey()) !== signature;
@@ -309,17 +311,17 @@
   }
 
   function ensureMap() {
-    if (map) return true;
+    if (map) {
+      if (!countryBoundaryLayer && !countryBoundaryLoading) loadCountryBoundaries();
+      return true;
+    }
     if (!window.L) {
       showError(playError, 'La carte ne s’est pas chargée. Vérifiez votre connexion puis rechargez la page.');
       return false;
     }
     map = L.map('geo-map', { worldCopyJump: true, minZoom: 2, maxZoom: 18 })
       .setView([20, 0], 2);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
-    }).addTo(map);
+    loadCountryBoundaries();
     map.on('click', (event) => {
       if (!state || state.status !== 'playing' || guessLocked()) return;
       selectedPosition = { latitude: event.latlng.lat, longitude: event.latlng.lng };
@@ -329,6 +331,54 @@
         `Estimation sélectionnée : ${event.latlng.lat.toFixed(2)}, ${event.latlng.lng.toFixed(2)}. Vous pouvez encore la déplacer.`;
     });
     return true;
+  }
+
+  function setMapStyle(isPanorama) {
+    if (!map) return;
+    if (isPanorama && !mapLabelsLayer) {
+      mapLabelsLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+      }).addTo(map);
+    } else if (!isPanorama && mapLabelsLayer) {
+      map.removeLayer(mapLabelsLayer);
+      mapLabelsLayer = null;
+    }
+
+    countryBoundaryLayer?.setStyle({
+      fillOpacity: isPanorama ? 0 : 1,
+    });
+    const attribution = document.querySelector('.geo-map-actions > span');
+    attribution.textContent = isPanorama
+      ? 'Carte © OpenStreetMap · frontières © Natural Earth'
+      : 'Frontières © Natural Earth (domaine public) · sans noms de villes';
+  }
+
+  function loadCountryBoundaries() {
+    if (countryBoundaryLayer || countryBoundaryLoading) return;
+    countryBoundaryLoading = fetch('/static/games/geoguessr/data/countries.geojson')
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((countries) => {
+        const isPanorama = state?.variant === 'panorama';
+        countryBoundaryLayer = L.geoJSON(countries, {
+          interactive: false,
+          style: {
+            color: '#63716f',
+            weight: 1,
+            opacity: 0.9,
+            fillColor: '#e8e9df',
+            fillOpacity: isPanorama ? 0 : 1,
+          },
+        }).addTo(map);
+        countryBoundaryLayer.bringToBack();
+      })
+      .catch((error) => {
+        countryBoundaryLoading = null;
+        showError(playError, `Impossible de charger les frontières de la carte : ${error.message}`);
+      });
   }
 
   function clearMapMarkers() {
@@ -547,7 +597,7 @@
       const continueButton = document.createElement('button');
       continueButton.type = 'button';
       continueButton.className = 'geo-primary-button';
-      continueButton.textContent = 'Ville suivante';
+      continueButton.textContent = state?.variant === 'panorama' ? 'Manche suivante' : 'Ville suivante';
       continueButton.addEventListener('click', () => {
         localStorage.setItem(roundResultStorageKey(), signature);
         clearMapMarkers();
@@ -636,6 +686,7 @@
       return;
     }
     if (!ensureMap()) return;
+    setMapStyle(isPanorama);
     requestAnimationFrame(() => map.invalidateSize());
     if (isPanorama && state.status === 'playing' && state.image_id) showPanorama(state.image_id);
     const roundNumber = state.round_number;

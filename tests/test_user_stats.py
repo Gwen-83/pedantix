@@ -5,6 +5,7 @@ from app.database import (
     DatabaseContext,
     _increment_sync,
     _record_user_game_finish_sync,
+    get_player_score,
     get_stats,
     get_user_stats,
     init_db,
@@ -19,11 +20,13 @@ class UserGameStatsTests(unittest.TestCase):
         with DatabaseContext() as db:
             db.execute("DELETE FROM user_game_stats WHERE username = ?", (self.username,))
             db.execute("DELETE FROM player_scores WHERE player_name = ?", (self.username,))
+            db.execute("DELETE FROM player_game_scores WHERE player_name = ?", (self.username,))
 
     def tearDown(self):
         with DatabaseContext() as db:
             db.execute("DELETE FROM user_game_stats WHERE username = ?", (self.username,))
             db.execute("DELETE FROM player_scores WHERE player_name = ?", (self.username,))
+            db.execute("DELETE FROM player_game_scores WHERE player_name = ?", (self.username,))
             if self.game_session_ids:
                 placeholders = ", ".join("?" for _ in self.game_session_ids)
                 db.execute(
@@ -103,22 +106,14 @@ class UserGameStatsTests(unittest.TestCase):
         self.assertEqual(stats["games_played"], 1)
         self.assertEqual(stats["wins"], 1)
         self.assertEqual(stats["multiplayer"]["points"], 3)
-        with DatabaseContext() as db:
-            db.execute("SELECT wins, games_played FROM player_scores WHERE player_name = ?", (self.username,))
-            score_row = db.fetchone()
-        self.assertEqual(score_row["wins"], 1)
-        self.assertEqual(score_row["games_played"], 1)
+        self.assertEqual(get_player_score(self.username), 0)
 
-    def test_adding_points_does_not_count_as_an_extra_win_or_game(self):
+    def test_scores_are_isolated_by_game(self):
         _increment_sync(self.username, 3)
+        _increment_sync(self.username, 20_000, "geoguessr")
 
-        with DatabaseContext() as db:
-            db.execute("SELECT score, wins, games_played FROM player_scores WHERE player_name = ?", (self.username,))
-            score_row = db.fetchone()
-
-        self.assertEqual(score_row["score"], 3)
-        self.assertEqual(score_row["wins"], 0)
-        self.assertEqual(score_row["games_played"], 0)
+        self.assertEqual(get_player_score(self.username), 3)
+        self.assertEqual(get_player_score(self.username, "geoguessr"), 20_000)
 
     def test_global_stats_separate_modes_and_exclude_unfinished_sessions_from_rate(self):
         baseline = get_stats()

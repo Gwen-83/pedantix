@@ -84,6 +84,37 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
         self.assertEqual(old_session["game_id"], "pedantix")
         self.assertEqual(database.get_user_stats("Alice")["games_played"], 1)
 
+    def test_migration_splits_existing_cross_game_score_without_losing_pedantix_points(self):
+        with database.DatabaseContext() as db:
+            db.execute(
+                """INSERT INTO player_scores (player_name, score, wins, games_played)
+                   VALUES (?, 20407, 2, 3)
+                   ON CONFLICT (player_name) DO UPDATE SET score = EXCLUDED.score""",
+                ("Alice",),
+            )
+            db.execute(
+                """INSERT INTO user_game_stats
+                       (username, session_id, game_id, mode, title, points)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                ("Alice", "geoguessr:old-game", "geoguessr", "solo", "GeoGuessr", 20_000),
+            )
+            db.execute(
+                """INSERT INTO user_game_stats
+                       (username, session_id, game_id, mode, title, points)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                ("Alice", "motus:old-game", "motus", "solo", "Motus", 400),
+            )
+            db.execute("DELETE FROM player_game_scores WHERE player_name = ?", ("Alice",))
+            database._migrate_multigame_schema(db)
+
+        self.assertEqual(database.get_player_score("Alice", "pedantix"), 7)
+        self.assertEqual(database.get_player_score("Alice", "geoguessr"), 20_000)
+        self.assertEqual(database.get_player_score("Alice", "motus"), 400)
+        self.assertEqual(database.get_user_stats("Alice", "pedantix")["score"], 7)
+        self.assertEqual(database.get_user_stats("Alice", "geoguessr")["score"], 20_000)
+        self.assertEqual(database.get_top_player_scores(game_id="pedantix")[0]["score"], 7)
+        self.assertEqual(database.get_top_player_scores(game_id="geoguessr")[0]["score"], 20_000)
+
     def test_game_results_and_stats_are_isolated_by_game(self):
         database._record_user_game_finish_sync(
             "Alice",

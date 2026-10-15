@@ -22,7 +22,7 @@ import datetime as _dt
 import hashlib
 import secrets
 import uuid
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.nlp import normalize_wiki_title
 
@@ -247,6 +247,10 @@ _SCHEMA_PG = [
     """CREATE TABLE IF NOT EXISTS player_scores (
         player_name TEXT PRIMARY KEY, score INTEGER DEFAULT 0, wins INTEGER DEFAULT 0,
         games_played INTEGER DEFAULT 0, last_played TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS player_game_scores (
+        player_name TEXT NOT NULL, game_id TEXT NOT NULL, score INTEGER NOT NULL DEFAULT 0,
+        last_played TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (player_name, game_id))""",
     """CREATE TABLE IF NOT EXISTS users (
         username TEXT PRIMARY KEY, password_hash TEXT NOT NULL,
         score INTEGER DEFAULT 0, wins INTEGER DEFAULT 0,
@@ -278,6 +282,7 @@ _SCHEMA_PG = [
     "CREATE INDEX IF NOT EXISTS idx_article_category ON article_cache(category)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
     "CREATE INDEX IF NOT EXISTS idx_user_game_stats_user_finished ON user_game_stats(username, finished_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_player_game_scores_game_score ON player_game_scores(game_id, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_lookup ON user_played_articles(user_identifier, played_at)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_title ON user_played_articles(article_title)",
 ]
@@ -305,6 +310,10 @@ _SCHEMA_SQLITE = [
     """CREATE TABLE IF NOT EXISTS player_scores (
         player_name TEXT PRIMARY KEY, score INTEGER DEFAULT 0, wins INTEGER DEFAULT 0,
         games_played INTEGER DEFAULT 0, last_played TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS player_game_scores (
+        player_name TEXT NOT NULL, game_id TEXT NOT NULL, score INTEGER NOT NULL DEFAULT 0,
+        last_played TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (player_name, game_id))""",
     """CREATE TABLE IF NOT EXISTS users (
         username TEXT PRIMARY KEY, password_hash TEXT NOT NULL,
         score INTEGER DEFAULT 0, wins INTEGER DEFAULT 0,
@@ -334,6 +343,7 @@ _SCHEMA_SQLITE = [
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
     "CREATE INDEX IF NOT EXISTS idx_user_game_stats_user_finished ON user_game_stats(username, finished_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_player_game_scores_game_score ON player_game_scores(game_id, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_lookup ON user_played_articles(user_identifier, played_at)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_title ON user_played_articles(article_title)",
 ]
@@ -363,6 +373,33 @@ def _migrate_multigame_schema(db: DatabaseContext) -> None:
     _ensure_column(db, "user_game_stats", "game_id", "TEXT NOT NULL DEFAULT 'pedantix'")
     _ensure_column(db, "user_game_stats", "difficulty", "TEXT")
     _ensure_column(db, "user_game_stats", "metrics_json", "TEXT NOT NULL DEFAULT '{}'")
+
+    db.execute(
+        """INSERT INTO player_game_scores (player_name, game_id, score, last_played)
+           SELECT ps.player_name, 'pedantix',
+                  CASE WHEN ps.score - COALESCE(SUM(
+                      CASE WHEN ugs.game_id <> 'pedantix' THEN ugs.points ELSE 0 END
+                  ), 0) > 0
+                  THEN ps.score - COALESCE(SUM(
+                      CASE WHEN ugs.game_id <> 'pedantix' THEN ugs.points ELSE 0 END
+                  ), 0)
+                  ELSE 0 END,
+                  ps.last_played
+           FROM player_scores ps
+           LEFT JOIN user_game_stats ugs
+             ON LOWER(ugs.username) = LOWER(ps.player_name)
+           GROUP BY ps.player_name, ps.score, ps.last_played
+           ON CONFLICT (player_name, game_id) DO NOTHING"""
+    )
+    db.execute(
+        """INSERT INTO player_game_scores (player_name, game_id, score, last_played)
+           SELECT COALESCE(u.username, ugs.username), ugs.game_id,
+                  SUM(ugs.points), MAX(ugs.finished_at)
+           FROM user_game_stats ugs
+           LEFT JOIN users u ON LOWER(u.username) = LOWER(ugs.username)
+           GROUP BY COALESCE(u.username, ugs.username), ugs.game_id
+           ON CONFLICT (player_name, game_id) DO NOTHING"""
+    )
 
     for game_id, display_name in _GAME_CATALOG:
         db.execute(
@@ -900,56 +937,67 @@ def get_stats(game_id: str = "pedantix") -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Petit cache mémoire : évite un aller-retour réseau vers Supabase à chaque
 # création de joueur / rafraîchissement de score pendant une partie.
-_score_cache: Dict[str, int] = {}
+_score_cache: Dict[Tuple[str, str], int] = {}
 _score_lock = threading.Lock()
 
 
-def get_player_score(player_name: str) -> int:
+def get_player_score(player_name: str, game_id: str = "pedantix") -> int:
     if not player_name:
         return 0
     name = player_name.strip()
+    cache_key = (game_id, name)
     with _score_lock:
-        if name in _score_cache:
-            return _score_cache[name]
+        if cache_key in _score_cache:
+            return _score_cache[cache_key]
     score = 0
     try:
         with DatabaseContext() as db:
-            db.execute("SELECT score FROM player_scores WHERE player_name = ?", (name,))
+            db.execute(
+                "SELECT score FROM player_game_scores WHERE player_name = ? AND game_id = ?",
+                (name, game_id),
+            )
             row = db.fetchone()
             score = int(row["score"]) if row else 0
     except Exception as e:
         logger.warning(f"get_player_score: {e}")
     with _score_lock:
-        _score_cache[name] = score
+        _score_cache[cache_key] = score
     return score
 
 
-def _increment_sync(name: str, points: int):
+def _increment_sync(name: str, points: int, game_id: str = "pedantix"):
     with DatabaseContext() as db:
         db.execute(
-            """INSERT INTO player_scores (player_name, score, wins, games_played, last_played)
-               VALUES (?, ?, 0, 0, CURRENT_TIMESTAMP)
-               ON CONFLICT (player_name) DO UPDATE SET
-                   score = player_scores.score + EXCLUDED.score,
+            """INSERT INTO player_game_scores (player_name, game_id, score, last_played)
+               VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT (player_name, game_id) DO UPDATE SET
+                   score = player_game_scores.score + EXCLUDED.score,
                    last_played = CURRENT_TIMESTAMP""",
-            (name, points),
+            (name, game_id, points),
         )
 
 
-def increment_player_score(player_name: str, points: int = 1) -> int:
+def increment_player_score(
+    player_name: str, points: int = 1, game_id: str = "pedantix",
+) -> int:
     """Met à jour le cache immédiatement et persiste en arrière-plan."""
     if not player_name:
         return 0
     name = player_name.strip()
-    base = get_player_score(name)  # charge la valeur persistée si absente du cache
+    cache_key = (game_id, name)
+    base = get_player_score(name, game_id)  # charge la valeur persistée si absente du cache
     with _score_lock:
         new_score = base + points
-        _score_cache[name] = new_score
-    _enqueue(_increment_sync, name, points)
+        _score_cache[cache_key] = new_score
+    _enqueue(_increment_sync, name, points, game_id)
     return new_score
 
 
-def get_top_player_scores(limit: int = 20) -> List[Dict[str, Any]]:
+def get_top_player_scores(
+    limit: int = 20, game_id: str = "pedantix",
+) -> List[Dict[str, Any]]:
+    if game_id not in {item[0] for item in _GAME_CATALOG}:
+        raise ValueError("Jeu inconnu.")
     try:
         with DatabaseContext() as db:
             db.execute(
@@ -957,12 +1005,14 @@ def get_top_player_scores(limit: int = 20) -> List[Dict[str, Any]]:
                           COALESCE(SUM(ugs.won), 0) AS wins,
                           COUNT(ugs.session_id) AS games_played,
                           ps.last_played
-                   FROM player_scores ps
+                   FROM player_game_scores ps
                    LEFT JOIN user_game_stats ugs
                      ON LOWER(ugs.username) = LOWER(ps.player_name)
+                    AND ugs.game_id = ps.game_id
+                   WHERE ps.game_id = ?
                    GROUP BY ps.player_name, ps.score, ps.last_played
                    ORDER BY ps.score DESC, wins DESC LIMIT ?""",
-                (int(limit),),
+                (game_id, int(limit)),
             )
             return [_jsonable(row) for row in db.fetchall()]
     except Exception as e:
@@ -1055,6 +1105,12 @@ def create_user(username: str, password: str) -> Dict[str, Any]:
                     """INSERT INTO player_scores (player_name, score, wins, games_played, last_played)
                        VALUES (?, 0, 0, 0, CURRENT_TIMESTAMP)
                        ON CONFLICT (player_name) DO NOTHING""",
+                    (name,),
+                )
+                db.execute(
+                    """INSERT INTO player_game_scores (player_name, game_id, score, last_played)
+                       VALUES (?, 'pedantix', 0, CURRENT_TIMESTAMP)
+                       ON CONFLICT (player_name, game_id) DO NOTHING""",
                     (name,),
                 )
             except Exception:
@@ -1202,13 +1258,11 @@ def _record_user_game_finish_sync(
                 return
 
             db.execute(
-                """INSERT INTO player_scores (player_name, score, wins, games_played, last_played)
-                   VALUES (?, 0, ?, 1, CURRENT_TIMESTAMP)
-                   ON CONFLICT (player_name) DO UPDATE SET
-                       wins = player_scores.wins + EXCLUDED.wins,
-                       games_played = player_scores.games_played + 1,
+                """INSERT INTO player_game_scores (player_name, game_id, score, last_played)
+                   VALUES (?, ?, 0, CURRENT_TIMESTAMP)
+                   ON CONFLICT (player_name, game_id) DO UPDATE SET
                        last_played = CURRENT_TIMESTAMP""",
-                (actual_name, int(won)),
+                (actual_name, game_id),
             )
             if row and game_id == "pedantix":
                 db.execute(
@@ -1473,7 +1527,11 @@ def get_user_stats(username: str, game_id: str = "pedantix") -> Dict[str, Any]:
                 (actual_name, game_id),
             )
             game_metrics = _summarize_game_metrics(game_id, db.fetchall())
-            db.execute("SELECT score FROM player_scores WHERE LOWER(player_name) = LOWER(?)", (actual_name,))
+            db.execute(
+                """SELECT score FROM player_game_scores
+                   WHERE LOWER(player_name) = LOWER(?) AND game_id = ?""",
+                (actual_name, game_id),
+            )
             score_row = db.fetchone()
             if game_id == "pedantix":
                 score = int(score_row["score"]) if score_row else int(user_dict.get("score") or 0)

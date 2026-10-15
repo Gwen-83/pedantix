@@ -128,7 +128,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   border: 1px solid rgba(255,255,255,.14);
   border-radius: 16px;
   overflow: hidden;
-  background: #dbeafe;
+  background: #cbd9df;
 }
 .geo-map.geo-map-disabled { pointer-events: none; }
 .geo-panorama-panel { margin: 0 0 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.14); border-radius: 16px; background: #080b12; }
