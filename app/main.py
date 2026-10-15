@@ -55,7 +55,6 @@ from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
 from app.tunnel import tunnel_manager
 from app.antibot import anti_bot_guard
-from app.voxelstrike import router as voxelstrike_router
 
 app = FastAPI(title="Pédantix Local - Concours Multijoueur", version="2.0.0")
 
@@ -151,7 +150,6 @@ if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-app.include_router(voxelstrike_router)
 
 
 def detect_lan_ip() -> str:
