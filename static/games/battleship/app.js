@@ -422,6 +422,7 @@
   }
 
   function enterRoom() {
+    localStorage.setItem('battleship_active_room_id', state.room_id);
     history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
     draftFleet = {};
     updateView();
@@ -562,6 +563,7 @@
     }
   });
   document.getElementById('naval-home-button').addEventListener('click', () => {
+    localStorage.removeItem('battleship_active_room_id');
     window.location.assign('/');
   });
   document.getElementById('naval-orientation').addEventListener('click', () => {
@@ -579,5 +581,7 @@
   if (roomId) {
     roomInput.value = roomId;
     joinRoom(roomId);
+  } else if (localStorage.getItem('battleship_active_room_id')) {
+    joinRoom(localStorage.getItem('battleship_active_room_id'));
   }
 })();

@@ -71,12 +71,16 @@
     pollingTimer = window.setInterval(refreshRoom, 1000);
   }
 
-  function showHome() {
+  function showHome(clearActiveGame = true) {
     stopPolling();
     gameType = null;
     state = null;
     home.hidden = false;
     play.hidden = true;
+    if (clearActiveGame) {
+      localStorage.setItem('cemantix_active_game_mode', 'home');
+      localStorage.removeItem('cemantix_active_room_id');
+    }
     document.getElementById('cemantix-previous-game').hidden =
       !localStorage.getItem('cemantix_solo_game_id');
     history.replaceState(null, '', window.location.pathname);
@@ -363,6 +367,8 @@
       gameType = 'solo';
       difficultySelect.value = state.difficulty || 'moyen';
       localStorage.setItem('cemantix_solo_game_id', state.game_id);
+      localStorage.setItem('cemantix_active_game_mode', 'solo');
+      localStorage.removeItem('cemantix_active_room_id');
       updateView();
       guessInput.focus();
     } catch (error) {
@@ -379,8 +385,9 @@
     try {
       state = await request(`/api/cemantix/solo/${encodeURIComponent(gameId)}?player_id=${encodeURIComponent(playerId)}`);
       gameType = 'solo';
+      localStorage.setItem('cemantix_active_game_mode', 'solo');
+      localStorage.removeItem('cemantix_active_room_id');
       difficultySelect.value = state.difficulty || 'moyen';
-      if (state.status === 'finished') localStorage.removeItem('cemantix_solo_game_id');
       updateView();
     } catch (error) {
       localStorage.removeItem('cemantix_solo_game_id');
@@ -400,6 +407,8 @@
       });
       gameType = 'room';
       difficultySelect.value = state.difficulty || 'moyen';
+      localStorage.setItem('cemantix_active_game_mode', 'room');
+      localStorage.setItem('cemantix_active_room_id', state.room_id);
       history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
       updateView();
     } catch (error) {
@@ -424,6 +433,8 @@
       });
       gameType = 'room';
       difficultySelect.value = state.difficulty || 'moyen';
+      localStorage.setItem('cemantix_active_game_mode', 'room');
+      localStorage.setItem('cemantix_active_room_id', state.room_id);
       history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
       updateView();
     } catch (error) {
@@ -556,7 +567,16 @@
 
   if (params.has('room')) {
     joinRoom(params.get('room'));
+  } else if (localStorage.getItem('cemantix_active_game_mode') === 'room'
+    && localStorage.getItem('cemantix_active_room_id')) {
+    joinRoom(localStorage.getItem('cemantix_active_room_id'));
+  } else if ((localStorage.getItem('cemantix_active_game_mode') === 'solo'
+    || (!localStorage.getItem('cemantix_active_game_mode')
+      && localStorage.getItem('cemantix_solo_game_id')))
+    && localStorage.getItem('cemantix_solo_game_id')) {
+    resumeSolo();
   } else {
-    showHome();
+    localStorage.removeItem('cemantix_active_room_id');
+    showHome(false);
   }
 })();

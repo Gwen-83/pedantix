@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-presence-game="motus">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#111522">
+  <meta name="theme-color" content="#273238">
   <title>Motus — La ludothèque</title>
   <script>
     (() => {
@@ -51,32 +51,16 @@
         <option value="difficile">Difficile · 4 essais</option>
       </select>
       <div class="motus-mode-grid">
+        <div class="shared-mode-switch" role="group" aria-label="Mode de jeu">
+          <button type="button" class="active" data-shared-game-mode="solo" aria-pressed="true">🎯 Solo</button>
+          <button type="button" data-shared-game-mode="multi" aria-pressed="false">🌐 Multijoueur</button>
+        </div>
         <button type="button" id="motus-solo-button" class="motus-mode-card">
           <span class="motus-mode-icon" aria-hidden="true">🎯</span>
           <span><strong>Jouer en solo</strong><small>À votre rythme, avec la difficulté choisie.</small></span>
           <span class="motus-arrow" aria-hidden="true">→</span>
         </button>
-        <div class="motus-mode-card motus-multiplayer-card">
-          <span class="motus-mode-icon" aria-hidden="true">👥</span>
-          <span class="motus-multiplayer-options">
-            <strong>Défier des amis</strong>
-            <small>Le même mot pour tous, chacun sa grille.</small>
-            <span class="motus-room-controls">
-              <button type="button" id="motus-create-room" class="motus-primary-button">Créer un salon</button>
-              <label class="sr-only" for="motus-room-code">Code du salon</label>
-              <input id="motus-room-code" maxlength="6" autocomplete="off" placeholder="Code salon">
-              <button type="button" id="motus-join-room" class="motus-secondary-button">Rejoindre</button>
-            </span>
-          </span>
-        </div>
       </div>
-      <section class="motus-room-browser" aria-labelledby="motus-room-browser-title">
-        <div class="motus-room-browser-heading">
-          <div><h2 id="motus-room-browser-title">Salons publics</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
-          <button type="button" id="motus-refresh-rooms" class="motus-secondary-button">Actualiser</button>
-        </div>
-        <div id="motus-room-directory" class="motus-room-directory" aria-live="polite"></div>
-      </section>
       <p id="motus-home-error" class="motus-error" role="alert" hidden></p>
       <p id="motus-previous-game" class="motus-previous-game" hidden>
         <button type="button" id="motus-resume-solo" class="motus-text-button">Reprendre ma partie solo</button>
@@ -95,17 +79,26 @@
           <h1 id="motus-game-title">Trouvez le mot</h1>
           <p id="motus-hint" class="motus-hint"></p>
         </div>
+        <button type="button" data-shared-lobby-open="motus-lobby" hidden>Ouvrir le salon</button>
         <button type="button" id="motus-home-button" class="motus-secondary-button">Quitter</button>
       </div>
 
-      <div id="motus-lobby" class="motus-lobby" hidden>
-        <p id="motus-lobby-status">En attente de joueurs…</p>
-        <div class="motus-invite-row">
-          <code id="motus-invite-code"></code>
-          <button type="button" id="motus-copy-invite" class="motus-secondary-button">Copier le lien</button>
-        </div>
-        <ul id="motus-player-list" class="motus-player-list"></ul>
-        <button type="button" id="motus-start-game" class="motus-primary-button" hidden>Démarrer la partie</button>
+      <div id="motus-lobby" class="shared-game-lobby motus-lobby" data-shared-game-lobby data-shared-lobby-next="motus-round" hidden>
+        <section class="shared-game-lobby-dialog" role="dialog" aria-modal="true" aria-labelledby="motus-lobby-title" tabindex="-1">
+          <button type="button" class="shared-game-lobby-close" data-shared-lobby-close aria-label="Réduire le salon">×</button>
+          <header class="shared-game-lobby-heading">
+            <p>🔴 Motus · salon multijoueur</p>
+            <h2 id="motus-lobby-title">En attente des joueurs</h2>
+            <p>Partagez le code du salon et retrouvez les participants ici.</p>
+          </header>
+          <p id="motus-lobby-status" role="status" aria-live="polite">En attente de joueurs…</p>
+          <div class="motus-invite-row">
+            <code id="motus-invite-code"></code>
+            <button type="button" id="motus-copy-invite" class="motus-secondary-button">Copier le lien</button>
+          </div>
+          <ul id="motus-player-list" class="motus-player-list" aria-live="polite"></ul>
+          <button type="button" id="motus-start-game" class="motus-primary-button" hidden>Démarrer la partie</button>
+        </section>
       </div>
 
       <div id="motus-round" class="motus-round" hidden>
@@ -124,8 +117,40 @@
     </section>
     <footer>Un mot commun, six essais, à vous de le trouver.</footer>
   </main>
+  <div class="shared-rooms-overlay" data-shared-rooms-modal data-play-target="motus-play" data-home-error-target="motus-home-error" hidden>
+    <section class="shared-rooms-dialog" role="dialog" aria-modal="true" aria-labelledby="motus-rooms-title" tabindex="-1">
+      <button type="button" class="shared-rooms-close" data-shared-modal-close aria-label="Fermer">×</button>
+      <header class="shared-rooms-heading">
+        <p>🔴 Motus · multijoueur</p>
+        <h2 id="motus-rooms-title">Jouer en multijoueur</h2>
+        <p>Créez un salon, rejoignez un ami avec son code ou choisissez une partie publique.</p>
+      </header>
+      <div class="shared-rooms-actions">
+        <section class="shared-room-action">
+          <div><h3>Créer un salon</h3><p>Le même mot pour tous, chacun sa grille.</p></div>
+          <button type="button" id="motus-create-room" class="motus-primary-button">Créer le salon</button>
+        </section>
+        <section class="shared-room-action">
+          <div><h3>Rejoindre avec un code</h3><p>Entrez le code donné par l’hôte.</p></div>
+          <div class="shared-room-join-controls">
+            <label class="sr-only" for="motus-room-code">Code du salon</label>
+            <input id="motus-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+            <button type="button" id="motus-join-room" class="motus-secondary-button">Rejoindre</button>
+          </div>
+        </section>
+      </div>
+      <section class="motus-room-browser" aria-labelledby="motus-room-browser-title">
+        <div class="motus-room-browser-heading">
+          <div><h2 id="motus-room-browser-title">Salons publics</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
+          <button type="button" id="motus-refresh-rooms" class="motus-secondary-button" data-shared-refresh-rooms>Actualiser</button>
+        </div>
+        <div id="motus-room-directory" class="motus-room-directory" aria-live="polite"></div>
+      </section>
+    </section>
+  </div>
   <script src="/static/shared/config.js"></script>
   <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
   <script src="/static/games/motus/app.js"></script>
 </body>
 </html>

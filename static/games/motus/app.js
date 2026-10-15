@@ -75,12 +75,16 @@
     pollingTimer = window.setInterval(refreshRoom, 1800);
   }
 
-  function showHome() {
+  function showHome(clearActiveGame = true) {
     stopPolling();
     gameType = null;
     state = null;
     home.hidden = false;
     play.hidden = true;
+    if (clearActiveGame) {
+      localStorage.setItem('motus_active_game_mode', 'home');
+      localStorage.removeItem('motus_active_room_id');
+    }
     const hasSavedGame = !!localStorage.getItem('motus_solo_game_id');
     document.getElementById('motus-previous-game').hidden = !hasSavedGame;
     history.replaceState(null, '', window.location.pathname);
@@ -324,10 +328,10 @@
 
   function nextEditableIndex(startIndex) {
     for (let index = Math.max(0, startIndex); index < entry.length; index += 1) {
-      if (!lockedLetters[index] && !entry[index]) return index;
+      if (index > 0 && !entry[index]) return index;
     }
-    for (let index = 0; index < entry.length; index += 1) {
-      if (!lockedLetters[index] && !entry[index]) return index;
+    for (let index = 1; index < Math.min(startIndex, entry.length); index += 1) {
+      if (index > 0 && !entry[index]) return index;
     }
     return entry.length;
   }
@@ -346,17 +350,16 @@
     if (!letters) return;
     if (start !== end) {
       for (let index = start; index < end; index += 1) {
-        if (!lockedLetters[index]) entry[index] = '';
+        if (index > 0) entry[index] = '';
       }
     }
-    let nextIndex = start;
+    let index = Math.max(start, 1);
     for (const letter of letters) {
-      const index = nextEditableIndex(nextIndex);
       if (index >= entry.length) break;
       entry[index] = letter;
-      nextIndex = index + 1;
+      index += 1;
     }
-    updateEntry(nextEditableIndex(nextIndex));
+    updateEntry(nextEditableIndex(index));
   }
 
   function deleteEntryText(start, end, direction) {
@@ -364,7 +367,7 @@
     let nextIndex = start;
     if (start !== end) {
       for (let index = start; index < end; index += 1) {
-        if (!lockedLetters[index]) {
+        if (index > 0) {
           entry[index] = '';
           changed = true;
         }
@@ -374,7 +377,7 @@
       while (
         index >= 0
         && index < entry.length
-        && (lockedLetters[index] || !entry[index])
+        && (index === 0 || !entry[index])
       ) {
         index += direction;
       }
@@ -421,6 +424,8 @@
       gameType = 'solo';
       renderedGuesses = '';
       localStorage.setItem('motus_solo_game_id', state.game_id);
+      localStorage.setItem('motus_active_game_mode', 'solo');
+      localStorage.removeItem('motus_active_room_id');
       updateView();
       guessInput.focus();
     } catch (error) {
@@ -437,6 +442,8 @@
     try {
       state = await request(`/api/motus/solo/${encodeURIComponent(gameId)}?player_id=${encodeURIComponent(playerId)}`);
       gameType = 'solo';
+      localStorage.setItem('motus_active_game_mode', 'solo');
+      localStorage.removeItem('motus_active_room_id');
       difficultySelect.value = state.difficulty || 'moyen';
       renderedGuesses = '';
       updateView();
@@ -458,6 +465,8 @@
       });
       gameType = 'room';
       renderedGuesses = '';
+      localStorage.setItem('motus_active_game_mode', 'room');
+      localStorage.setItem('motus_active_room_id', state.room_id);
       history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
       updateView();
       startPolling();
@@ -482,6 +491,8 @@
         player_name: playerName,
       });
       gameType = 'room';
+      localStorage.setItem('motus_active_game_mode', 'room');
+      localStorage.setItem('motus_active_room_id', state.room_id);
       difficultySelect.value = state.difficulty || 'moyen';
       renderedGuesses = '';
       history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
@@ -629,7 +640,16 @@
 
   if (params.has('room')) {
     joinRoom(params.get('room'));
+  } else if (localStorage.getItem('motus_active_game_mode') === 'room'
+    && localStorage.getItem('motus_active_room_id')) {
+    joinRoom(localStorage.getItem('motus_active_room_id'));
+  } else if ((localStorage.getItem('motus_active_game_mode') === 'solo'
+    || (!localStorage.getItem('motus_active_game_mode')
+      && localStorage.getItem('motus_solo_game_id')))
+    && localStorage.getItem('motus_solo_game_id')) {
+    resumeSolo();
   } else {
-    showHome();
+    localStorage.removeItem('motus_active_room_id');
+    showHome(false);
   }
 })();

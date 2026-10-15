@@ -2,6 +2,8 @@
 Couche base de données de Pédantix.
 
 - Supabase (PostgreSQL) si DATABASE_URL / SUPABASE_DB_URL est défini, sinon SQLite local.
+- game_sessions décrit les sessions communes; user_game_stats conserve un résultat par joueur et par jeu.
+- Les anciennes lignes restent en place et sont migrées vers game_id='pedantix'.
 - Pool de connexions PostgreSQL (évite une connexion TCP+SSL par requête).
 - Les écritures "non critiques" (historique, stats) passent par une file d'attente
   traitée par un thread : elles ne bloquent JAMAIS la boucle asynchrone du jeu.
@@ -208,10 +210,27 @@ def _jsonable(row: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _user_game_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    result = _jsonable(row)
+    try:
+        result["metrics"] = json.loads(result.pop("metrics_json", "{}"))
+    except (TypeError, json.JSONDecodeError):
+        result["metrics"] = {}
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Schéma
 # ---------------------------------------------------------------------------
 _SCHEMA_PG = [
+    """CREATE TABLE IF NOT EXISTS game_catalog (
+        game_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1)""",
+    """CREATE TABLE IF NOT EXISTS game_sessions (
+        session_id TEXT PRIMARY KEY, game_id TEXT NOT NULL, mode TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '', difficulty TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        finished_at TIMESTAMPTZ)""",
     """CREATE TABLE IF NOT EXISTS article_cache (
         title TEXT PRIMARY KEY, url TEXT, image TEXT, paragraphs_json TEXT, category TEXT,
         cached_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
@@ -237,7 +256,8 @@ _SCHEMA_PG = [
         last_login TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
     """CREATE TABLE IF NOT EXISTS user_game_stats (
         id BIGSERIAL PRIMARY KEY,
-        username TEXT NOT NULL, session_id TEXT NOT NULL, mode TEXT NOT NULL,
+        username TEXT NOT NULL, session_id TEXT NOT NULL, game_id TEXT NOT NULL DEFAULT 'pedantix',
+        mode TEXT NOT NULL, difficulty TEXT, metrics_json TEXT NOT NULL DEFAULT '{}',
         title TEXT NOT NULL, won INTEGER NOT NULL DEFAULT 0, surrendered INTEGER NOT NULL DEFAULT 0,
         attempts INTEGER NOT NULL DEFAULT 0, duration_seconds INTEGER NOT NULL DEFAULT 0,
         points INTEGER NOT NULL DEFAULT 0, revealed_words INTEGER NOT NULL DEFAULT 0,
@@ -251,6 +271,8 @@ _SCHEMA_PG = [
         user_identifier TEXT NOT NULL,
         article_title TEXT NOT NULL,
         played_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS geoguessr_google_usage (
+        month TEXT PRIMARY KEY, event_count INTEGER NOT NULL DEFAULT 0)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_games_finished ON games(finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_article_category ON article_cache(category)",
@@ -261,6 +283,14 @@ _SCHEMA_PG = [
 ]
 
 _SCHEMA_SQLITE = [
+    """CREATE TABLE IF NOT EXISTS game_catalog (
+        game_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1)""",
+    """CREATE TABLE IF NOT EXISTS game_sessions (
+        session_id TEXT PRIMARY KEY, game_id TEXT NOT NULL, mode TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '', difficulty TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        finished_at TIMESTAMP)""",
     """CREATE TABLE IF NOT EXISTS article_cache (
         title TEXT PRIMARY KEY, url TEXT, image TEXT, paragraphs_json TEXT, category TEXT,
         cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
@@ -284,7 +314,8 @@ _SCHEMA_SQLITE = [
         last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
     """CREATE TABLE IF NOT EXISTS user_game_stats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL, session_id TEXT NOT NULL, mode TEXT NOT NULL,
+        username TEXT NOT NULL, session_id TEXT NOT NULL, game_id TEXT NOT NULL DEFAULT 'pedantix',
+        mode TEXT NOT NULL, difficulty TEXT, metrics_json TEXT NOT NULL DEFAULT '{}',
         title TEXT NOT NULL, won INTEGER NOT NULL DEFAULT 0, surrendered INTEGER NOT NULL DEFAULT 0,
         attempts INTEGER NOT NULL DEFAULT 0, duration_seconds INTEGER NOT NULL DEFAULT 0,
         points INTEGER NOT NULL DEFAULT 0, revealed_words INTEGER NOT NULL DEFAULT 0,
@@ -298,12 +329,73 @@ _SCHEMA_SQLITE = [
         user_identifier TEXT NOT NULL,
         article_title TEXT NOT NULL,
         played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS geoguessr_google_usage (
+        month TEXT PRIMARY KEY, event_count INTEGER NOT NULL DEFAULT 0)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
     "CREATE INDEX IF NOT EXISTS idx_user_game_stats_user_finished ON user_game_stats(username, finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_lookup ON user_played_articles(user_identifier, played_at)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_title ON user_played_articles(article_title)",
 ]
+
+_GAME_CATALOG = (
+    ("pedantix", "Pédantix"),
+    ("motus", "Motus"),
+    ("cemantix", "Cémantix"),
+    ("sudoku", "Sudoku"),
+    ("battleship", "Bataille navale"),
+    ("geoguessr", "GeoGuessr"),
+)
+
+
+def _ensure_column(db: DatabaseContext, table: str, column: str, definition: str) -> None:
+    if db.is_pg:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
+        return
+
+    db.execute(f"PRAGMA table_info({table})")
+    if column not in {row["name"] for row in db.fetchall()}:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _migrate_multigame_schema(db: DatabaseContext) -> None:
+    _ensure_column(db, "games", "game_id", "TEXT NOT NULL DEFAULT 'pedantix'")
+    _ensure_column(db, "user_game_stats", "game_id", "TEXT NOT NULL DEFAULT 'pedantix'")
+    _ensure_column(db, "user_game_stats", "difficulty", "TEXT")
+    _ensure_column(db, "user_game_stats", "metrics_json", "TEXT NOT NULL DEFAULT '{}'")
+
+    for game_id, display_name in _GAME_CATALOG:
+        db.execute(
+            """INSERT INTO game_catalog (game_id, display_name, enabled)
+               VALUES (?, ?, 1) ON CONFLICT (game_id) DO NOTHING""",
+            (game_id, display_name),
+        )
+
+    db.execute(
+        """INSERT INTO game_sessions
+               (session_id, game_id, mode, title, created_at, finished_at)
+           SELECT session_id, 'pedantix', COALESCE(mode, 'solo'), COALESCE(title, ''),
+                  created_at, finished_at
+           FROM games
+           WHERE session_id NOT IN (SELECT session_id FROM game_sessions)"""
+    )
+    db.execute(
+        """INSERT INTO game_sessions
+               (session_id, game_id, mode, title, difficulty, created_at, finished_at)
+           SELECT ugs.session_id, ugs.game_id, ugs.mode, ugs.title, ugs.difficulty,
+                  MIN(ugs.finished_at), MAX(ugs.finished_at)
+           FROM user_game_stats ugs
+           WHERE ugs.session_id NOT IN (SELECT session_id FROM game_sessions)
+           GROUP BY ugs.session_id, ugs.game_id, ugs.mode, ugs.title, ugs.difficulty"""
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_game_stats_game_user_finished "
+        "ON user_game_stats(game_id, username, finished_at DESC)"
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_game_sessions_game_finished "
+        "ON game_sessions(game_id, finished_at DESC)"
+    )
 
 
 def init_db() -> bool:
@@ -312,6 +404,7 @@ def init_db() -> bool:
         with DatabaseContext() as db:
             for stmt in (_SCHEMA_PG if db.is_pg else _SCHEMA_SQLITE):
                 db.execute(stmt)
+            _migrate_multigame_schema(db)
             logger.info(f"Base de données prête ({'Supabase/PostgreSQL' if db.is_pg else 'SQLite'})")
         return True
     except Exception as e:
@@ -321,6 +414,69 @@ def init_db() -> bool:
 
 def db_backend() -> str:
     return "postgres" if _use_pg() else "sqlite"
+
+
+def _geoguessr_google_usage_month() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m")
+
+
+def get_geoguessr_google_usage() -> int:
+    if IS_POSTGRES and not _use_pg():
+        raise RuntimeError("La base PostgreSQL GeoGuessr est indisponible.")
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                "SELECT event_count FROM geoguessr_google_usage WHERE month = ?",
+                (_geoguessr_google_usage_month(),),
+            )
+            row = db.fetchone()
+            return int(row["event_count"]) if row else 0
+    except Exception as exc:
+        logger.error("Lecture du compteur Google Street View impossible : %s", exc)
+        raise RuntimeError("Impossible de vérifier le quota Google Street View.") from exc
+
+
+def reserve_geoguessr_google_usage(event_count: int, monthly_limit: int) -> bool:
+    if event_count <= 0 or monthly_limit <= 0:
+        raise ValueError("Le nombre d'événements et la limite doivent être positifs.")
+    if event_count > monthly_limit:
+        return False
+    if IS_POSTGRES and not _use_pg():
+        raise RuntimeError("La base PostgreSQL GeoGuessr est indisponible.")
+
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                """INSERT INTO geoguessr_google_usage (month, event_count)
+                   VALUES (?, ?)
+                   ON CONFLICT (month) DO UPDATE
+                   SET event_count = geoguessr_google_usage.event_count + ?
+                   WHERE geoguessr_google_usage.event_count + ? <= ?
+                   RETURNING event_count""",
+                (
+                    _geoguessr_google_usage_month(),
+                    event_count,
+                    event_count,
+                    event_count,
+                    monthly_limit,
+                ),
+            )
+            return db.fetchone() is not None
+    except Exception as exc:
+        logger.error("Réservation du quota Google Street View impossible : %s", exc)
+        raise RuntimeError("Impossible de réserver le quota Google Street View.") from exc
+
+
+def get_game_catalog() -> List[Dict[str, Any]]:
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                "SELECT game_id, display_name, enabled FROM game_catalog ORDER BY game_id"
+            )
+            return [_jsonable(row) for row in db.fetchall()]
+    except Exception as e:
+        logger.warning(f"get_game_catalog: {e}")
+        raise RuntimeError("Impossible de charger le catalogue des jeux.") from e
 
 
 def ping_db() -> bool:
@@ -509,6 +665,52 @@ def _record_game_start_sync(session_id, seed, title, url, image, mode, category,
                    total_words = EXCLUDED.total_words""",
             (session_id, seed, title, url, image, mode, category, total_words),
         )
+        db.execute(
+                   """INSERT INTO game_sessions (session_id, game_id, mode, title, metadata_json)
+                      VALUES (?, 'pedantix', ?, ?, ?)
+                      ON CONFLICT (session_id) DO UPDATE SET
+                          mode = EXCLUDED.mode, title = EXCLUDED.title,
+                          metadata_json = EXCLUDED.metadata_json""",
+                   (session_id, mode, title, json.dumps({"category": category}, ensure_ascii=False)),
+        )
+
+
+def _record_multigame_session_start_sync(
+    session_id: str,
+    game_id: str,
+    mode: str,
+    title: str,
+    difficulty: Optional[str],
+):
+    with DatabaseContext() as db:
+        db.execute(
+            """INSERT INTO game_sessions
+                   (session_id, game_id, mode, title, difficulty)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT (session_id) DO UPDATE SET
+                   game_id = EXCLUDED.game_id, mode = EXCLUDED.mode,
+                   title = EXCLUDED.title, difficulty = EXCLUDED.difficulty""",
+            (session_id, game_id, mode, title, difficulty),
+        )
+
+
+def record_multigame_session_start(
+    session_id: str,
+    game_id: str,
+    mode: str,
+    title: str,
+    difficulty: Optional[str] = None,
+):
+    if game_id not in {item[0] for item in _GAME_CATALOG} - {"pedantix"}:
+        raise ValueError("Jeu inconnu ou non pris en charge.")
+    _enqueue(
+        _record_multigame_session_start_sync,
+        session_id,
+        game_id,
+        mode if mode in ("solo", "multiplayer", "team") else "solo",
+        title,
+        difficulty,
+    )
 
 
 def record_game_start(session_id: str, seed: str, title: str, url: str, image: str,
@@ -536,6 +738,11 @@ def _record_game_finish_sync(session_id, won, surrendered, attempts, revealed_wo
                    time_seconds = ?, finished_at = CURRENT_TIMESTAMP WHERE session_id = ?""",
             (1 if won else 0, 1 if surrendered else 0, attempts, revealed_words, elapsed_time, session_id),
         )
+        db.execute(
+            """UPDATE game_sessions SET finished_at = CURRENT_TIMESTAMP
+               WHERE session_id = ?""",
+            (session_id,),
+        )
 
 
 def record_game_finish(session_id: str, won: bool, surrendered: bool, attempts: int,
@@ -543,15 +750,93 @@ def record_game_finish(session_id: str, won: bool, surrendered: bool, attempts: 
     _enqueue(_record_game_finish_sync, session_id, won, surrendered, attempts, revealed_words, elapsed_time)
 
 
-def get_stats() -> Dict[str, Any]:
+def get_stats(game_id: str = "pedantix") -> Dict[str, Any]:
     empty = {
         "total_games": 0, "finished_games": 0, "won_games": 0, "win_rate": 0,
         "avg_attempts": 0, "best_score": 0, "recent_games": [],
         "modes": {"solo": _empty_mode_stats(), "multiplayer": _empty_mode_stats()},
     }
+    if game_id not in {item[0] for item in _GAME_CATALOG}:
+        raise ValueError("Jeu inconnu.")
     try:
         with DatabaseContext() as db:
-            db.execute("SELECT COUNT(*) AS total_games FROM games")
+            if game_id != "pedantix":
+                db.execute(
+                    "SELECT COUNT(*) AS total_games FROM game_sessions WHERE game_id = ?",
+                    (game_id,),
+                )
+                total_games = int(db.fetchone()["total_games"] or 0)
+                db.execute(
+                    """SELECT COUNT(DISTINCT session_id) AS finished_games,
+                              COUNT(DISTINCT CASE WHEN won = 1 THEN session_id END) AS won_games,
+                              AVG(attempts) AS avg_attempts,
+                              AVG(CASE WHEN won = 1 THEN attempts END) AS avg_winning_attempts,
+                              MIN(CASE WHEN won = 1 AND attempts > 0 THEN attempts END) AS best_score,
+                              AVG(duration_seconds) AS avg_time_seconds,
+                              AVG(CASE WHEN total_words > 0
+                                       THEN 100.0 * revealed_words / total_words END) AS avg_revealed_pct,
+                              SUM(points) AS points
+                       FROM user_game_stats
+                       WHERE game_id = ?""",
+                    (game_id,),
+                )
+                overall = _format_mode_stats(db.fetchone())
+                db.execute(
+                    """SELECT CASE WHEN mode IN ('multiplayer', 'team') THEN 'multiplayer'
+                                   ELSE 'solo' END AS game_type,
+                              COUNT(DISTINCT session_id) AS finished_games,
+                              COUNT(DISTINCT CASE WHEN won = 1 THEN session_id END) AS won_games,
+                              AVG(attempts) AS avg_attempts,
+                              AVG(CASE WHEN won = 1 THEN attempts END) AS avg_winning_attempts,
+                              MIN(CASE WHEN won = 1 AND attempts > 0 THEN attempts END) AS best_score,
+                              AVG(duration_seconds) AS avg_time_seconds,
+                              AVG(CASE WHEN total_words > 0
+                                       THEN 100.0 * revealed_words / total_words END) AS avg_revealed_pct,
+                              SUM(points) AS points
+                       FROM user_game_stats
+                       WHERE game_id = ?
+                       GROUP BY game_type""",
+                    (game_id,),
+                )
+                mode_stats = {"solo": _empty_mode_stats(), "multiplayer": _empty_mode_stats()}
+                for row in db.fetchall():
+                    mode_stats[row["game_type"]] = _format_mode_stats(row)
+                db.execute(
+                    """SELECT difficulty, COUNT(DISTINCT session_id) AS games_played,
+                              COUNT(DISTINCT CASE WHEN won = 1 THEN session_id END) AS wins
+                       FROM user_game_stats WHERE game_id = ?
+                       GROUP BY difficulty ORDER BY difficulty""",
+                    (game_id,),
+                )
+                difficulty_breakdown = {
+                    row["difficulty"] or "non précisée": {
+                        "games_played": int(row["games_played"] or 0),
+                        "wins": int(row["wins"] or 0),
+                    }
+                    for row in db.fetchall()
+                }
+                db.execute(
+                    """SELECT game_id, session_id, title, mode, difficulty, won, surrendered,
+                              attempts, duration_seconds, points, metrics_json, finished_at
+                       FROM user_game_stats WHERE game_id = ?
+                       ORDER BY finished_at DESC, id DESC LIMIT 10""",
+                    (game_id,),
+                )
+                recent = [_user_game_row(row) for row in db.fetchall()]
+                return {
+                    "game_id": game_id,
+                    "total_games": total_games,
+                    "finished_games": overall["games_played"],
+                    "won_games": overall["wins"],
+                    "win_rate": overall["win_rate"],
+                    "avg_attempts": overall["avg_attempts"] or 0,
+                    "best_score": overall["best_attempts"] or 0,
+                    "recent_games": recent,
+                    "modes": mode_stats,
+                    "difficulty_breakdown": difficulty_breakdown,
+                }
+
+            db.execute("SELECT COUNT(*) AS total_games FROM games WHERE game_id = ?", (game_id,))
             total_games = (db.fetchone() or {"total_games": 0})["total_games"]
 
             db.execute(
@@ -563,7 +848,8 @@ def get_stats() -> Dict[str, Any]:
                        MIN(CASE WHEN won = 1 AND attempts_count > 0 THEN attempts_count END) AS best_score,
                        AVG(time_seconds) AS avg_time_seconds,
                        AVG(CASE WHEN total_words > 0 THEN 100.0 * revealed_words / total_words END) AS avg_revealed_pct
-                   FROM games WHERE finished_at IS NOT NULL"""
+                   FROM games WHERE game_id = ? AND finished_at IS NOT NULL""",
+                (game_id,),
             )
             overall = _format_mode_stats(db.fetchone())
 
@@ -577,19 +863,24 @@ def get_stats() -> Dict[str, Any]:
                        MIN(CASE WHEN won = 1 AND attempts_count > 0 THEN attempts_count END) AS best_score,
                        AVG(time_seconds) AS avg_time_seconds,
                        AVG(CASE WHEN total_words > 0 THEN 100.0 * revealed_words / total_words END) AS avg_revealed_pct
-                   FROM games WHERE finished_at IS NOT NULL GROUP BY game_type"""
+                   FROM games WHERE game_id = ? AND finished_at IS NOT NULL GROUP BY game_type""",
+                (game_id,),
             )
             mode_stats = {"solo": _empty_mode_stats(), "multiplayer": _empty_mode_stats()}
             for row in db.fetchall():
                 mode_stats[row["game_type"]] = _format_mode_stats(row)
 
             db.execute(
-                """SELECT title, mode, category, won, surrendered, attempts_count, time_seconds, finished_at
-                   FROM games WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 10"""
+                """SELECT game_id, title, mode, category, won, surrendered, attempts_count,
+                          time_seconds, finished_at
+                   FROM games WHERE game_id = ? AND finished_at IS NOT NULL
+                   ORDER BY finished_at DESC LIMIT 10""",
+                (game_id,),
             )
             recent = [_jsonable(row) for row in db.fetchall()]
 
             return {
+                "game_id": game_id,
                 "total_games": total_games,
                 "finished_games": overall["games_played"],
                 "won_games": overall["wins"],
@@ -867,6 +1158,9 @@ def _record_user_game_finish_sync(
     duration_seconds: int,
     revealed_words: int,
     total_words: int,
+    game_id: str = "pedantix",
+    difficulty: Optional[str] = None,
+    metrics: Optional[Dict[str, Any]] = None,
 ):
     if not username:
         return
@@ -876,15 +1170,31 @@ def _record_user_game_finish_sync(
             db.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(?)", (name,))
             row = db.fetchone()
             actual_name = row["username"] if row else name
+            metrics_json = json.dumps(metrics or {}, ensure_ascii=False)
+            db.execute(
+                """INSERT INTO game_sessions
+                       (session_id, game_id, mode, title, difficulty, metadata_json, finished_at)
+                   VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                   ON CONFLICT (session_id) DO UPDATE SET
+                       game_id = EXCLUDED.game_id, mode = EXCLUDED.mode,
+                       title = EXCLUDED.title, difficulty = EXCLUDED.difficulty,
+                       finished_at = COALESCE(game_sessions.finished_at, EXCLUDED.finished_at)""",
+                (
+                    session_id, game_id, mode, title, difficulty,
+                    "{}",
+                ),
+            )
             cursor = db.execute(
                 """INSERT INTO user_game_stats
-                       (username, session_id, mode, title, won, surrendered, attempts,
-                        duration_seconds, points, revealed_words, total_words)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       (username, session_id, game_id, mode, difficulty, metrics_json,
+                        title, won, surrendered, attempts, duration_seconds, points,
+                        revealed_words, total_words)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT (username, session_id) DO NOTHING""",
                 (
-                    actual_name, session_id, mode, title, int(won), int(surrendered),
-                    max(0, attempts), max(0, duration_seconds), max(0, points),
+                    actual_name, session_id, game_id, mode, difficulty, metrics_json,
+                    title, int(won), int(surrendered), max(0, attempts),
+                    max(0, duration_seconds), max(0, points),
                     max(0, revealed_words), max(0, total_words),
                 ),
             )
@@ -900,7 +1210,7 @@ def _record_user_game_finish_sync(
                        last_played = CURRENT_TIMESTAMP""",
                 (actual_name, int(won)),
             )
-            if row:
+            if row and game_id == "pedantix":
                 db.execute(
                     """UPDATE users SET
                            games_played = games_played + 1,
@@ -939,22 +1249,31 @@ def record_user_game_finish(
     duration_seconds: int = 0,
     revealed_words: int = 0,
     total_words: int = 0,
+    game_id: str = "pedantix",
+    difficulty: Optional[str] = None,
+    metrics: Optional[Dict[str, Any]] = None,
 ):
-    if username:
-        _enqueue(
-            _record_user_game_finish_sync,
-            username.strip(),
-            won,
-            attempts,
-            points,
-            session_id or str(uuid.uuid4()),
-            mode if mode in ("solo", "multiplayer", "team") else "solo",
-            title,
-            surrendered,
-            duration_seconds,
-            revealed_words,
-            total_words,
-        )
+    if not username:
+        return
+    if game_id not in {item[0] for item in _GAME_CATALOG}:
+        raise ValueError("Jeu inconnu.")
+    _enqueue(
+        _record_user_game_finish_sync,
+        username.strip(),
+        won,
+        attempts,
+        points,
+        session_id or str(uuid.uuid4()),
+        mode if mode in ("solo", "multiplayer", "team") else "solo",
+        title,
+        surrendered,
+        duration_seconds,
+        revealed_words,
+        total_words,
+        game_id,
+        difficulty,
+        metrics,
+    )
 
 
 def _format_mode_stats(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -993,9 +1312,65 @@ def _empty_mode_stats() -> Dict[str, Any]:
     }
 
 
-def get_user_stats(username: str) -> Dict[str, Any]:
+def _summarize_game_metrics(game_id: str, metric_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    metrics = []
+    for row in metric_rows:
+        try:
+            value = row["metrics_json"]
+            metrics.append(json.loads(value) if value else {})
+        except (TypeError, json.JSONDecodeError):
+            metrics.append({})
+
+    def numbers(key: str) -> List[float]:
+        return [
+            float(value[key])
+            for value in metrics
+            if isinstance(value.get(key), (int, float))
+        ]
+
+    if game_id == "cemantix":
+        similarity = numbers("best_similarity")
+        return {
+            "avg_best_similarity": round(sum(similarity) / len(similarity), 1) if similarity else None,
+            "best_similarity": round(max(similarity), 1) if similarity else None,
+        }
+    if game_id == "sudoku":
+        mistakes = numbers("mistakes")
+        return {
+            "avg_mistakes": round(sum(mistakes) / len(mistakes), 1) if mistakes else None,
+            "solved_games": sum(value.get("finish_reason") == "solved" for value in metrics),
+        }
+    if game_id == "battleship":
+        attacks = numbers("attacks")
+        hits = numbers("hits")
+        sunk = numbers("ships_sunk")
+        total_attacks = sum(attacks)
+        return {
+            "avg_attacks": round(total_attacks / len(attacks), 1) if attacks else None,
+            "hit_rate": round(sum(hits) / total_attacks * 100, 1) if total_attacks else 0.0,
+            "avg_ships_sunk": round(sum(sunk) / len(sunk), 1) if sunk else None,
+        }
+    if game_id == "motus":
+        scores = numbers("score")
+        return {
+            "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+            "best_score": max(scores) if scores else None,
+        }
+    if game_id == "geoguessr":
+        scores = numbers("score")
+        distances = numbers("average_distance_km")
+        return {
+            "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+            "best_score": max(scores) if scores else None,
+            "avg_distance_km": round(sum(distances) / len(distances), 1) if distances else None,
+        }
+    return {}
+
+
+def get_user_stats(username: str, game_id: str = "pedantix") -> Dict[str, Any]:
     empty = {
         "username": username or "",
+        "game_id": game_id,
         "games_played": 0,
         "wins": 0,
         "win_rate": 0.0,
@@ -1007,12 +1382,16 @@ def get_user_stats(username: str) -> Dict[str, Any]:
         "avg_revealed_pct": None,
         "solo": _empty_mode_stats(),
         "multiplayer": _empty_mode_stats(),
+        "difficulty_breakdown": {},
+        "game_metrics": {},
         "favorite_words": [],
         "recent_games": [],
         "created_at": None,
     }
     if not username:
         return empty
+    if game_id not in {item[0] for item in _GAME_CATALOG}:
+        raise ValueError("Jeu inconnu.")
     name = username.strip()
     try:
         with DatabaseContext() as db:
@@ -1032,8 +1411,8 @@ def get_user_stats(username: str) -> Dict[str, Any]:
                        AVG(duration_seconds) AS avg_time_seconds,
                        AVG(CASE WHEN total_words > 0 THEN 100.0 * revealed_words / total_words END) AS avg_revealed_pct
                    FROM user_game_stats
-                   WHERE LOWER(username) = LOWER(?)""",
-                (actual_name,),
+                   WHERE LOWER(username) = LOWER(?) AND game_id = ?""",
+                (actual_name, game_id),
             )
             totals = _format_mode_stats(db.fetchone())
 
@@ -1050,36 +1429,66 @@ def get_user_stats(username: str) -> Dict[str, Any]:
                        AVG(CASE WHEN total_words > 0 THEN 100.0 * revealed_words / total_words END) AS avg_revealed_pct
                    FROM user_game_stats
                    WHERE LOWER(username) = LOWER(?)
+                     AND game_id = ?
                    GROUP BY game_type""",
-                (actual_name,),
+                (actual_name, game_id),
             )
             mode_stats = {"solo": _empty_mode_stats(), "multiplayer": _empty_mode_stats()}
             for stats_row in db.fetchall():
                 mode_stats[stats_row["game_type"]] = _format_mode_stats(stats_row)
 
             db.execute(
-                "SELECT word, count FROM user_words WHERE LOWER(username) = LOWER(?) ORDER BY count DESC, word ASC LIMIT 8",
-                (actual_name,),
+                """SELECT word, count FROM user_words
+                   WHERE LOWER(username) = LOWER(?) AND ? = 'pedantix'
+                   ORDER BY count DESC, word ASC LIMIT 8""",
+                (actual_name, game_id),
             )
             fav_words = [{"word": r["word"], "count": int(r["count"])} for r in db.fetchall()]
             db.execute(
-                """SELECT mode, title, won, surrendered, attempts, duration_seconds, points, finished_at
+                """SELECT game_id, mode, difficulty, title, won, surrendered, attempts,
+                          duration_seconds, points, metrics_json, finished_at
                    FROM user_game_stats
-                   WHERE LOWER(username) = LOWER(?)
+                   WHERE LOWER(username) = LOWER(?) AND game_id = ?
                    ORDER BY finished_at DESC, id DESC LIMIT 15""",
-                (actual_name,),
+                (actual_name, game_id),
             )
-            recent_games = [_jsonable(row) for row in db.fetchall()]
+            recent_games = [_user_game_row(row) for row in db.fetchall()]
+            db.execute(
+                """SELECT difficulty, COUNT(*) AS games_played, SUM(won) AS wins
+                   FROM user_game_stats
+                   WHERE LOWER(username) = LOWER(?) AND game_id = ?
+                   GROUP BY difficulty ORDER BY difficulty""",
+                (actual_name, game_id),
+            )
+            difficulty_breakdown = {
+                row["difficulty"] or "non précisée": {
+                    "games_played": int(row["games_played"] or 0),
+                    "wins": int(row["wins"] or 0),
+                }
+                for row in db.fetchall()
+            }
+            db.execute(
+                """SELECT metrics_json FROM user_game_stats
+                   WHERE LOWER(username) = LOWER(?) AND game_id = ?""",
+                (actual_name, game_id),
+            )
+            game_metrics = _summarize_game_metrics(game_id, db.fetchall())
             db.execute("SELECT score FROM player_scores WHERE LOWER(player_name) = LOWER(?)", (actual_name,))
             score_row = db.fetchone()
-            score = int(score_row["score"]) if score_row else int(user_dict.get("score") or 0)
+            if game_id == "pedantix":
+                score = int(score_row["score"]) if score_row else int(user_dict.get("score") or 0)
+            else:
+                score = totals["points"]
 
             return {
                 "username": user_dict.get("username", actual_name),
+                "game_id": game_id,
                 **totals,
                 "score": score,
                 "solo": mode_stats["solo"],
                 "multiplayer": mode_stats["multiplayer"],
+                "difficulty_breakdown": difficulty_breakdown,
+                "game_metrics": game_metrics,
                 "favorite_words": fav_words,
                 "recent_games": recent_games,
                 "created_at": user_dict.get("created_at"),

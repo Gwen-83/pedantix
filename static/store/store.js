@@ -24,6 +24,7 @@
       || launchTarget.searchParams.get('game') === 'cemantix'
       || launchTarget.searchParams.get('game') === 'battleship'
       || launchTarget.searchParams.get('game') === 'sudoku'
+      || launchTarget.searchParams.get('game') === 'geoguessr'
       || launchTarget.searchParams.has('assist')
       || launchTarget.searchParams.has('room')
       || launchTarget.searchParams.get('mode') === 'solo'
@@ -35,12 +36,13 @@
       cemantix: '/games/cemantix/',
       battleship: '/games/battleship/',
       sudoku: '/games/sudoku/',
+      geoguessr: '/games/geoguessr/',
     }[launchTarget.searchParams.get('game')] || '/games/pedantix/';
     launchTarget.searchParams.delete('game');
   }
   const safeLaunchTarget = launchTarget
     && launchTarget.origin === window.location.origin
-    && ['/games/pedantix/', '/games/motus/', '/games/cemantix/', '/games/battleship/', '/games/sudoku/'].includes(launchTarget.pathname)
+    && ['/games/pedantix/', '/games/motus/', '/games/cemantix/', '/games/battleship/', '/games/sudoku/', '/games/geoguessr/'].includes(launchTarget.pathname)
     ? launchTarget
     : null;
   let pendingLaunch = params.get('login') === '1' && !!safeLaunchTarget;

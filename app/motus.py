@@ -174,6 +174,7 @@ class MotusRoom:
     difficulty: str = "moyen"
     players: Dict[str, MotusPlayer] = field(default_factory=dict)
     status: str = "lobby"
+    started_at: Optional[float] = None
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self, player_id: str) -> Dict[str, Any]:
@@ -333,6 +334,7 @@ class MotusManager:
             if len(room.players) < 2:
                 raise ValueError("Il faut au moins deux joueurs pour démarrer.")
             room.status = "playing"
+            room.started_at = time.time()
             return room
 
     def guess_room(self, room_id: str, player_id: str, guess: str) -> tuple[MotusRoom, Dict[str, Any]]:

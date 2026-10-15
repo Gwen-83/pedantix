@@ -183,6 +183,7 @@ class SudokuGame:
     status: str = "playing"
     finish_reason: Optional[str] = None
     created_at: float = field(default_factory=time.time)
+    started_at: Optional[float] = None
 
     def to_dict(self) -> Dict:
         return {
@@ -213,6 +214,7 @@ class SudokuRoom:
     first_solved_at: Optional[float] = None
     deadline_at: Optional[float] = None
     finish_reason: Optional[str] = None
+    created_at: float = field(default_factory=time.time)
 
     def advance(self, now: float) -> None:
         if self.status == "playing" and self.deadline_at is not None and now >= self.deadline_at:
@@ -340,7 +342,14 @@ class SudokuManager:
             room_id = uuid.uuid4().hex[:6].upper()
             while room_id in self.rooms:
                 room_id = uuid.uuid4().hex[:6].upper()
-            room = SudokuRoom(room_id, difficulty, puzzle, solution, player_id)
+            room = SudokuRoom(
+                room_id,
+                difficulty,
+                puzzle,
+                solution,
+                player_id,
+                created_at=self._clock(),
+            )
             room.players[player_id] = SudokuPlayer(player_id, player_name, _empty_board(puzzle))
             self.rooms[room_id] = room
             return room
@@ -394,6 +403,7 @@ class SudokuManager:
             if len(room.players) < 2:
                 raise ValueError("Il faut au moins deux joueurs pour démarrer.")
             room.status = "playing"
+            room.started_at = self._clock()
             return room
 
     def set_room_cell(

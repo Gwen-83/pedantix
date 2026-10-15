@@ -108,6 +108,7 @@ class CemantixRoom:
     pending: Dict[str, CemantixSubmission] = field(default_factory=dict)
     winner_player_id: Optional[str] = None
     created_at: float = field(default_factory=time.time)
+    started_at: Optional[float] = None
 
     def to_dict(self, player_id: str, now: float) -> Dict[str, Any]:
         player = self.players[player_id]
@@ -411,6 +412,7 @@ class CemantixManager:
             room.status = "playing"
             room.round_number = 1
             room.deadline_at = now + CEMANTIX_ROUND_SECONDS
+            room.started_at = now
             return room
 
     def submit_room_guess(

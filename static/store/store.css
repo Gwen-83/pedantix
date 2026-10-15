@@ -11,11 +11,11 @@ html.store-mode body {
   margin: 0;
   padding: 0;
   background:
-    radial-gradient(ellipse at 12% 0%, rgba(99, 102, 241, 0.2), transparent 38rem),
-    radial-gradient(ellipse at 90% 22%, rgba(16, 185, 129, 0.13), transparent 34rem),
-    #111522;
+    radial-gradient(ellipse at 12% 0%, var(--game-page-glow), transparent 38rem),
+    radial-gradient(ellipse at 90% 22%, var(--game-page-glow), transparent 34rem),
+    var(--game-page);
   background-attachment: fixed;
-  color: #f8fafc;
+  color: var(--game-text);
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
 }
@@ -33,7 +33,7 @@ html.store-mode > body > #toast {
 
 html.store-mode .game-store {
   display: flex;
-  width: min(1120px, 100%);
+  width: min(1260px, 100%);
   min-height: 100vh;
   flex-direction: column;
   margin: 0 auto;
@@ -56,7 +56,7 @@ html.store-mode .game-store {
 
 .store-brand {
   gap: 10px;
-  color: #f8fafc;
+  color: var(--game-text);
   font-size: 1.05rem;
   font-weight: 800;
   text-decoration: none;
@@ -67,9 +67,9 @@ html.store-mode .game-store {
   width: 38px;
   height: 38px;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--game-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--game-panel-raised);
   font-size: 1.2rem;
 }
 
@@ -78,7 +78,7 @@ html.store-mode .game-store {
 }
 
 .store-account-name {
-  color: #cbd5e1;
+  color: var(--game-muted);
   font-size: 0.9rem;
 }
 
@@ -86,10 +86,10 @@ html.store-mode .game-store {
 .store-logout-button {
   min-height: 40px;
   padding: 0 16px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--game-border);
   border-radius: 11px;
-  background: rgba(255, 255, 255, 0.07);
-  color: #f8fafc;
+  background: var(--game-panel-raised);
+  color: var(--game-text);
   font: inherit;
   font-size: 0.88rem;
   font-weight: 700;
@@ -98,11 +98,11 @@ html.store-mode .game-store {
 
 .store-account-button:hover,
 .store-logout-button:hover {
-  background: rgba(255, 255, 255, 0.13);
+  border-color: var(--game-accent);
 }
 
 .store-logout-button {
-  color: #cbd5e1;
+  color: var(--game-muted);
 }
 
 .store-hero {
@@ -113,7 +113,7 @@ html.store-mode .game-store {
 
 .store-eyebrow {
   margin: 0 0 12px;
-  color: #a5b4fc;
+  color: var(--game-accent);
   font-size: 0.82rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -130,7 +130,7 @@ html.store-mode .game-store {
 
 .store-hero > p:last-child {
   margin: 16px 0 0;
-  color: #aab3c5;
+  color: var(--game-muted);
   font-size: clamp(0.98rem, 2vw, 1.1rem);
 }
 
@@ -153,17 +153,17 @@ html.store-mode .game-store {
 
 .store-section-heading p {
   margin: 4px 0 0;
-  color: #929bad;
+  color: var(--game-muted);
   font-size: 0.86rem;
 }
 
 .store-game-count {
   flex: 0 0 auto;
   padding: 6px 10px;
-  border: 1px solid rgba(165, 180, 252, 0.22);
+  border: 1px solid var(--game-border);
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.1);
-  color: #c7d2fe;
+  background: var(--game-panel-raised);
+  color: var(--game-text);
   font-size: 0.76rem;
   font-weight: 700;
 }
@@ -174,6 +174,100 @@ html.store-mode .game-store {
   gap: 14px;
 }
 
+.store-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 270px;
+  align-items: start;
+  gap: 22px;
+}
+
+.store-online-panel {
+  padding: 18px;
+  border: 1px solid var(--game-border);
+  border-radius: 18px;
+  background: var(--game-panel);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+}
+
+.store-online-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.store-online-indicator {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 12px rgba(52, 211, 153, 0.65);
+}
+
+.store-online-heading h2 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.store-online-heading p {
+  margin: 3px 0 0;
+  color: var(--game-muted);
+  font-size: 0.76rem;
+}
+
+.store-online-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(52vh, 460px);
+  margin: 16px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.store-online-list li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--game-border);
+  border-radius: 10px;
+  background: var(--game-panel-raised);
+}
+
+.store-online-name {
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.store-online-list small {
+  flex: 0 0 auto;
+  color: var(--game-muted);
+  font-size: 0.68rem;
+}
+
+.store-online-empty {
+  color: var(--game-muted);
+  font-size: 0.78rem;
+}
+
+.store-online-list li.store-online-empty {
+  justify-content: flex-start;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+}
+
+.store-online-list li.store-online-error {
+  color: #fca5a5;
+}
+
 .store-game-card {
   position: relative;
   display: flex;
@@ -181,25 +275,22 @@ html.store-mode .game-store {
   align-items: flex-start;
   gap: 17px;
   padding: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--game-border);
   border-radius: 18px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.025));
-  color: #f8fafc;
+  background: var(--game-panel);
+  color: var(--game-text);
   text-decoration: none;
 }
 
 .store-game-card-available {
-  border-color: rgba(52, 211, 153, 0.35);
-  background:
-    radial-gradient(circle at 0 0, rgba(16, 185, 129, 0.15), transparent 70%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025));
+  border-color: var(--game-border);
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .store-game-card-available:hover,
 .store-game-card-available:focus-visible {
   transform: translateY(-3px);
-  border-color: rgba(52, 211, 153, 0.7);
+  border-color: var(--game-accent);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
   outline: none;
 }
@@ -214,9 +305,9 @@ html.store-mode .game-store {
   height: 58px;
   flex: 0 0 58px;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--game-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--game-panel-raised);
   font-size: 1.85rem;
 }
 
@@ -255,7 +346,7 @@ html.store-mode .game-store {
 .store-game-description {
   max-width: 34ch;
   margin-top: 7px;
-  color: #aab3c5;
+  color: var(--game-muted);
   font-size: 0.88rem;
   line-height: 1.5;
 }
@@ -271,8 +362,8 @@ html.store-mode .game-store {
 .store-coming-soon {
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
+  background: var(--game-panel-raised);
+  color: var(--game-muted);
   font-size: 0.7rem;
   font-weight: 700;
 }
@@ -291,8 +382,8 @@ html.store-mode .game-store {
   margin: auto 0 0 auto;
   padding: 9px 12px;
   border-radius: 10px;
-  background: #10b981;
-  color: #052e24;
+  background: var(--game-accent);
+  color: var(--game-accent-contrast);
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -304,7 +395,7 @@ html.store-mode .game-store {
 .store-footer {
   margin-top: auto;
   padding-top: 44px;
-  color: #707a8d;
+  color: var(--game-muted);
   font-size: 0.78rem;
   text-align: center;
 }
@@ -329,9 +420,9 @@ html.store-mode .game-store {
   position: relative;
   width: min(420px, 100%);
   padding: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  border: 1px solid var(--game-border);
   border-radius: 22px;
-  background: #1e2530;
+  background: var(--game-panel);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
 }
 
@@ -343,8 +434,8 @@ html.store-mode .game-store {
   height: 34px;
   border: 0;
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
+  background: var(--game-panel-raised);
+  color: var(--game-text);
   font-size: 1.4rem;
   cursor: pointer;
 }
@@ -360,7 +451,7 @@ html.store-mode .game-store {
 
 .store-auth-dialog > p:not(.store-auth-error) {
   margin: 6px 0 20px;
-  color: #aab3c5;
+  color: var(--game-muted);
   font-size: 0.88rem;
 }
 
@@ -371,7 +462,7 @@ html.store-mode .game-store {
 }
 
 .store-auth-form label {
-  color: #dbe2ee;
+  color: var(--game-text);
   font-size: 0.84rem;
   font-weight: 700;
 }
@@ -380,16 +471,16 @@ html.store-mode .game-store {
   width: 100%;
   min-height: 46px;
   padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--game-border);
   border-radius: 10px;
-  background: rgba(8, 14, 26, 0.7);
-  color: #f8fafc;
+  background: var(--game-input);
+  color: var(--game-text);
   font: inherit;
 }
 
 .store-auth-form input:focus {
-  border-color: #6ee7b7;
-  outline: 3px solid rgba(16, 185, 129, 0.2);
+  border-color: var(--game-accent);
+  outline: 3px solid color-mix(in srgb, var(--game-accent) 22%, transparent);
 }
 
 .store-auth-submit {
@@ -397,8 +488,8 @@ html.store-mode .game-store {
   margin-top: 5px;
   border: 0;
   border-radius: 10px;
-  background: #10b981;
-  color: #052e24;
+  background: var(--game-accent);
+  color: var(--game-accent-contrast);
   font: inherit;
   font-weight: 800;
   cursor: pointer;
@@ -413,7 +504,7 @@ html.store-mode .game-store {
   padding: 6px;
   border: 0;
   background: transparent;
-  color: #a5b4fc;
+  color: var(--game-accent);
   font: inherit;
   font-size: 0.82rem;
   cursor: pointer;
@@ -425,9 +516,44 @@ html.store-mode .game-store {
   font-size: 0.84rem;
 }
 
+@media (max-width: 960px) {
+  .store-content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .store-online-panel {
+    grid-row: 1;
+  }
+
+  .store-online-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 220px;
+  }
+}
+
+@media (max-width: 520px) {
+  .store-online-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 680px) {
   html.store-mode .game-store {
     padding: 16px 16px 20px;
+  }
+
+  .store-header {
+    flex-wrap: wrap;
+  }
+
+  .store-account {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .shared-theme-control select {
+    max-width: 110px;
+    font-size: 0.68rem;
   }
 
   .store-brand {

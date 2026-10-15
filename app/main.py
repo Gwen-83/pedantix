@@ -7,12 +7,13 @@ import math
 import hmac
 import datetime
 import asyncio
-from typing import Optional, Dict, Any, List
+import threading
+from typing import Optional, Dict, Any, List, Literal
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import random
 import uuid
 
@@ -23,11 +24,13 @@ from app.database import (
     increment_player_score,
     get_top_player_scores,
     get_db_status,
+    get_game_catalog,
     user_exists,
     create_user,
     authenticate_user,
     record_user_guess_word,
     record_user_game_finish,
+    record_multigame_session_start,
     reset_user_password,
     get_user_stats,
     get_all_usernames,
@@ -36,10 +39,16 @@ from app.database import (
     is_valid_user_identifier,
 )
 from app.nlp import normalize_wiki_title
-from app.motus import motus_manager
+from app.motus import MOTUS_DIFFICULTIES, motus_manager
 from app.cemantix import cemantix_manager
 from app.battleship import battleship_manager
 from app.sudoku import sudoku_manager
+from app.geoguessr import (
+    MAX_SCORE_PER_ROUND as GEOGUESSR_MAX_SCORE_PER_ROUND,
+    ROUND_COUNT as GEOGUESSR_ROUND_COUNT,
+    GOOGLE_STREETVIEW_MONTHLY_LIMIT,
+    geoguessr_manager,
+)
 from app.game import GameManager, GameSession
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
@@ -92,11 +101,20 @@ async def security_headers_middleware(request: Request, call_next):
         "frame-ancestors 'self'; "
         "frame-src 'none'; "
         "object-src 'none'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://*.googleapis.com "
+        "https://*.gstatic.com https://*.google.com https://*.ggpht.com "
+        "https://*.googleusercontent.com blob:; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
-        "img-src 'self' data: https://upload.wikimedia.org https://*.wikimedia.org https://*.wikipedia.org; "
-        "connect-src 'self' https://pedantix-api.onrender.com ws: wss:;"
+        "img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org "
+        "https://*.mapillary.com https://*.fbcdn.net https://upload.wikimedia.org "
+        "https://*.wikimedia.org https://*.wikipedia.org https://*.googleapis.com "
+        "https://*.gstatic.com https://*.google.com https://*.googleusercontent.com; "
+        "worker-src 'self' blob:; "
+        "connect-src 'self' https://pedantix-api.onrender.com https://graph.mapillary.com "
+        "https://*.mapillary.com https://*.fbcdn.net https://*.googleapis.com "
+        "https://*.gstatic.com https://*.google.com data: blob: ws: wss:; "
+        "frame-src https://*.google.com;"
     )
     return response
 
@@ -121,6 +139,9 @@ init_db()
 
 # Game manager instance
 game_manager = GameManager()
+online_presence: Dict[str, Dict[str, Any]] = {}
+online_presence_lock = threading.Lock()
+ONLINE_PRESENCE_TTL_SECONDS = 90
 
 # Static files directory
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -153,6 +174,13 @@ class GuessRequest(BaseModel):
 
 class CheckUsernameRequest(BaseModel):
     username: str
+
+class PresenceRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=80)
+    username: str = Field(min_length=1, max_length=24)
+    game_id: Literal[
+        "pedantix", "motus", "cemantix", "sudoku", "battleship", "geoguessr", "store"
+    ]
 
 class AuthRegisterRequest(BaseModel):
     username: str
@@ -294,6 +322,32 @@ class SudokuRoomCellRequest(SudokuRoomPlayerRequest):
     column: int
     value: int
 
+class GeoGuessrPlayerRequest(BaseModel):
+    player_id: str
+    player_name: str
+    region: Literal["france", "europe", "world"] = "world"
+    variant: Literal["cities", "panorama"] = "cities"
+
+class GeoGuessrRoomPlayerRequest(BaseModel):
+    room_id: str
+    player_id: str
+    player_name: str
+
+class GeoGuessrSoloGuessRequest(GeoGuessrPlayerRequest):
+    game_id: str
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+class GeoGuessrRoomGuessRequest(GeoGuessrRoomPlayerRequest):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+class GeoGuessrPanoramaViewRequest(BaseModel):
+    player_id: str
+    game_id: Optional[str] = None
+    room_id: Optional[str] = None
+    navigation: bool = False
+
 class RoomChatRequest(BaseModel):
     room_id: str = "default"
     player_id: str
@@ -373,6 +427,13 @@ async def sudoku_page():
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page Sudoku est introuvable.")
 
+@app.get("/games/geoguessr/")
+async def geoguessr_page():
+    index_path = os.path.join(STATIC_DIR, "games", "geoguessr", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page GeoGuessr est introuvable.")
+
 
 @app.get("/health")
 async def health_check():
@@ -389,6 +450,55 @@ async def health_check():
 async def list_active_rooms():
     return {"rooms": room_manager.list_active_rooms()}
 
+@app.post("/api/presence")
+async def update_presence(req: PresenceRequest):
+    session_id = req.session_id.strip()[:80]
+    username = req.username.strip()[:24]
+    if not session_id or not username:
+        raise HTTPException(status_code=400, detail="Une session et un nom sont requis.")
+
+    now = time.time()
+    with online_presence_lock:
+        expired = [
+            key for key, presence in online_presence.items()
+            if now - presence["last_seen"] > ONLINE_PRESENCE_TTL_SECONDS
+        ]
+        for key in expired:
+            del online_presence[key]
+        online_presence[session_id] = {
+            "username": username,
+            "game_id": req.game_id,
+            "last_seen": now,
+        }
+    return {"status": "ok"}
+
+@app.get("/api/presence")
+async def list_online_presence():
+    now = time.time()
+    with online_presence_lock:
+        expired = [
+            key for key, presence in online_presence.items()
+            if now - presence["last_seen"] > ONLINE_PRESENCE_TTL_SECONDS
+        ]
+        for key in expired:
+            del online_presence[key]
+
+        latest_by_username: Dict[str, Dict[str, Any]] = {}
+        for presence in online_presence.values():
+            key = presence["username"].casefold()
+            current = latest_by_username.get(key)
+            if current is None or presence["last_seen"] > current["last_seen"]:
+                latest_by_username[key] = presence
+
+        players = [
+            {
+                "username": presence["username"],
+                "game_id": presence["game_id"],
+            }
+            for presence in latest_by_username.values()
+        ]
+    players.sort(key=lambda player: player["username"].casefold())
+    return {"players": players}
 
 @app.get("/api/network-info")
 async def get_network_info():
@@ -1119,6 +1229,9 @@ async def new_motus_solo(req: MotusPlayerRequest):
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"motus:{game.game_id}", "motus", "solo", "Motus", game.difficulty
+    )
     return game.to_dict()
 
 
@@ -1143,6 +1256,26 @@ async def guess_motus_solo(req: MotusSoloGuessRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if game.status == "finished":
+        player = game.player
+        if player.score:
+            increment_player_score(player.name, player.score)
+        record_user_game_finish(
+            player.name,
+            won=player.solved,
+            attempts=len(player.guesses),
+            points=player.score,
+            session_id=f"motus:{game.game_id}",
+            mode="solo",
+            title="Motus",
+            duration_seconds=max(0, int(time.time() - game.created_at)),
+            game_id="motus",
+            difficulty=game.difficulty,
+            metrics={
+                "score": player.score,
+                "max_attempts": MOTUS_DIFFICULTIES[game.difficulty],
+            },
+        )
     return {"result": result, **game.to_dict()}
 
 
@@ -1178,6 +1311,9 @@ async def start_motus_room(req: MotusRoomPlayerRequest):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"motus:{room.room_id}", "motus", "multiplayer", "Motus", room.difficulty
+    )
     return room.to_dict(req.player_id)
 
 
@@ -1189,6 +1325,26 @@ async def guess_motus_room(req: MotusRoomGuessRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if room.status == "finished":
+        for player in room.players.values():
+            if player.score:
+                increment_player_score(player.name, player.score)
+            record_user_game_finish(
+                player.name,
+                won=player.solved,
+                attempts=len(player.guesses),
+                points=player.score,
+                session_id=f"motus:{room.room_id}",
+                mode="multiplayer",
+                title="Motus",
+                duration_seconds=max(0, int(time.time() - (room.started_at or time.time()))),
+                game_id="motus",
+                difficulty=room.difficulty,
+                metrics={
+                    "score": player.score,
+                    "max_attempts": MOTUS_DIFFICULTIES[room.difficulty],
+                },
+            )
     return {"result": result, **room.to_dict(req.player_id)}
 
 
@@ -1214,6 +1370,9 @@ async def new_cemantix_solo(req: CemantixPlayerRequest):
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"cemantix:{game.game_id}", "cemantix", "solo", "Cémantix", game.difficulty
+    )
     return game.to_dict()
 
 
@@ -1233,6 +1392,21 @@ async def guess_cemantix_solo(req: CemantixSoloGuessRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if game.status == "finished":
+        record_user_game_finish(
+            game.player_name,
+            won=True,
+            attempts=len(game.guesses),
+            session_id=f"cemantix:{game.game_id}",
+            mode="solo",
+            title="Cémantix",
+            duration_seconds=max(0, int(time.time() - game.created_at)),
+            game_id="cemantix",
+            difficulty=game.difficulty,
+            metrics={
+                "best_similarity": max((guess["score"] for guess in game.guesses), default=0),
+            },
+        )
     return {"result": result, **game.to_dict()}
 
 
@@ -1268,7 +1442,38 @@ async def start_cemantix_room(req: CemantixRoomPlayerRequest):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"cemantix:{room.room_id}",
+        "cemantix",
+        "multiplayer",
+        "Cémantix",
+        room.difficulty,
+    )
     return room.to_dict(req.player_id, time.time())
+
+
+def _record_cemantix_room_results(room) -> None:
+    if room.status != "finished":
+        return
+    duration = max(0, int(time.time() - (room.started_at or time.time())))
+    for player in room.players.values():
+        best_similarity = max(
+            (guess["score"] for guess in player.guesses if guess.get("score") is not None),
+            default=0,
+        )
+        record_user_game_finish(
+            player.name,
+            won=player.player_id == room.winner_player_id,
+            attempts=len(player.guesses),
+            points=0,
+            session_id=f"cemantix:{room.room_id}",
+            mode="multiplayer",
+            title="Cémantix",
+            duration_seconds=duration,
+            difficulty=room.difficulty,
+            metrics={"best_similarity": best_similarity, "rounds": len(player.guesses)},
+            game_id="cemantix",
+        )
 
 
 @app.post("/api/cemantix/room/guess")
@@ -1281,6 +1486,7 @@ async def guess_cemantix_room(req: CemantixRoomGuessRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_cemantix_room_results(room)
     return {"result": result, **room.to_dict(req.player_id, time.time())}
 
 
@@ -1290,6 +1496,7 @@ async def get_cemantix_room(room_id: str, player_id: str = Query(...)):
         room = cemantix_manager.get_room(room_id, player_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_cemantix_room_results(room)
     return room.to_dict(player_id, time.time())
 
 
@@ -1328,6 +1535,56 @@ async def get_battleship_room(room_id: str, player_id: str = Query(...)):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return room.to_dict(player_id)
 
+
+def _record_sudoku_solo_result(game) -> None:
+    player = game.player
+    if game.status != "finished":
+        return
+    mistakes = 3 - player.lives
+    record_user_game_finish(
+        player.name,
+        won=game.finish_reason == "solved",
+        attempts=mistakes,
+        points=player.points,
+        session_id=f"sudoku:{game.game_id}",
+        mode="solo",
+        title="Sudoku",
+        duration_seconds=max(0, int(time.time() - game.created_at)),
+        game_id="sudoku",
+        difficulty=game.difficulty,
+        metrics={
+            "mistakes": mistakes,
+            "finish_reason": game.finish_reason,
+            "filled_cells": sum(value != 0 for row in player.board for value in row),
+        },
+    )
+
+
+def _record_sudoku_room_results(room) -> None:
+    if room.status != "finished":
+        return
+    duration = max(0, int(time.time() - (room.started_at or time.time())))
+    for player in room.players.values():
+        mistakes = 3 - player.lives
+        record_user_game_finish(
+            player.name,
+            won=player.rank is not None,
+            attempts=mistakes,
+            points=player.points,
+            session_id=f"sudoku:{room.room_id}",
+            mode="multiplayer",
+            title="Sudoku",
+            duration_seconds=duration,
+            game_id="sudoku",
+            difficulty=room.difficulty,
+            metrics={
+                "mistakes": mistakes,
+                "finish_reason": room.finish_reason,
+                "rank": player.rank,
+            },
+        )
+
+
 @app.post("/api/sudoku/solo/new")
 async def new_sudoku_solo(req: SudokuSoloCreateRequest):
     try:
@@ -1336,6 +1593,9 @@ async def new_sudoku_solo(req: SudokuSoloCreateRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"sudoku:{game.game_id}", "sudoku", "solo", "Sudoku", game.difficulty
+    )
     return game.to_dict()
 
 
@@ -1357,6 +1617,7 @@ async def set_sudoku_solo_cell(req: SudokuSoloCellRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_sudoku_solo_result(game)
     return game.to_dict()
 
 
@@ -1397,6 +1658,13 @@ async def start_sudoku_room(req: SudokuRoomPlayerRequest):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"sudoku:{room.room_id}",
+        "sudoku",
+        "multiplayer",
+        "Sudoku",
+        room.difficulty,
+    )
     return room.to_dict(req.player_id, time.time())
 
 
@@ -1412,6 +1680,7 @@ async def set_sudoku_room_cell(req: SudokuRoomCellRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if awarded:
         increment_player_score(req.player_name, awarded)
+    _record_sudoku_room_results(room)
     return room.to_dict(req.player_id, time.time())
 
 
@@ -1421,7 +1690,237 @@ async def get_sudoku_room(room_id: str, player_id: str = Query(...)):
         room = sudoku_manager.get_room(room_id, player_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_sudoku_room_results(room)
     return room.to_dict(player_id, time.time())
+
+
+def _geoguessr_metrics(
+    results: List[Dict[str, Any]], total_score: int, region: str, variant: str,
+) -> Dict[str, Any]:
+    distances = [float(result["distance_km"]) for result in results]
+    return {
+        "score": total_score,
+        "average_distance_km": round(sum(distances) / len(distances), 1) if distances else 0,
+        "best_distance_km": min(distances) if distances else None,
+        "rounds": len(results),
+        "perfect_rounds": sum(result["score"] == GEOGUESSR_MAX_SCORE_PER_ROUND for result in results),
+        "region": region,
+        "variant": variant,
+    }
+
+
+def _record_geoguessr_solo_result(game) -> None:
+    if game.status != "finished":
+        return
+    duration = max(0, int(time.time() - game.created_at))
+    metrics = _geoguessr_metrics(game.results, game.total_score, game.region, game.variant)
+    increment_player_score(game.player_name, game.total_score)
+    record_user_game_finish(
+        game.player_name,
+        won=game.total_score >= GEOGUESSR_ROUND_COUNT * GEOGUESSR_MAX_SCORE_PER_ROUND // 2,
+        attempts=len(game.results),
+        points=game.total_score,
+        session_id=f"geoguessr:{game.game_id}",
+        mode="solo",
+        title="GeoGuessr — Photos immersives" if game.variant == "panorama" else "GeoGuessr",
+        duration_seconds=duration,
+        game_id="geoguessr",
+        difficulty=game.region,
+        metrics=metrics,
+    )
+
+
+def _record_geoguessr_room_results(room) -> None:
+    if room.status != "finished" or room.stats_recorded:
+        return
+    duration = max(0, int(time.time() - (room.started_at or room.created_at)))
+    best_score = max(player.total_score for player in room.players.values())
+    for player in room.players.values():
+        metrics = _geoguessr_metrics(player.results, player.total_score, room.region, room.variant)
+        increment_player_score(player.name, player.total_score)
+        record_user_game_finish(
+            player.name,
+            won=player.total_score == best_score,
+            attempts=len(player.results),
+            points=player.total_score,
+            session_id=f"geoguessr:{room.room_id}",
+            mode="multiplayer",
+            title="GeoGuessr — Photos immersives" if room.variant == "panorama" else "GeoGuessr",
+            duration_seconds=duration,
+            game_id="geoguessr",
+            difficulty=room.region,
+            metrics=metrics,
+        )
+    room.stats_recorded = True
+
+
+@app.get("/api/geoguessr/config")
+async def get_geoguessr_config():
+    token = geoguessr_manager.mapillary_access_token
+    google_browser_key = geoguessr_manager.google_maps_browser_api_key
+    google_configured = bool(
+        google_browser_key and geoguessr_manager.google_maps_server_api_key
+    )
+    try:
+        google_usage = geoguessr_manager.google_usage()
+    except RuntimeError:
+        google_usage = GOOGLE_STREETVIEW_MONTHLY_LIMIT
+    google_has_capacity = (
+        google_configured
+        and google_usage + GEOGUESSR_ROUND_COUNT <= GOOGLE_STREETVIEW_MONTHLY_LIMIT
+    )
+    return {
+        "panorama_available": google_has_capacity or bool(token),
+        "google_streetview_configured": google_configured,
+        "google_streetview_available": google_has_capacity,
+        "google_maps_browser_api_key": google_browser_key or None,
+        "google_monthly_event_limit": GOOGLE_STREETVIEW_MONTHLY_LIMIT,
+        "google_monthly_events_reserved": google_usage,
+        "mapillary_access_token": token or None,
+    }
+
+
+@app.post("/api/geoguessr/panorama/authorize")
+async def authorize_geoguessr_panorama_view(req: GeoGuessrPanoramaViewRequest):
+    try:
+        allowed = geoguessr_manager.authorize_google_view(
+            req.player_id,
+            game_id=req.game_id,
+            room_id=req.room_id,
+            navigation=req.navigation,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "allowed": allowed,
+        "google_monthly_event_limit": GOOGLE_STREETVIEW_MONTHLY_LIMIT,
+    }
+
+
+@app.post("/api/geoguessr/solo/new")
+async def create_geoguessr_solo(req: GeoGuessrPlayerRequest):
+    try:
+        game = await asyncio.to_thread(
+            geoguessr_manager.create_solo,
+            req.player_id,
+            req.player_name,
+            req.region,
+            req.variant,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"geoguessr:{game.game_id}",
+        "geoguessr",
+        "solo",
+        "GeoGuessr — Photos immersives" if game.variant == "panorama" else "GeoGuessr",
+        game.region,
+    )
+    return game.to_dict()
+
+
+@app.get("/api/geoguessr/solo/{game_id}")
+async def get_geoguessr_solo(game_id: str, player_id: str = Query(...)):
+    try:
+        game = geoguessr_manager.get_solo(game_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return game.to_dict()
+
+
+@app.post("/api/geoguessr/solo/guess")
+async def guess_geoguessr_solo(req: GeoGuessrSoloGuessRequest):
+    try:
+        game, result = geoguessr_manager.guess_solo(
+            req.game_id, req.player_id, req.latitude, req.longitude
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_geoguessr_solo_result(game)
+    return {"result": result, **game.to_dict()}
+
+
+@app.get("/api/geoguessr/rooms")
+async def list_geoguessr_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": geoguessr_manager.list_rooms(player_id)}
+
+
+@app.post("/api/geoguessr/room/create")
+async def create_geoguessr_room(req: GeoGuessrPlayerRequest):
+    try:
+        room = await asyncio.to_thread(
+            geoguessr_manager.create_room,
+            req.player_id,
+            req.player_name,
+            req.region,
+            req.variant,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/geoguessr/room/join")
+async def join_geoguessr_room(req: GeoGuessrRoomPlayerRequest):
+    try:
+        room = geoguessr_manager.join_room(req.room_id, req.player_id, req.player_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/geoguessr/room/start")
+async def start_geoguessr_room(req: GeoGuessrRoomPlayerRequest):
+    try:
+        room = await asyncio.to_thread(
+            geoguessr_manager.start_room,
+            req.room_id,
+            req.player_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"geoguessr:{room.room_id}",
+        "geoguessr",
+        "multiplayer",
+        "GeoGuessr — Photos immersives" if room.variant == "panorama" else "GeoGuessr",
+        room.region,
+    )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/geoguessr/room/guess")
+async def guess_geoguessr_room(req: GeoGuessrRoomGuessRequest):
+    try:
+        room, result = geoguessr_manager.guess_room(
+            req.room_id, req.player_id, req.latitude, req.longitude
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_geoguessr_room_results(room)
+    return {"result": result, **room.to_dict(req.player_id)}
+
+
+@app.get("/api/geoguessr/room/{room_id}")
+async def get_geoguessr_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = geoguessr_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_geoguessr_room_results(room)
+    return room.to_dict(player_id)
 
 
 @app.post("/api/battleship/room/fleet")
@@ -1467,6 +1966,13 @@ async def start_battleship_room(req: BattleshipRoomPlayerRequest):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"battleship:{room.room_id}",
+        "battleship",
+        "multiplayer",
+        "Bataille navale",
+        room.difficulty,
+    )
     return room.to_dict(req.player_id)
 
 
@@ -1478,6 +1984,27 @@ async def fire_battleship_shot(req: BattleshipFireRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if room.status == "finished":
+        duration = max(0, int(time.time() - (room.started_at or time.time())))
+        for player in room.players.values():
+            attacks = player.attacks
+            record_user_game_finish(
+                player.name,
+                won=player.player_id == room.winner_player_id,
+                attempts=len(attacks),
+                session_id=f"battleship:{room.room_id}",
+                mode="multiplayer",
+                title="Bataille navale",
+                duration_seconds=duration,
+                game_id="battleship",
+                difficulty=room.difficulty,
+                metrics={
+                    "attacks": len(attacks),
+                    "hits": sum(attack["hit"] for attack in attacks),
+                    "ships_sunk": sum(bool(attack["sunk_ship"]) for attack in attacks),
+                    "turns": room.turn_number,
+                },
+            )
     return {"result": result, **room.to_dict(req.player_id)}
 
 
@@ -1585,6 +2112,8 @@ async def submit_guess(req: GuessRequest, request: Request):
                 duration_seconds=int(time.time() - session.created_at),
                 revealed_words=len(session.revealed_word_ids),
                 total_words=session.total_words,
+                difficulty=session.difficulty,
+                metrics={"category": session.category},
             )
     return result
 
@@ -1657,13 +2186,30 @@ async def admin_reset_password(req: AdminPasswordResetRequest):
 
 
 @app.get("/api/user/stats")
-async def get_stats_for_user(username: str = Query(...)):
-    return get_user_stats(username)
+async def get_stats_for_user(
+    username: str = Query(...),
+    game_id: str = Query("pedantix"),
+):
+    try:
+        return get_user_stats(username, game_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/stats")
-async def player_stats():
-    return get_stats()
+async def player_stats(game_id: str = Query("pedantix")):
+    try:
+        return get_stats(game_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/stats/games")
+async def stats_game_catalog():
+    try:
+        return {"games": get_game_catalog()}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/api/scores")

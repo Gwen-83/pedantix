@@ -19,4 +19,10 @@ services:
       - key: PEDANTIX_ALLOWED_ORIGINS
         sync: false              # origine(s) frontend, ex: https://mon-site.onrender.com (séparées par des virgules)
       - key: DATABASE_URL
-        sync: false              # URI "Session pooler" de Supabase (voir DEPLOY.md)
+        sync: false              # URI Supabase persistante, requise aussi pour le compteur mensuel Google
+      - key: MAPILLARY_ACCESS_TOKEN
+        sync: false              # repli gratuit depuis mapillary.com/dashboard/developers
+      - key: GOOGLE_MAPS_BROWSER_API_KEY
+        sync: false              # Maps JavaScript API, restreinte aux domaines du site
+      - key: GOOGLE_MAPS_SERVER_API_KEY
+        sync: false              # Street View Static API, réservée au serveur et non exposée au navigateur

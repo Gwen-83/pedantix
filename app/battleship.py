@@ -142,6 +142,8 @@ class BattleshipRoom:
     current_player_id: Optional[str] = None
     turn_number: int = 0
     winner_player_id: Optional[str] = None
+    created_at: float = field(default_factory=time.time)
+    started_at: Optional[float] = None
 
     def _alive_ids(self) -> List[str]:
         return [player_id for player_id, player in self.players.items() if not player.eliminated]
@@ -367,6 +369,7 @@ class BattleshipManager:
             room.status = "playing"
             room.current_player_id = next(iter(room.players))
             room.turn_number = 1
+            room.started_at = time.time()
             return room
 
     def fire(

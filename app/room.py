@@ -1057,6 +1057,8 @@ class Room:
                         duration_seconds=int(time.time() - stats_session.created_at),
                         revealed_words=len(stats_session.revealed_word_ids),
                         total_words=stats_session.total_words,
+                        difficulty=getattr(stats_session, "difficulty", None),
+                        metrics={"category": getattr(stats_session, "category", None)},
                     )
             p.refresh_score()
             p.is_ready = True if self.room_id.startswith("solo-") else False
@@ -1421,6 +1423,8 @@ class Room:
                         duration_seconds=int(time.time() - stats_session.created_at),
                         revealed_words=len(stats_session.revealed_word_ids),
                         total_words=stats_session.total_words,
+                        difficulty=getattr(stats_session, "difficulty", None),
+                        metrics={"category": getattr(stats_session, "category", None)},
                     )
             p.refresh_score()
             p.is_ready = True if self.room_id.startswith("solo-") else False

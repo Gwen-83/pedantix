@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-presence-game="sudoku">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#111522">
+  <meta name="theme-color" content="#273238">
   <title>Sudoku — La ludothèque</title>
   <script>
     (() => {
@@ -44,39 +44,23 @@
       <p class="sudoku-eyebrow">Le classique des jeux de logique</p>
       <h1 id="sudoku-home-title">Une grille, neuf chiffres.</h1>
       <p class="sudoku-intro">Complétez chaque ligne, colonne et carré 3×3 avec les chiffres de 1 à 9.</p>
-      <label class="sudoku-difficulty-label" for="sudoku-difficulty">Choisissez la difficulté avant de commencer (solo ou salon)</label>
+      <label class="sudoku-difficulty-label" for="sudoku-difficulty">Difficulté de la partie solo</label>
       <select id="sudoku-difficulty" class="sudoku-select">
         <option value="facile">Facile</option>
         <option value="moyen" selected>Moyen</option>
         <option value="difficile">Difficile</option>
       </select>
       <div class="sudoku-mode-grid">
+        <div class="shared-mode-switch" role="group" aria-label="Mode de jeu">
+          <button type="button" class="active" data-shared-game-mode="solo" aria-pressed="true">🎯 Solo</button>
+          <button type="button" data-shared-game-mode="multi" aria-pressed="false">🌐 Multijoueur</button>
+        </div>
         <button type="button" id="sudoku-solo-button" class="sudoku-mode-card">
           <span class="sudoku-mode-icon" aria-hidden="true">🧩</span>
           <span><strong>Jouer en solo</strong><small>À votre rythme, avec la difficulté de votre choix.</small></span>
           <span class="sudoku-arrow" aria-hidden="true">→</span>
         </button>
-        <div class="sudoku-mode-card sudoku-multiplayer-card">
-          <span class="sudoku-mode-icon" aria-hidden="true">👥</span>
-          <span class="sudoku-multiplayer-options">
-            <strong>Défier des amis</strong>
-            <small>Jusqu’à trois joueurs gagnent des points : 3, 2 et 1. Après le premier solveur, il reste au plus 3 minutes.</small>
-            <span class="sudoku-room-controls">
-              <button type="button" id="sudoku-create-room" class="sudoku-primary-button">Créer un salon</button>
-              <label class="sr-only" for="sudoku-room-code">Code du salon</label>
-              <input id="sudoku-room-code" maxlength="6" autocomplete="off" placeholder="Code salon">
-              <button type="button" id="sudoku-join-room" class="sudoku-secondary-button">Rejoindre</button>
-            </span>
-          </span>
-        </div>
       </div>
-      <section class="sudoku-room-browser" aria-labelledby="sudoku-room-browser-title">
-        <div class="sudoku-room-browser-heading">
-          <div><h2 id="sudoku-room-browser-title">Salons publics</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
-          <button type="button" id="sudoku-refresh-rooms" class="sudoku-secondary-button">Actualiser</button>
-        </div>
-        <div id="sudoku-room-directory" class="sudoku-room-directory" aria-live="polite"></div>
-      </section>
       <p id="sudoku-home-error" class="sudoku-error" role="alert" hidden></p>
       <p id="sudoku-previous-game" class="sudoku-previous-game" hidden>
         <button type="button" id="sudoku-resume-solo" class="sudoku-text-button">Reprendre ma partie solo</button>
@@ -90,17 +74,26 @@
           <h1 id="sudoku-game-title">À vous de jouer.</h1>
           <p id="sudoku-game-hint" class="sudoku-hint"></p>
         </div>
+        <button type="button" data-shared-lobby-open="sudoku-lobby" hidden>Ouvrir le salon</button>
         <button type="button" id="sudoku-home-button" class="sudoku-secondary-button">Quitter</button>
       </div>
 
-      <section id="sudoku-lobby" class="sudoku-lobby" hidden aria-label="Salon multijoueur">
-        <p id="sudoku-lobby-status"></p>
-        <div class="sudoku-invite-row">
-          <code id="sudoku-invite-code"></code>
-          <button type="button" id="sudoku-copy-invite" class="sudoku-secondary-button">Copier le lien</button>
-        </div>
-        <ul id="sudoku-player-list" class="sudoku-player-list"></ul>
-        <button type="button" id="sudoku-start-game" class="sudoku-primary-button" hidden>Démarrer la partie</button>
+      <section id="sudoku-lobby" class="shared-game-lobby sudoku-lobby" data-shared-game-lobby data-shared-lobby-next="sudoku-round" hidden aria-label="Salon multijoueur">
+        <section class="shared-game-lobby-dialog" role="dialog" aria-modal="true" aria-labelledby="sudoku-lobby-title" tabindex="-1">
+          <button type="button" class="shared-game-lobby-close" data-shared-lobby-close aria-label="Réduire le salon">×</button>
+          <header class="shared-game-lobby-heading">
+            <p>🔢 Sudoku · salon multijoueur</p>
+            <h2 id="sudoku-lobby-title">En attente des joueurs</h2>
+            <p>Partagez le code du salon et retrouvez les participants ici.</p>
+          </header>
+          <p id="sudoku-lobby-status" role="status" aria-live="polite"></p>
+          <div class="sudoku-invite-row">
+            <code id="sudoku-invite-code"></code>
+            <button type="button" id="sudoku-copy-invite" class="sudoku-secondary-button">Copier le lien</button>
+          </div>
+          <ul id="sudoku-player-list" class="sudoku-player-list" aria-live="polite"></ul>
+          <button type="button" id="sudoku-start-game" class="sudoku-primary-button" hidden>Démarrer la partie</button>
+        </section>
       </section>
 
       <section id="sudoku-round" class="sudoku-round" hidden>
@@ -132,8 +125,49 @@
     </section>
     <footer>Un chiffre par ligne, colonne et carré.</footer>
   </main>
+  <div class="shared-rooms-overlay" data-shared-rooms-modal data-play-target="sudoku-play" data-home-error-target="sudoku-home-error" hidden>
+    <section class="shared-rooms-dialog" role="dialog" aria-modal="true" aria-labelledby="sudoku-rooms-title" tabindex="-1">
+      <button type="button" class="shared-rooms-close" data-shared-modal-close aria-label="Fermer">×</button>
+      <header class="shared-rooms-heading">
+        <p>🔢 Sudoku · multijoueur</p>
+        <h2 id="sudoku-rooms-title">Jouer en multijoueur</h2>
+        <p>Créez un salon, rejoignez un ami avec son code ou choisissez une partie publique.</p>
+      </header>
+      <div class="shared-rooms-actions">
+        <section class="shared-room-action">
+          <div>
+            <h3>Créer un salon</h3>
+            <p>Jusqu’à trois joueurs se disputent le podium.</p>
+            <label class="sudoku-difficulty-label" for="sudoku-room-difficulty">Difficulté du salon</label>
+            <select id="sudoku-room-difficulty" class="sudoku-select">
+              <option value="facile">Facile</option>
+              <option value="moyen" selected>Moyen</option>
+              <option value="difficile">Difficile</option>
+            </select>
+          </div>
+          <button type="button" id="sudoku-create-room" class="sudoku-primary-button">Créer le salon</button>
+        </section>
+        <section class="shared-room-action">
+          <div><h3>Rejoindre avec un code</h3><p>Entrez le code donné par l’hôte.</p></div>
+          <div class="shared-room-join-controls">
+            <label class="sr-only" for="sudoku-room-code">Code du salon</label>
+            <input id="sudoku-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+            <button type="button" id="sudoku-join-room" class="sudoku-secondary-button">Rejoindre</button>
+          </div>
+        </section>
+      </div>
+      <section class="sudoku-room-browser" aria-labelledby="sudoku-room-browser-title">
+        <div class="sudoku-room-browser-heading">
+          <div><h2 id="sudoku-room-browser-title">Salons publics</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
+          <button type="button" id="sudoku-refresh-rooms" class="sudoku-secondary-button" data-shared-refresh-rooms>Actualiser</button>
+        </div>
+        <div id="sudoku-room-directory" class="sudoku-room-directory" aria-live="polite"></div>
+      </section>
+    </section>
+  </div>
   <script src="/static/shared/config.js"></script>
   <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
   <script src="/static/games/sudoku/app.js"></script>
 </body>
 </html>

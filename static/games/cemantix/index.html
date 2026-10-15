@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-presence-game="cemantix">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#111522">
+  <meta name="theme-color" content="#273238">
   <title>Cémantix — La ludothèque</title>
   <script>
     (() => {
@@ -51,32 +51,16 @@
         <option value="difficile">Difficile · indice après 5 essais</option>
       </select>
       <div class="cemantix-mode-grid">
+        <div class="shared-mode-switch" role="group" aria-label="Mode de jeu">
+          <button type="button" class="active" data-shared-game-mode="solo" aria-pressed="true">🎯 Solo</button>
+          <button type="button" data-shared-game-mode="multi" aria-pressed="false">🌐 Multijoueur</button>
+        </div>
         <button type="button" id="cemantix-solo-button" class="cemantix-mode-card">
           <span class="cemantix-mode-icon" aria-hidden="true">🎯</span>
           <span><strong>Jouer en solo</strong><small>À votre rythme, autant d’essais que nécessaire.</small></span>
           <span class="cemantix-arrow" aria-hidden="true">→</span>
         </button>
-        <div class="cemantix-mode-card cemantix-multiplayer-card">
-          <span class="cemantix-mode-icon" aria-hidden="true">👥</span>
-          <span class="cemantix-multiplayer-options">
-            <strong>Défier des amis</strong>
-            <small>Une minute par manche et une proposition par joueur.</small>
-            <span class="cemantix-room-controls">
-              <button type="button" id="cemantix-create-room" class="cemantix-primary-button">Créer un salon</button>
-              <label class="sr-only" for="cemantix-room-code">Code du salon</label>
-              <input id="cemantix-room-code" maxlength="6" autocomplete="off" placeholder="Code salon">
-              <button type="button" id="cemantix-join-room" class="cemantix-secondary-button">Rejoindre</button>
-            </span>
-          </span>
-        </div>
       </div>
-      <section class="cemantix-room-browser" aria-labelledby="cemantix-room-browser-title">
-        <div class="cemantix-room-browser-heading">
-          <div><h2 id="cemantix-room-browser-title">Salons publics</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
-          <button type="button" id="cemantix-refresh-rooms" class="cemantix-secondary-button">Actualiser</button>
-        </div>
-        <div id="cemantix-room-directory" class="cemantix-room-directory" aria-live="polite"></div>
-      </section>
       <p id="cemantix-home-error" class="cemantix-error" role="alert" hidden></p>
       <p id="cemantix-previous-game" class="cemantix-previous-game" hidden>
         <button type="button" id="cemantix-resume-solo" class="cemantix-text-button">Reprendre ma partie solo</button>
@@ -95,17 +79,26 @@
           <h1 id="cemantix-game-title">Quel est le mot secret ?</h1>
           <p id="cemantix-hint" class="cemantix-hint"></p>
         </div>
+        <button type="button" data-shared-lobby-open="cemantix-lobby" hidden>Ouvrir le salon</button>
         <button type="button" id="cemantix-home-button" class="cemantix-secondary-button">Quitter</button>
       </div>
 
-      <section id="cemantix-lobby" class="cemantix-lobby" hidden aria-label="Salon multijoueur">
-        <p id="cemantix-lobby-status">En attente de joueurs…</p>
-        <div class="cemantix-invite-row">
-          <code id="cemantix-invite-code"></code>
-          <button type="button" id="cemantix-copy-invite" class="cemantix-secondary-button">Copier le lien</button>
-        </div>
-        <ul id="cemantix-player-list" class="cemantix-player-list"></ul>
-        <button type="button" id="cemantix-start-game" class="cemantix-primary-button" hidden>Démarrer</button>
+      <section id="cemantix-lobby" class="shared-game-lobby cemantix-lobby" data-shared-game-lobby data-shared-lobby-next="cemantix-round" hidden aria-label="Salon multijoueur">
+        <section class="shared-game-lobby-dialog" role="dialog" aria-modal="true" aria-labelledby="cemantix-lobby-title" tabindex="-1">
+          <button type="button" class="shared-game-lobby-close" data-shared-lobby-close aria-label="Réduire le salon">×</button>
+          <header class="shared-game-lobby-heading">
+            <p>🧠 Cémantix · salon multijoueur</p>
+            <h2 id="cemantix-lobby-title">En attente des joueurs</h2>
+            <p>Partagez le code du salon et retrouvez les participants ici.</p>
+          </header>
+          <p id="cemantix-lobby-status" role="status" aria-live="polite">En attente de joueurs…</p>
+          <div class="cemantix-invite-row">
+            <code id="cemantix-invite-code"></code>
+            <button type="button" id="cemantix-copy-invite" class="cemantix-secondary-button">Copier le lien</button>
+          </div>
+          <ul id="cemantix-player-list" class="cemantix-player-list" aria-live="polite"></ul>
+          <button type="button" id="cemantix-start-game" class="cemantix-primary-button" hidden>Démarrer</button>
+        </section>
       </section>
 
       <section id="cemantix-round" class="cemantix-round" hidden>
@@ -132,8 +125,40 @@
     </section>
     <footer>Un mot peut tout rapprocher.</footer>
   </main>
+  <div class="shared-rooms-overlay" data-shared-rooms-modal data-play-target="cemantix-play" data-home-error-target="cemantix-home-error" hidden>
+    <section class="shared-rooms-dialog" role="dialog" aria-modal="true" aria-labelledby="cemantix-rooms-title" tabindex="-1">
+      <button type="button" class="shared-rooms-close" data-shared-modal-close aria-label="Fermer">×</button>
+      <header class="shared-rooms-heading">
+        <p>🧠 Cémantix · multijoueur</p>
+        <h2 id="cemantix-rooms-title">Jouer en multijoueur</h2>
+        <p>Créez un salon, rejoignez un ami avec son code ou choisissez une partie publique.</p>
+      </header>
+      <div class="shared-rooms-actions">
+        <section class="shared-room-action">
+          <div><h3>Créer un salon</h3><p>Une minute par manche et une proposition par joueur.</p></div>
+          <button type="button" id="cemantix-create-room" class="cemantix-primary-button">Créer le salon</button>
+        </section>
+        <section class="shared-room-action">
+          <div><h3>Rejoindre avec un code</h3><p>Entrez le code donné par l’hôte.</p></div>
+          <div class="shared-room-join-controls">
+            <label class="sr-only" for="cemantix-room-code">Code du salon</label>
+            <input id="cemantix-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+            <button type="button" id="cemantix-join-room" class="cemantix-secondary-button">Rejoindre</button>
+          </div>
+        </section>
+      </div>
+      <section class="cemantix-room-browser" aria-labelledby="cemantix-room-browser-title">
+        <div class="cemantix-room-browser-heading">
+          <div><h2 id="cemantix-room-browser-title">Salons publics</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
+          <button type="button" id="cemantix-refresh-rooms" class="cemantix-secondary-button" data-shared-refresh-rooms>Actualiser</button>
+        </div>
+        <div id="cemantix-room-directory" class="cemantix-room-directory" aria-live="polite"></div>
+      </section>
+    </section>
+  </div>
   <script src="/static/shared/config.js"></script>
   <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
   <script src="/static/games/cemantix/app.js"></script>
 </body>
 </html>

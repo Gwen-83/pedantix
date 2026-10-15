@@ -5,6 +5,7 @@
   const homeError = document.getElementById('sudoku-home-error');
   const playError = document.getElementById('sudoku-play-error');
   const difficultySelect = document.getElementById('sudoku-difficulty');
+  const roomDifficultySelect = document.getElementById('sudoku-room-difficulty');
   const roomInput = document.getElementById('sudoku-room-code');
   const roomDirectory = document.getElementById('sudoku-room-directory');
   const params = new URLSearchParams(window.location.search);
@@ -73,12 +74,16 @@
     elapsedTimer = null;
   }
 
-  function showHome() {
+  function showHome(clearActiveGame = true) {
     stopTimers();
     state = null;
     gameType = null;
     home.hidden = false;
     play.hidden = true;
+    if (clearActiveGame) {
+      localStorage.setItem('sudoku_active_game_mode', 'home');
+      localStorage.removeItem('sudoku_active_room_id');
+    }
     document.getElementById('sudoku-previous-game').hidden =
       !localStorage.getItem('sudoku_solo_game_id');
     history.replaceState(null, '', window.location.pathname);
@@ -387,6 +392,8 @@
       });
       gameType = 'solo';
       localStorage.setItem('sudoku_solo_game_id', state.game_id);
+      localStorage.setItem('sudoku_active_game_mode', 'solo');
+      localStorage.removeItem('sudoku_active_room_id');
       selectedCell = [0, 0];
       updateView();
     } catch (error) {
@@ -403,6 +410,8 @@
     try {
       state = await request(`/api/sudoku/solo/${encodeURIComponent(gameId)}?player_id=${encodeURIComponent(playerId)}`);
       gameType = 'solo';
+      localStorage.setItem('sudoku_active_game_mode', 'solo');
+      localStorage.removeItem('sudoku_active_room_id');
       selectedCell = [0, 0];
       difficultySelect.value = state.difficulty;
       updateView();
@@ -420,7 +429,7 @@
       state = await post('/api/sudoku/room/create', {
         player_id: playerId,
         player_name: playerName,
-        difficulty: difficultySelect.value,
+        difficulty: roomDifficultySelect.value,
       });
       enterRoom();
     } catch (error) {
@@ -452,7 +461,10 @@
   function enterRoom() {
     gameType = 'room';
     difficultySelect.value = state.difficulty;
+    roomDifficultySelect.value = state.difficulty;
     selectedCell = [0, 0];
+    localStorage.setItem('sudoku_active_game_mode', 'room');
+    localStorage.setItem('sudoku_active_room_id', state.room_id);
     history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
     updateView();
   }
@@ -580,7 +592,11 @@
     }
   });
   document.getElementById('sudoku-start-game').addEventListener('click', startRoom);
-  document.getElementById('sudoku-home-button').addEventListener('click', () => window.location.assign('/'));
+  document.getElementById('sudoku-home-button').addEventListener('click', () => {
+    localStorage.setItem('sudoku_active_game_mode', 'home');
+    localStorage.removeItem('sudoku_active_room_id');
+    window.location.assign('/');
+  });
   document.getElementById('sudoku-copy-invite').addEventListener('click', async (event) => {
     const url = event.currentTarget.dataset.inviteUrl;
     try {
@@ -600,7 +616,16 @@
   if (params.has('room')) {
     roomInput.value = params.get('room');
     joinRoom(params.get('room'));
+  } else if (localStorage.getItem('sudoku_active_game_mode') === 'room'
+    && localStorage.getItem('sudoku_active_room_id')) {
+    joinRoom(localStorage.getItem('sudoku_active_room_id'));
+  } else if ((localStorage.getItem('sudoku_active_game_mode') === 'solo'
+    || (!localStorage.getItem('sudoku_active_game_mode')
+      && localStorage.getItem('sudoku_solo_game_id')))
+    && localStorage.getItem('sudoku_solo_game_id')) {
+    resumeSolo();
   } else {
-    showHome();
+    localStorage.removeItem('sudoku_active_room_id');
+    showHome(false);
   }
 })();

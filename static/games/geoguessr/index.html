@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="fr" data-presence-game="geoguessr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#273238">
+  <title>GeoGuessr — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="https://unpkg.com/mapillary-js@4.1.2/dist/mapillary.css">
+  <link rel="stylesheet" href="/static/games/geoguessr/style.css">
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+</head>
+<body>
+  <main class="geo-shell">
+    <header class="geo-header">
+      <a class="geo-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
+      <p class="geo-brand"><span aria-hidden="true">🌍</span> GEOGUESSR</p>
+      <div class="shared-header-actions">
+        <span id="geo-player-name" class="geo-player-name"></span>
+        <label class="shared-theme-control" for="shared-theme-select">
+          <span aria-hidden="true">🎨</span><span>Thème</span>
+          <select id="shared-theme-select" aria-label="Thème de l’interface">
+            <option value="dark-colorful">Coloré sombre</option>
+            <option value="midnight">Nuit étoilée</option>
+            <option value="light-colorful">Coloré clair</option>
+            <option value="light-grey">Gris clair</option>
+            <option value="dark-grey">Charbon sombre</option>
+            <option value="parchment">Parchemin</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <section id="geo-home" class="geo-panel" aria-labelledby="geo-home-title">
+      <p class="geo-eyebrow">Cinq manches pour retrouver le lieu</p>
+      <h1 id="geo-home-title">Où se trouve cette ville ?</h1>
+      <p class="geo-intro">Un nom de ville s’affiche. Placez votre estimation sur la carte : plus vous êtes proche, plus vous marquez de points. Jusqu’à 5 000 points par manche.</p>
+      <label class="geo-region-label" for="geo-variant">Type de GeoGuessr</label>
+      <select id="geo-variant" class="geo-select">
+        <option value="cities">Villes sur carte</option>
+        <option value="panorama" disabled>Photo immersive navigable</option>
+      </select>
+      <p id="geo-panorama-setup" class="geo-hint" role="status" hidden></p>
+      <label class="geo-region-label" for="geo-region">Zone de jeu</label>
+      <select id="geo-region" class="geo-select">
+        <option value="france">France</option>
+        <option value="europe">Europe</option>
+        <option value="world" selected>Monde</option>
+      </select>
+      <div class="shared-mode-switch" role="group" aria-label="Mode de jeu">
+        <button type="button" class="active" data-shared-game-mode="solo" aria-pressed="true">🎯 Solo</button>
+        <button type="button" data-shared-game-mode="multi" aria-pressed="false">🌐 Multijoueur</button>
+      </div>
+      <button type="button" id="geo-solo-button" class="geo-mode-card">
+        <span class="geo-mode-icon" aria-hidden="true">📍</span>
+        <span><strong>Jouer en solo</strong><small>Enchaînez cinq villes et comparez votre score.</small></span>
+        <span class="geo-arrow" aria-hidden="true">→</span>
+      </button>
+      <p id="geo-home-error" class="geo-error" role="alert" hidden></p>
+    </section>
+
+    <section id="geo-play" class="geo-panel geo-play-panel" hidden>
+      <div class="geo-game-heading">
+        <div>
+          <p id="geo-game-mode" class="geo-eyebrow">Partie solo</p>
+          <h1 id="geo-round-heading">Manche 1 sur 5</h1>
+          <p id="geo-game-hint" class="geo-hint"></p>
+        </div>
+        <div class="geo-heading-actions">
+          <button type="button" data-shared-lobby-open="geo-lobby" hidden>Ouvrir le salon</button>
+          <button type="button" id="geo-home-button" class="geo-secondary-button">Quitter</button>
+        </div>
+      </div>
+      <div class="geo-target-card">
+        <span class="geo-target-icon" aria-hidden="true">📍</span>
+        <div><small id="geo-target-label">Ville à placer</small><strong id="geo-target-name">Chargement…</strong></div>
+        <strong class="geo-total-score"><span id="geo-total-score">0</span><small>points</small></strong>
+      </div>
+      <div id="geo-map-stage" hidden>
+      <p id="geo-round-message" class="geo-round-message" role="status" aria-live="polite">Cliquez sur la carte pour placer votre estimation.</p>
+      <section id="geo-panorama-panel" class="geo-panorama-panel" hidden aria-label="Photo immersive navigable">
+        <div id="geo-panorama-viewer" class="geo-panorama-viewer"></div>
+        <div id="geo-google-navigation" class="geo-google-navigation" hidden aria-label="Déplacements Street View"></div>
+        <p>Explorez la scène avec la souris ou le tactile, puis cliquez sur la carte pour deviner le lieu.</p>
+        <small>Les attributions du fournisseur photo sont affichées dans le lecteur.</small>
+      </section>
+      <div id="geo-map" class="geo-map" role="application" aria-label="Carte interactive du monde"></div>
+      <div class="geo-map-actions">
+        <span>Carte © OpenStreetMap</span>
+        <button type="button" id="geo-submit-guess" class="geo-primary-button" disabled>Valider ma position</button>
+      </div>
+      <section id="geo-round-result" class="geo-round-result" aria-live="polite" hidden></section>
+      <section id="geo-scoreboard" class="geo-scoreboard" hidden></section>
+      </div>
+      <p id="geo-play-error" class="geo-error" role="alert" hidden></p>
+    </section>
+    <footer>La bonne ville n’est révélée qu’après la validation de votre estimation.</footer>
+  </main>
+
+  <div id="geo-lobby" class="shared-game-lobby geo-lobby" data-shared-game-lobby data-shared-lobby-next="geo-map-stage" hidden>
+    <section class="shared-game-lobby-dialog" role="dialog" aria-modal="true" aria-labelledby="geo-lobby-title" tabindex="-1">
+      <button type="button" class="shared-game-lobby-close" data-shared-lobby-close aria-label="Réduire le salon">×</button>
+      <header class="shared-game-lobby-heading">
+        <p>🌍 GeoGuessr · salon multijoueur</p>
+        <h2 id="geo-lobby-title">En attente des joueurs</h2>
+        <p>Partagez le code du salon. Chaque manche utilise la même ville pour tous.</p>
+      </header>
+      <p id="geo-lobby-status" role="status" aria-live="polite"></p>
+      <div class="geo-invite-row">
+        <code id="geo-invite-code"></code>
+        <button type="button" id="geo-copy-invite" class="geo-secondary-button">Copier le lien</button>
+      </div>
+      <ul id="geo-player-list" class="geo-player-list" aria-live="polite"></ul>
+      <button type="button" id="geo-start-game" class="geo-primary-button" hidden>Démarrer la partie</button>
+    </section>
+  </div>
+
+  <div class="shared-rooms-overlay" data-shared-rooms-modal data-play-target="geo-play" data-home-error-target="geo-home-error" hidden>
+    <section class="shared-rooms-dialog" role="dialog" aria-modal="true" aria-labelledby="geo-rooms-title" tabindex="-1">
+      <button type="button" class="shared-rooms-close" data-shared-modal-close aria-label="Fermer">×</button>
+      <header class="shared-rooms-heading">
+        <p>🌍 GeoGuessr · multijoueur</p>
+        <h2 id="geo-rooms-title">Jouer en multijoueur</h2>
+        <p>Créez un salon, rejoignez un ami avec son code ou choisissez une partie publique.</p>
+      </header>
+      <div class="shared-rooms-actions">
+        <section class="shared-room-action">
+          <div>
+            <h3>Créer un salon</h3>
+            <p>Jusqu’à huit joueurs, cinq manches identiques pour tous.</p>
+            <label class="geo-region-label" for="geo-room-variant">Type de GeoGuessr</label>
+            <select id="geo-room-variant" class="geo-select">
+              <option value="cities">Villes sur carte</option>
+              <option value="panorama" disabled>Photo immersive navigable</option>
+            </select>
+            <label class="geo-region-label" for="geo-room-region">Zone de jeu</label>
+            <select id="geo-room-region" class="geo-select">
+              <option value="france">France</option>
+              <option value="europe">Europe</option>
+              <option value="world" selected>Monde</option>
+            </select>
+          </div>
+          <button type="button" id="geo-create-room" class="geo-primary-button">Créer le salon</button>
+        </section>
+        <section class="shared-room-action">
+          <div><h3>Rejoindre avec un code</h3><p>Entrez le code donné par l’hôte.</p></div>
+          <div class="shared-room-join-controls">
+            <label class="sr-only" for="geo-room-code">Code du salon</label>
+            <input id="geo-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+            <button type="button" id="geo-join-room" class="geo-secondary-button">Rejoindre</button>
+          </div>
+        </section>
+      </div>
+      <section class="geo-room-browser" aria-labelledby="geo-room-browser-title">
+        <div class="geo-room-browser-heading">
+          <div><h2 id="geo-room-browser-title">Salons publics</h2><p>Rejoignez une partie ou reprenez la vôtre.</p></div>
+          <button type="button" id="geo-refresh-rooms" class="geo-secondary-button" data-shared-refresh-rooms>Actualiser</button>
+        </div>
+        <div id="geo-room-directory" class="geo-room-directory" aria-live="polite"></div>
+      </section>
+    </section>
+  </div>
+
+  <script src="/static/shared/config.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/mapillary-js@4.1.2/dist/mapillary.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
+  <script src="/static/games/geoguessr/app.js"></script>
+</body>
+</html>

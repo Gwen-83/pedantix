@@ -3,7 +3,7 @@
 <head> 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#f4f1eb">
+  <meta name="theme-color" content="#273238">
   <title>Jeux de mots — la ludothèque</title>
   <script>
     (() => {
@@ -15,6 +15,7 @@
         cemantix: '/games/cemantix/',
         battleship: '/games/battleship/',
         sudoku: '/games/sudoku/',
+        geoguessr: '/games/geoguessr/',
       }[requestedGame];
       const legacyGameLink = !!legacyGamePath || params.has('assist')
         || params.has('room') || params.get('mode') === 'solo' || params.get('mode') === 'multi';
@@ -28,6 +29,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Newsreader:ital,opsz,wght@0,6..72,600;0,6..72,700;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
   <link rel="stylesheet" href="/static/store/store.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
 </head>
@@ -41,6 +43,17 @@
       </a>
       <div class="store-account">
         <span id="store-account-name" class="store-account-name" hidden></span>
+        <label class="shared-theme-control" for="shared-theme-select">
+          <span aria-hidden="true">🎨</span><span>Thème</span>
+          <select id="shared-theme-select" aria-label="Thème de l’interface">
+            <option value="dark-colorful">Coloré sombre</option>
+            <option value="midnight">Nuit étoilée</option>
+            <option value="light-colorful">Coloré clair</option>
+            <option value="light-grey">Gris clair</option>
+            <option value="dark-grey">Charbon sombre</option>
+            <option value="parchment">Parchemin</option>
+          </select>
+        </label>
         <button type="button" id="store-account-button" class="store-account-button">Se connecter</button>
         <button type="button" id="store-logout-button" class="store-logout-button" hidden>Déconnexion</button>
       </div>
@@ -52,16 +65,17 @@
       <p>Choisissez un jeu et lancez une partie. D’autres jeux arrivent bientôt.</p>
     </section>
 
-    <section class="store-library" aria-labelledby="store-library-title">
-      <div class="store-section-heading">
-        <div>
-          <h2 id="store-library-title">La collection</h2>
-          <p>Choisissez une tuile pour ouvrir le jeu.</p>
+    <div class="store-content-grid">
+      <section class="store-library" aria-labelledby="store-library-title">
+        <div class="store-section-heading">
+          <div>
+            <h2 id="store-library-title">La collection</h2>
+            <p>Choisissez une tuile pour ouvrir le jeu.</p>
+          </div>
+          <span class="store-game-count">6 jeux · 5 disponibles</span>
         </div>
-        <span class="store-game-count">5 jeux disponibles</span>
-      </div>
 
-      <div class="store-game-grid">
+        <div class="store-game-grid">
         <a class="store-game-card store-game-card-available" href="/games/pedantix/">
           <span class="store-game-icon store-pedantix-icon" aria-hidden="true">📖</span>
           <span class="store-game-info">
@@ -111,8 +125,39 @@
           </span>
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
-      </div>
-    </section>
+        <article class="store-game-card store-game-card-soon" aria-label="Undercover, bientôt disponible">
+          <span class="store-game-icon" aria-hidden="true">🕵️</span>
+          <span class="store-game-info">
+            <span class="store-game-title">Undercover</span>
+            <span class="store-game-description">Trouvez l’intrus avant qu’il ne découvre les autres joueurs.</span>
+            <span class="store-coming-soon">Bientôt disponible</span>
+          </span>
+        </article>
+        <a class="store-game-card store-game-card-available" href="/games/geoguessr/">
+          <span class="store-game-icon" aria-hidden="true">🌍</span>
+          <span class="store-game-info">
+            <span class="store-game-title">GeoGuessr</span>
+            <span class="store-game-description">Placez les villes sur la carte ou explorez des photos de rue navigables.</span>
+            <span class="store-game-tags"><span>Géographie</span><span>Solo & multijoueur</span></span>
+          </span>
+          <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
+        </a>
+        </div>
+      </section>
+
+      <aside class="store-online-panel" aria-labelledby="store-online-title">
+        <div class="store-online-heading">
+          <span class="store-online-indicator" aria-hidden="true"></span>
+          <div>
+            <h2 id="store-online-title">Joueurs en ligne</h2>
+            <p><span id="store-online-count">0</span> connecté<span id="store-online-count-plural">s</span></p>
+          </div>
+        </div>
+        <ul id="store-online-list" class="store-online-list" aria-live="polite">
+          <li class="store-online-empty">Chargement des joueurs…</li>
+        </ul>
+      </aside>
+    </div>
 
     <footer class="store-footer">Une ludothèque indépendante, conçue pour jouer et réfléchir.</footer>
 
@@ -140,6 +185,8 @@
 
 
   <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
   <script src="/static/store/store.js"></script>
 </body>
 </html>
