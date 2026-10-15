@@ -355,6 +355,7 @@ _GAME_CATALOG = (
     ("sudoku", "Sudoku"),
     ("battleship", "Bataille navale"),
     ("geoguessr", "GeoGuessr"),
+    ("undercover", "Undercover"),
 )
 
 

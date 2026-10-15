@@ -16,6 +16,7 @@
         battleship: '/games/battleship/',
         sudoku: '/games/sudoku/',
         geoguessr: '/games/geoguessr/',
+        undercover: '/games/undercover/',
       }[requestedGame];
       const legacyGameLink = !!legacyGamePath || params.has('assist')
         || params.has('room') || params.get('mode') === 'solo' || params.get('mode') === 'multi';
@@ -72,7 +73,7 @@
             <h2 id="store-library-title">La collection</h2>
             <p>Choisissez une tuile pour ouvrir le jeu.</p>
           </div>
-          <span class="store-game-count">6 jeux · 5 disponibles</span>
+          <span class="store-game-count">7 jeux · 7 disponibles</span>
         </div>
 
         <div class="store-game-grid">
@@ -125,14 +126,15 @@
           </span>
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
-        <article class="store-game-card store-game-card-soon" aria-label="Undercover, bientôt disponible">
+        <a class="store-game-card store-game-card-available" href="/games/undercover/">
           <span class="store-game-icon" aria-hidden="true">🕵️</span>
           <span class="store-game-info">
             <span class="store-game-title">Undercover</span>
-            <span class="store-game-description">Trouvez l’intrus avant qu’il ne découvre les autres joueurs.</span>
-            <span class="store-coming-soon">Bientôt disponible</span>
+            <span class="store-game-description">Démasquez les infiltrés en donnant des indices et en votant ensemble.</span>
+            <span class="store-game-tags"><span>Déduction</span><span>Multijoueur</span></span>
           </span>
-        </article>
+          <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
+        </a>
         <a class="store-game-card store-game-card-available" href="/games/geoguessr/">
           <span class="store-game-icon" aria-hidden="true">🌍</span>
           <span class="store-game-info">

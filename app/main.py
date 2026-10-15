@@ -44,6 +44,7 @@ from app.motus import MOTUS_DIFFICULTIES, motus_manager
 from app.cemantix import cemantix_manager
 from app.battleship import battleship_manager
 from app.sudoku import sudoku_manager
+from app.undercover import undercover_manager
 from app.geoguessr import (
     MAX_SCORE_PER_ROUND as GEOGUESSR_MAX_SCORE_PER_ROUND,
     ROUND_COUNT as GEOGUESSR_ROUND_COUNT,
@@ -180,7 +181,8 @@ class PresenceRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=80)
     username: str = Field(min_length=1, max_length=24)
     game_id: Literal[
-        "pedantix", "motus", "cemantix", "sudoku", "battleship", "geoguessr", "store"
+        "pedantix", "motus", "cemantix", "sudoku", "battleship", "geoguessr",
+        "undercover", "store"
     ]
 
 class AuthRegisterRequest(BaseModel):
@@ -323,6 +325,19 @@ class SudokuRoomCellRequest(SudokuRoomPlayerRequest):
     column: int
     value: int
 
+class UndercoverPlayerRequest(BaseModel):
+    player_id: str
+    player_name: str
+
+class UndercoverRoomPlayerRequest(UndercoverPlayerRequest):
+    room_id: str
+
+class UndercoverVoteRequest(UndercoverRoomPlayerRequest):
+    target_player_id: str
+
+class UndercoverGuessRequest(UndercoverRoomPlayerRequest):
+    guess: str
+
 class GeoGuessrPlayerRequest(BaseModel):
     player_id: str
     player_name: str
@@ -437,6 +452,13 @@ async def geoguessr_page():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page GeoGuessr est introuvable.")
+
+@app.get("/games/undercover/")
+async def undercover_page():
+    index_path = os.path.join(STATIC_DIR, "games", "undercover", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Undercover est introuvable.")
 
 
 @app.get("/health")
@@ -1430,6 +1452,118 @@ async def get_motus_room(room_id: str, player_id: str = Query(...)):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return room.to_dict(player_id)
+
+
+@app.get("/api/undercover/rooms")
+async def list_undercover_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": undercover_manager.list_rooms(player_id)}
+
+
+@app.post("/api/undercover/room/create")
+async def create_undercover_room(req: UndercoverPlayerRequest):
+    room = undercover_manager.create_room(req.player_id, req.player_name)
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/undercover/room/join")
+async def join_undercover_room(req: UndercoverRoomPlayerRequest):
+    try:
+        room = undercover_manager.join_room(req.room_id, req.player_id, req.player_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.get("/api/undercover/room/{room_id}")
+async def get_undercover_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = undercover_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return room.to_dict(player_id)
+
+
+@app.post("/api/undercover/room/start")
+async def start_undercover_room(req: UndercoverRoomPlayerRequest):
+    try:
+        room = undercover_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"undercover:{room.room_id}:{room.match_number}",
+        "undercover",
+        "multiplayer",
+        "Undercover",
+        "classique",
+    )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/undercover/room/spoken")
+async def undercover_player_spoken(req: UndercoverRoomPlayerRequest):
+    try:
+        room = undercover_manager.mark_spoken(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/undercover/room/voting")
+async def start_undercover_voting(req: UndercoverRoomPlayerRequest):
+    try:
+        room = undercover_manager.start_voting(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/undercover/room/vote")
+async def undercover_vote(req: UndercoverVoteRequest):
+    try:
+        room = undercover_manager.vote(
+            req.room_id, req.player_id, req.target_player_id
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/undercover/room/guess")
+async def undercover_guess(req: UndercoverGuessRequest):
+    try:
+        room = undercover_manager.guess_word(req.room_id, req.player_id, req.guess)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/undercover/room/restart")
+async def restart_undercover_room(req: UndercoverRoomPlayerRequest):
+    try:
+        room = undercover_manager.restart_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
 
 
 @app.get("/api/cemantix/rooms")

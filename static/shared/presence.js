@@ -7,6 +7,7 @@
     sudoku: 'Sudoku',
     battleship: 'Bataille navale',
     geoguessr: 'GeoGuessr',
+    undercover: 'Undercover',
     store: 'La ludothèque',
   };
   const gameId = document.documentElement.dataset.presenceGame

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="fr" data-presence-game="undercover">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#273238">
+  <title>Undercover — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+  <link rel="stylesheet" href="/static/games/undercover/style.css">
+</head>
+<body>
+  <main class="undercover-shell">
+    <header class="undercover-header">
+      <a href="/" class="undercover-back">← <span>Ludothèque</span></a>
+      <p class="undercover-brand">🕵️ UNDERCOVER</p>
+      <div class="undercover-account">
+        <span id="undercover-player-name"></span>
+        <label class="shared-theme-control" for="shared-theme-select">
+          <span aria-hidden="true">🎨</span><span>Thème</span>
+          <select id="shared-theme-select" aria-label="Thème de l’interface">
+            <option value="dark-colorful">Coloré sombre</option>
+            <option value="midnight">Nuit étoilée</option>
+            <option value="light-colorful">Coloré clair</option>
+            <option value="light-grey">Gris clair</option>
+            <option value="dark-grey">Charbon sombre</option>
+            <option value="parchment">Parchemin</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <section id="undercover-home" class="undercover-panel">
+      <p class="undercover-eyebrow">Déduction · bluff · discussion</p>
+      <h1>Qui se cache parmi vous ?</h1>
+      <p class="undercover-lead">Chaque civil reçoit le même mot, les infiltrés un mot proche et Mr White aucun mot. Donnez chacun un indice, débattez, puis votez pour démasquer les imposteurs.</p>
+      <div class="undercover-rules">
+        <article><b>1</b><span><strong>Découvrez votre rôle</strong><small>Gardez votre mot secret.</small></span></article>
+        <article><b>2</b><span><strong>Donnez un indice</strong><small>À tour de rôle, sans révéler le mot.</small></span></article>
+        <article><b>3</b><span><strong>Votez et démasquez</strong><small>Mr White peut tenter de deviner le mot des civils.</small></span></article>
+      </div>
+      <section class="undercover-create">
+        <button id="undercover-create-room" class="undercover-primary">Créer un salon</button>
+        <div class="undercover-join">
+          <label class="sr-only" for="undercover-room-code">Code du salon</label>
+          <input id="undercover-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+          <button id="undercover-join-room" class="undercover-secondary">Rejoindre</button>
+        </div>
+      </section>
+      <p id="undercover-home-error" class="undercover-error" role="alert" hidden></p>
+      <section class="undercover-directory">
+        <div class="undercover-section-heading">
+          <div><h2>Salons publics</h2><p>Rejoignez une partie en attente ou observez une partie commencée.</p></div>
+          <button id="undercover-refresh-rooms" class="undercover-secondary">Actualiser</button>
+        </div>
+        <div id="undercover-room-directory" aria-live="polite"></div>
+      </section>
+    </section>
+
+    <section id="undercover-game" class="undercover-panel" hidden>
+      <div class="undercover-game-heading">
+        <div><p id="undercover-phase-label" class="undercover-eyebrow">Salon d’attente</p><h1 id="undercover-game-title">Votre salon</h1></div>
+        <button id="undercover-leave" class="undercover-secondary">Retour</button>
+      </div>
+      <p id="undercover-game-error" class="undercover-error" role="alert" hidden></p>
+      <section id="undercover-lobby" class="undercover-lobby" hidden>
+        <p id="undercover-lobby-message" role="status"></p>
+        <div class="undercover-invite"><span>Code du salon</span><strong id="undercover-invite-code"></strong><button id="undercover-copy-invite" class="undercover-secondary">Copier le lien</button></div>
+        <ul id="undercover-player-list" class="undercover-player-list"></ul>
+        <p id="undercover-role-summary" class="undercover-muted"></p>
+        <button id="undercover-start" class="undercover-primary" hidden>Démarrer la partie</button>
+      </section>
+      <section id="undercover-round" hidden>
+        <div id="undercover-secret" class="undercover-secret"></div>
+        <p id="undercover-round-message" class="undercover-round-message" aria-live="polite"></p>
+        <ul id="undercover-alive-list" class="undercover-player-list"></ul>
+        <div id="undercover-discussion-actions" class="undercover-actions" hidden>
+          <button id="undercover-spoken" class="undercover-primary">J’ai donné mon indice</button>
+          <button id="undercover-start-vote" class="undercover-secondary" hidden>Passer au vote</button>
+        </div>
+        <div id="undercover-vote-actions" class="undercover-vote-actions" hidden></div>
+        <form id="undercover-white-form" class="undercover-white-form" hidden>
+          <label for="undercover-white-guess">Tentez de deviner le mot des civils</label>
+          <div><input id="undercover-white-guess" maxlength="40" autocomplete="off" required><button class="undercover-primary" type="submit">Deviner</button></div>
+        </form>
+        <section id="undercover-result" class="undercover-result" hidden></section>
+        <section id="undercover-final" class="undercover-final" hidden></section>
+      </section>
+    </section>
+    <footer>Un mot à deviner, des rôles cachés : saurez-vous repérer les infiltrés ?</footer>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
+  <script src="/static/games/undercover/app.js"></script>
+</body>
+</html>

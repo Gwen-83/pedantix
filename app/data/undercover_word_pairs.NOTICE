@@ -1,0 +1,6 @@
+Undercover word pairs are selected from WOLF (Wordnet Libre du Français) synsets
+and filtered using the bundled French frWaC word embeddings.
+
+WOLF source, revision, citation, and license details are in french_wordnet.NOTICE
+and french_wordnet.LICENSE. The pair list can be regenerated with
+scripts/build_undercover_word_pairs.py.
