@@ -33,6 +33,8 @@
   let countryBoundaryLayer = null;
   let countryBoundaryLoading = null;
   let mapLabelsLayer = null;
+  let mapPhysicalLayer = null;
+  let mapReliefLayer = null;
   let selectedPosition = null;
   let pollingTimer = null;
   let roomRefreshing = false;
@@ -170,7 +172,7 @@
         return;
       }
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsApiKey)}&v=weekly&language=fr&region=FR`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsApiKey)}&v=weekly&language=fr&region=FR&loading=async`;
       script.async = true;
       script.onload = () => resolve();
       script.onerror = () => {
@@ -333,6 +335,16 @@
     return true;
   }
 
+  function countryBoundaryStyle(isPanorama) {
+    return {
+      color: isPanorama ? '#63716f' : '#f1f5f4',
+      weight: isPanorama ? 1 : 1.4,
+      opacity: 0.9,
+      fillColor: '#58a83b',
+      fillOpacity: isPanorama ? 0 : 0.18,
+    };
+  }
+
   function setMapStyle(isPanorama) {
     if (!map) return;
     if (isPanorama && !mapLabelsLayer) {
@@ -340,18 +352,44 @@
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
       }).addTo(map);
-    } else if (!isPanorama && mapLabelsLayer) {
-      map.removeLayer(mapLabelsLayer);
-      mapLabelsLayer = null;
+    } else if (!isPanorama) {
+      if (mapLabelsLayer) {
+        map.removeLayer(mapLabelsLayer);
+        mapLabelsLayer = null;
+      }
+      if (!mapPhysicalLayer) {
+        mapPhysicalLayer = L.tileLayer(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}',
+          {
+            maxNativeZoom: 8,
+            maxZoom: 18,
+            attribution: 'Relief &copy; <a href="https://goto.arcgisonline.com/maps/World_Shaded_Relief" target="_blank" rel="noopener">Esri</a> · '
+              + 'Physique : <a href="https://goto.arcgisonline.com/maps/World_Physical_Map" target="_blank" rel="noopener">US National Park Service</a>',
+          },
+        ).addTo(map);
+        mapReliefLayer = L.tileLayer(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
+          {
+            maxNativeZoom: 13,
+            maxZoom: 18,
+            opacity: 0.28,
+            attribution: '',
+          },
+        ).addTo(map);
+      }
+    } else {
+      for (const layer of [mapPhysicalLayer, mapReliefLayer]) {
+        if (layer) map.removeLayer(layer);
+      }
+      mapPhysicalLayer = null;
+      mapReliefLayer = null;
     }
 
-    countryBoundaryLayer?.setStyle({
-      fillOpacity: isPanorama ? 0 : 1,
-    });
+    countryBoundaryLayer?.setStyle(countryBoundaryStyle(isPanorama));
     const attribution = document.querySelector('.geo-map-actions > span');
     attribution.textContent = isPanorama
       ? 'Carte © OpenStreetMap · frontières © Natural Earth'
-      : 'Frontières © Natural Earth (domaine public) · sans noms de villes';
+      : 'Carte physique et relief sans noms de villes · frontières © Natural Earth';
   }
 
   function loadCountryBoundaries() {
@@ -365,13 +403,7 @@
         const isPanorama = state?.variant === 'panorama';
         countryBoundaryLayer = L.geoJSON(countries, {
           interactive: false,
-          style: {
-            color: '#63716f',
-            weight: 1,
-            opacity: 0.9,
-            fillColor: '#e8e9df',
-            fillOpacity: isPanorama ? 0 : 1,
-          },
+          style: countryBoundaryStyle(isPanorama),
         }).addTo(map);
         countryBoundaryLayer.bringToBack();
       })
@@ -959,16 +991,30 @@
   variantSelect.addEventListener('change', () => {
     roomVariantSelect.value = variantSelect.value;
     const panorama = variantSelect.value === 'panorama';
-    document.getElementById('geo-home-title').textContent =
-      panorama ? 'Où cette photo a-t-elle été prise ?' : 'Où se trouve cette ville ?';
-    document.querySelector('#geo-home .geo-intro').textContent = panorama
-      ? 'Explorez une vraie photo de rue avec Google Street View ou Mapillary, puis placez votre estimation sur la carte. Jusqu’à 5 000 points par manche.'
-      : 'Un nom de ville s’affiche. Placez votre estimation sur la carte : plus vous êtes proche, plus vous marquez de points. Jusqu’à 5 000 points par manche.';
-    document.querySelector('#geo-solo-button strong').textContent =
-      panorama ? 'Jouer avec des photos' : 'Jouer en solo';
-    document.querySelector('#geo-solo-button small').textContent = panorama
-      ? 'Explorez cinq lieux réels et retrouvez-les sur la carte.'
-      : 'Enchaînez cinq villes et comparez votre score.';
+    const title = document.getElementById('geo-home-title');
+    const intro = document.querySelector('#geo-home .geo-intro');
+    const soloButton = document.getElementById('geo-solo-button');
+    const soloTitle = soloButton?.querySelector('strong');
+    const soloDescription = soloButton?.querySelector('small');
+
+    if (title) {
+      title.textContent = panorama
+        ? 'Où cette photo a-t-elle été prise ?'
+        : 'Où se trouve cette ville ?';
+    }
+    if (intro) {
+      intro.textContent = panorama
+        ? 'Explorez une vraie photo de rue avec Google Street View ou Mapillary, puis placez votre estimation sur la carte. Jusqu’à 5 000 points par manche.'
+        : 'Un nom de ville s’affiche. Placez votre estimation sur la carte : plus vous êtes proche, plus vous marquez de points. Jusqu’à 5 000 points par manche.';
+    }
+    if (soloTitle) {
+      soloTitle.textContent = panorama ? 'Jouer avec des photos' : 'Jouer en solo';
+    }
+    if (soloDescription) {
+      soloDescription.textContent = panorama
+        ? 'Explorez cinq lieux réels et retrouvez-les sur la carte.'
+        : 'Enchaînez cinq villes et comparez votre score.';
+    }
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !play.hidden) showHome();

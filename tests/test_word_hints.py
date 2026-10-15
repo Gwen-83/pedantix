@@ -8,8 +8,8 @@ from app.room import Room, RoomPlayer
 
 def make_session(session_id, revealed_ids=()):
     tokens = [
-        {"id": 1, "is_word": True, "revealed": 1 in revealed_ids},
-        {"id": 2, "is_word": True, "revealed": 2 in revealed_ids},
+        {"id": 1, "is_word": True, "is_title": True, "revealed": 1 in revealed_ids},
+        {"id": 2, "is_word": True, "is_title": False, "revealed": 2 in revealed_ids},
     ]
     return SimpleNamespace(
         session_id=session_id,
@@ -34,19 +34,19 @@ class WordHintTests(unittest.TestCase):
         self.score_patcher.stop()
 
     def test_multiplayer_hint_is_hidden_from_every_player(self):
-        first_session = make_session("first", revealed_ids={2})
+        first_session = make_session("first", revealed_ids={1})
         second_session = make_session("second")
         self.room.players = {
             "first": RoomPlayer("first", "Joueur 1", first_session),
             "second": RoomPlayer("second", "Joueur 2", second_session),
         }
 
-        self.assertEqual(self.room._pick_next_hint_word_id(), 1)
+        self.assertEqual(self.room._pick_next_hint_word_id(), 2)
 
     def test_team_hint_is_hidden_from_every_active_team(self):
         self.room.game_mode = "team"
         self.room.team_sessions = {
-            "blue": make_session("blue", revealed_ids={2}),
+            "blue": make_session("blue", revealed_ids={1}),
             "red": make_session("red"),
             "green": make_session("green", revealed_ids={1, 2}),
         }
@@ -62,7 +62,17 @@ class WordHintTests(unittest.TestCase):
         }
         self.room.players["spectator"].is_spectator = True
 
-        self.assertEqual(self.room._pick_next_hint_word_id(), 1)
+        self.assertEqual(self.room._pick_next_hint_word_id(), 2)
+
+    def test_hint_never_reveals_a_title_word(self):
+        session = make_session("title-only")
+        session.tokens = [session.tokens[0]]
+        session.tokens_by_id = {1: session.tokens[0]}
+        self.room.players = {
+            "first": RoomPlayer("first", "Joueur", session),
+        }
+
+        self.assertIsNone(self.room._pick_next_hint_word_id())
 
     def test_hint_word_is_visible_but_does_not_count_as_discovered(self):
         with patch("app.game.record_game_start"):

@@ -51,6 +51,7 @@ class RoomPlayer:
         self.connected = True
         self.disconnected_at: Optional[float] = None
         self.is_spectator = False
+        self.waiting_for_next_round = False
 
     def refresh_score(self):
         self.score = get_player_score(self.name)
@@ -63,6 +64,7 @@ class RoomPlayer:
             "team": self.team,
             "is_ready": self.is_ready,
             "is_spectator": self.is_spectator,
+            "waiting_for_next_round": self.waiting_for_next_round,
             "score": self.score,
             "attempts": self.attempts,
             "revealed_words_count": self.revealed_words_count,
@@ -183,6 +185,7 @@ class Room:
             hidden_word_ids = {
                 token["id"] for token in session.tokens
                 if token.get("is_word")
+                and not token.get("is_title")
                 and not token.get("revealed")
                 and token["id"] not in self.hinted_word_ids
             }
@@ -484,6 +487,8 @@ class Room:
         if player_id not in self.players:
             return False
         player = self.players[player_id]
+        if player.waiting_for_next_round and self.status != "lobby":
+            return True
         if is_spectator is None:
             player.is_spectator = not player.is_spectator
         else:
@@ -498,6 +503,21 @@ class Room:
         else:
             self.add_activity(f"🎮 {player.name} a repris sa place de joueur !", "spectator")
         return player.is_spectator
+
+    def activate_waiting_players(self) -> List[str]:
+        """Promote players who joined during a round once the room returns to its lobby."""
+        promoted = []
+        for player in self.players.values():
+            if getattr(player, "waiting_for_next_round", False):
+                player.waiting_for_next_round = False
+                player.is_spectator = False
+                player.is_ready = False
+                promoted.append(player.player_id)
+                self.add_activity(
+                    f"🎮 {player.name} peut rejoindre la prochaine partie !",
+                    "spectator",
+                )
+        return promoted
 
     def add_activity(self, text: str, event_type: str = "info"):
         event = {
@@ -579,6 +599,9 @@ class Room:
             )
 
         player = RoomPlayer(player_id=player_id, name=player_name, session=session, is_host=is_first, team=default_team)
+        if not self.room_id.startswith("solo-") and self.status in ("starting", "playing", "ending"):
+            player.is_spectator = True
+            player.waiting_for_next_round = True
         if self.room_id.startswith("solo-"):
             player.is_ready = True
             player.is_host = is_first
@@ -586,7 +609,7 @@ class Room:
                 self.host_player_id = player_id
             self.status = "playing"
         self.players[player_id] = player
-        if self.status in ("playing", "starting", "ending") or self.room_id.startswith("solo-"):
+        if (self.status in ("playing", "starting", "ending") and not player.is_spectator) or self.room_id.startswith("solo-"):
             self.record_current_article_for_players([player_id, player_name])
         team_meta = TEAM_METADATA.get(default_team, {})
         team_tag = f" ({team_meta.get('icon', '')} {team_meta.get('short', '')})" if self.game_mode == "team" else ""
@@ -597,6 +620,8 @@ class Room:
         if player_id not in self.players:
             return False
         player = self.players[player_id]
+        if player.waiting_for_next_round and self.status != "lobby":
+            return False
         if player.is_spectator:
             player.is_spectator = False
             self.add_activity(f"🎮 {player.name} a repris sa place de joueur !", "spectator")
@@ -967,7 +992,7 @@ class Room:
                 win_team_name = f"{win_meta.get('name', self.winning_team)} {win_meta.get('icon', '')}"
                 self.add_activity(f"🏆 Victoire de l'{win_team_name} ! (+3 pts pour tous les équipiers)", "score")
                 for p in self.players.values():
-                    if p.team == self.winning_team:
+                    if p.team == self.winning_team and not p.is_spectator:
                         new_score = increment_player_score(p.name, 3)
                         p.refresh_score()
                         round_podium.append({
@@ -986,7 +1011,7 @@ class Room:
                         other_sess = self.team_sessions.get(other_team)
                         if other_sess and other_sess.is_won:
                             for p in self.players.values():
-                                if p.team == other_team:
+                                if p.team == other_team and not p.is_spectator:
                                     new_score = increment_player_score(p.name, 1)
                                     p.refresh_score()
                                     round_podium.append({
@@ -1080,6 +1105,8 @@ class Room:
         if self.is_cooperative_solo:
             self.assisting_player_id = None
 
+        promoted_player_ids = self.activate_waiting_players()
+
         # Broadcast round over and return to lobby
         await self.broadcast({
             "type": "round_over_to_lobby",
@@ -1104,7 +1131,8 @@ class Room:
             "last_round": self.last_round_results,
             "leaderboard": self.get_leaderboard(),
             "activity": self.recent_activity,
-            "can_start": self.can_start()
+            "can_start": self.can_start(),
+            "promoted_player_ids": promoted_player_ids,
         })
 
     async def start_new_round(self, player_id: str, new_article: Optional[Dict[str, Any]] = None, new_seed: Optional[str] = None) -> Dict[str, Any]:
@@ -1457,6 +1485,7 @@ class Room:
             self.assisting_player_id = None
 
         self.add_activity("🏳️ La partie a été abandonnée à l'unanimité. L'article est révélé ! (0 point)", "surrender")
+        promoted_player_ids = self.activate_waiting_players()
 
         await self.broadcast({
             "type": "surrender_passed",
@@ -1474,7 +1503,8 @@ class Room:
             "leaderboard": self.get_leaderboard(),
             "teams": self.get_teams_data(),
             "activity": self.recent_activity,
-            "can_start": self.can_start()
+            "can_start": self.can_start(),
+            "promoted_player_ids": promoted_player_ids,
         })
 
     start_next_round = start_new_round

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#090d17">
+  <title>Blockfire — FPS d’arène</title>
+  <link rel="stylesheet" href="/static/games/voxelstrike/style.css">
+</head>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <span></span>
+      <a class="brand" href="/games/voxelstrike/"><span class="brand-mark">B</span> BLOCKFIRE</a>
+      <div class="server-status"><span class="live-dot"></span><span id="server-count">Connexion au serveur…</span></div>
+    </header>
+
+    <section class="game-frame" aria-label="Arène Blockfire">
+      <canvas id="arena" aria-label="Vue à la première personne de l’arène"></canvas>
+      <div class="screen-grain"></div>
+
+      <section id="start-overlay" class="overlay">
+        <div class="intro-card">
+          <p class="eyebrow"><span class="live-dot"></span> FPS multijoueur · gratuit</p>
+          <h1>BLOCK<span>FIRE</span></h1>
+          <p class="intro-copy">Une arène. Deux équipes. À vous de jouer.</p>
+          <div class="feature-row">
+            <span><i>01</i> Matchmaking auto</span>
+            <span><i>02</i> Jusqu’à 40 joueurs</span>
+            <span><i>03</i> Aucun téléchargement</span>
+          </div>
+          <label class="name-label" for="player-name-input">VOTRE PSEUDO</label>
+          <input id="player-name-input" class="name-input" maxlength="24" autocomplete="nickname" placeholder="Choisissez un pseudo">
+          <button id="start-button" class="primary-button">REJOINDRE LA PARTIE <span>↗</span></button>
+          <p id="connection-message" class="connection-message" role="status">WASD pour bouger · souris pour viser · clic pour tirer</p>
+        </div>
+      </section>
+
+      <div class="game-hud" aria-live="polite">
+        <div class="hud-top">
+          <div class="match-label"><span class="live-dot"></span><span id="match-label">MATCHMAKING</span><small id="room-code"></small></div>
+          <div class="scoreboard">
+            <span class="team-score blue-score"><b id="blue-score">0</b><small>BLEU</small></span>
+            <span class="score-divider">:</span>
+            <span class="team-score red-score"><b id="red-score">0</b><small>ROUGE</small></span>
+          </div>
+          <div class="player-label"><span id="player-name"></span><span id="team-label" class="team-pill">—</span></div>
+        </div>
+        <div class="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+        <div id="hit-marker" class="hit-marker" aria-hidden="true">×</div>
+        <div class="hud-bottom">
+          <div class="health-card"><span>VITALITÉ</span><div class="health-track"><i id="health-bar"></i></div><b id="health-value">100</b></div>
+          <div id="kill-feed" class="kill-feed"></div>
+          <div class="weapon-card"><span>ARME PRINCIPALE</span><b>VX-7 <i>·</i> AUTO</b></div>
+        </div>
+        <canvas id="minimap" width="160" height="160" aria-label="Mini-carte"></canvas>
+        <div id="touch-controls" class="touch-controls" aria-label="Commandes tactiles">
+          <button id="move-pad" class="move-pad" aria-label="Déplacement"><i></i></button>
+          <button id="touch-fire" class="touch-fire" aria-label="Tirer">FIRE</button>
+        </div>
+      </div>
+
+      <div id="death-overlay" class="death-overlay" hidden><strong>ÉLIMINÉ</strong><span>Retour au combat…</span></div>
+    </section>
+    <footer class="controls-footer">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Déplacement</span>
+      <span><kbd>SOURIS</kbd> Viser</span>
+      <span><kbd>CLIC</kbd> Tirer</span>
+      <span><kbd>ESC</kbd> Pause</span>
+      <span id="alive-count">En attente des joueurs…</span>
+    </footer>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/games/voxelstrike/app.js"></script>
+</body>
+</html>

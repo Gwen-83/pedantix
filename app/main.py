@@ -54,6 +54,7 @@ from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
 from app.tunnel import tunnel_manager
 from app.antibot import anti_bot_guard
+from app.voxelstrike import router as voxelstrike_router
 
 app = FastAPI(title="Pédantix Local - Concours Multijoueur", version="2.0.0")
 
@@ -99,7 +100,6 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "frame-ancestors 'self'; "
-        "frame-src 'none'; "
         "object-src 'none'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://*.googleapis.com "
         "https://*.gstatic.com https://*.google.com https://*.ggpht.com "
@@ -107,12 +107,12 @@ async def security_headers_middleware(request: Request, call_next):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org "
-        "https://*.basemaps.cartocdn.com "
+        "https://*.basemaps.cartocdn.com https://server.arcgisonline.com "
         "https://*.mapillary.com https://*.fbcdn.net https://upload.wikimedia.org "
         "https://*.wikimedia.org https://*.wikipedia.org https://*.googleapis.com "
         "https://*.gstatic.com https://*.google.com https://*.googleusercontent.com; "
         "worker-src 'self' blob:; "
-        "connect-src 'self' https://pedantix-api.onrender.com https://graph.mapillary.com "
+        "connect-src 'self' https://pedantix-api.onrender.com https://unpkg.com https://graph.mapillary.com "
         "https://*.mapillary.com https://*.fbcdn.net https://*.googleapis.com "
         "https://*.gstatic.com https://*.google.com data: blob: ws: wss:; "
         "frame-src https://*.google.com;"
@@ -150,6 +150,7 @@ if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.include_router(voxelstrike_router)
 
 
 def detect_lan_ip() -> str:

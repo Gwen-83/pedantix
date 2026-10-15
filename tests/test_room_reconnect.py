@@ -98,6 +98,31 @@ class RoomReconnectTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn(self.player.player_id, self.room.players)
 
+    def test_late_joiner_is_spectator_until_room_returns_to_lobby(self):
+        self.room.status = "playing"
+
+        late_player = self.room.get_or_create_player("late-player", "Nouveau")
+
+        self.assertTrue(late_player.is_spectator)
+        self.assertTrue(late_player.waiting_for_next_round)
+        self.assertFalse(self.room.toggle_ready(late_player.player_id, True))
+        self.assertTrue(self.room.toggle_spectator(late_player.player_id, False))
+        self.assertTrue(late_player.is_spectator)
+
+        self.room.status = "lobby"
+        promoted = self.room.activate_waiting_players()
+
+        self.assertEqual(promoted, [late_player.player_id])
+        self.assertFalse(late_player.is_spectator)
+        self.assertFalse(late_player.waiting_for_next_round)
+        self.assertFalse(late_player.is_ready)
+
+    def test_lobby_joiner_is_not_forced_to_spectate(self):
+        player = self.room.get_or_create_player("lobby-player", "Joueur")
+
+        self.assertFalse(player.is_spectator)
+        self.assertFalse(player.waiting_for_next_round)
+
     def test_disconnect_grace_is_long_enough_for_a_page_reload(self):
         self.assertGreaterEqual(PLAYER_DISCONNECT_GRACE_SECONDS, 30.0)
 

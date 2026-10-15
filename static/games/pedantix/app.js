@@ -2050,6 +2050,9 @@ class PedantixApp {
       if (!resp.ok) return;
       const data = await resp.json();
       if (data.session) {
+        if (data.seed !== this.seed || data.session.session_id !== this.sessionId) {
+          this.resetRoundEndState();
+        }
         this.sessionId = data.session.session_id;
         this.seed = data.seed;
         if (data.guess_token) this.guessToken = data.guess_token;
@@ -2418,7 +2421,10 @@ class PedantixApp {
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
       if (msg.activity) this.updateActivity(msg.activity);
       this.playTone('win');
-      this.showToast('🎉 Manche terminée ! Les scores ont été mis à jour.');
+      const canJoinNextRound = (msg.promoted_player_ids || []).includes(this.playerId);
+      this.showToast(canJoinNextRound
+        ? '🎉 Manche terminée ! Vous pouvez vous préparer pour la prochaine partie.'
+        : '🎉 Manche terminée ! Les scores ont été mis à jour.');
       this.updateModeUI();
       this.syncRoomUI();
 
@@ -3414,13 +3420,12 @@ class PedantixApp {
 
   applyNewGameSession(data) {
     if (!data || !data.session) return;
+    this.resetRoundEndState();
     this.resetUnmaskButton();
     this.startTime = Date.now();
     this.previousInputs = [];
     this.prevInputIdx = -1;
     this.isWon = false;
-    this.isAbandoned = false;
-
     if (this.dom.successBox) this.dom.successBox.classList.remove('active');
     if (this.dom.surrenderBanner) {
       this.dom.surrenderBanner.style.display = 'none';
@@ -3484,6 +3489,29 @@ class PedantixApp {
     if (this.dom.guessInput) {
       this.dom.guessInput.focus();
     }
+  }
+
+  resetRoundEndState() {
+    this.isAbandoned = false;
+    this.isWon = false;
+    this.lastRound = null;
+    this.solution = null;
+
+    if (this.dom.successBox) this.dom.successBox.classList.remove('active');
+    if (this.dom.surrenderBanner) {
+      this.dom.surrenderBanner.style.display = 'none';
+      this.dom.surrenderBanner.classList.remove('active');
+    }
+    if (this.dom.articleFinishedBar) {
+      this.dom.articleFinishedBar.style.display = 'none';
+    }
+    if (this.dom.roundOverModal) this.closeModal(this.dom.roundOverModal);
+    if (this.dom.surrenderModal) this.closeModal(this.dom.surrenderModal);
+    if (this.dom.solutionDisplay) this.dom.solutionDisplay.textContent = '...';
+    if (this.dom.surrenderSolutionDisplay) this.dom.surrenderSolutionDisplay.textContent = '...';
+    if (this.dom.solutionLink) this.dom.solutionLink.href = '#';
+    if (this.dom.surrenderSolutionLink) this.dom.surrenderSolutionLink.href = '#';
+    if (this.dom.articleFinishedWikiLink) this.dom.articleFinishedWikiLink.href = '#';
   }
 
   async setSoloDifficulty(diff) {
@@ -4842,7 +4870,10 @@ class PedantixApp {
     }
 
     this.playTone('hint');
-    this.showToast('🏳️ Partie abandonnée ! L\'article a été entièrement démasqué.');
+    const canJoinNextRound = (msg.promoted_player_ids || []).includes(this.playerId);
+    this.showToast(canJoinNextRound
+      ? '🏳️ Partie abandonnée ! Vous pourrez jouer la prochaine manche.'
+      : '🏳️ Partie abandonnée ! L\'article a été entièrement démasqué.');
 
     const title = msg.title || (msg.solution && msg.solution.title) || '';
     const wikiUrl = msg.url || (msg.solution && msg.solution.url) || `https://fr.wikipedia.org/wiki/${encodeURIComponent(title)}`;
