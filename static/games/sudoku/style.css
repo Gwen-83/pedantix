@@ -138,6 +138,8 @@ button.sudoku-mode-card:hover { transform: translateY(-2px); border-color: rgba(
 .sudoku-player-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 14px 0; padding: 0; list-style: none; }
 .sudoku-player-list li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 11px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; color: #dbe3ef; font-size: 0.8rem; }
 .sudoku-player-list small { color: #aab3c5; }
+.sudoku-player-list li.sudoku-spectator { border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.07); }
+.sudoku-player-list li.sudoku-spectator small { color: #7dd3fc; }
 
 .sudoku-round { margin-top: 18px; }
 .sudoku-timer-panel { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 12px 15px; border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 12px; background: rgba(56, 189, 248, 0.07); }

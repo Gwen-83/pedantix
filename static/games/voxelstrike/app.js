@@ -10,7 +10,13 @@
   const overlay = document.getElementById('start-overlay');
   const startButton = document.getElementById('start-button');
   const message = document.getElementById('connection-message');
-  let playerName = (localStorage.getItem('voxelstrike_player_name') || '').trim().slice(0, 24);
+  const playerName = (localStorage.getItem('pedantix_auth_user') || '').trim().slice(0, 24);
+  const authToken = localStorage.getItem('pedantix_auth_token') || '';
+  if (!playerName || !authToken) {
+    const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+    return;
+  }
   const keys = { forward: false, back: false, left: false, right: false, fire: false };
   const camera = { x: 1.5, z: 1.5, yaw: 0 };
   const targetCamera = { x: 1.5, z: 1.5 };
@@ -29,13 +35,36 @@
   let scores = { blue: 0, red: 0 };
   let winner = null;
   let hasCameraPosition = false;
+  let roomStatus = 'lobby';
+  let hostId = '';
+  let canStart = false;
+  let isSpectator = false;
 
   const $ = (id) => document.getElementById(id);
   const statusLabel = $('server-count');
   const playerLabel = $('player-name');
-  const playerNameInput = $('player-name-input');
-  playerNameInput.value = playerName;
   playerLabel.textContent = playerName;
+  const spectatorBadge = document.createElement('div');
+  spectatorBadge.textContent = 'OBSERVATEUR · Vous jouerez au prochain match';
+  spectatorBadge.style.cssText = 'position:absolute;z-index:8;top:58px;left:50%;transform:translateX(-50%);padding:9px 14px;border:1px solid #d7ff55aa;border-radius:4px;background:#101827e8;color:#d7ff55;font:700 .68rem "DM Mono",monospace;letter-spacing:.08em;text-align:center;pointer-events:none;white-space:nowrap';
+  spectatorBadge.hidden = true;
+  $('arena').parentElement.append(spectatorBadge);
+
+  function updateSpectatorUI() {
+    spectatorBadge.hidden = !isSpectator;
+    $('team-label').textContent = isSpectator ? 'OBSERVATEUR' : (team === 'blue' ? 'BLEU' : 'ROUGE');
+    $('team-label').classList.toggle('red', !isSpectator && team === 'red');
+    ['control-hint', 'touch-controls'].forEach((id) => {
+      $(id).style.display = isSpectator ? 'none' : '';
+    });
+    ['.crosshair', '.weapon-card', '.health-card'].forEach((selector) => {
+      document.querySelector(selector).style.display = isSpectator ? 'none' : '';
+    });
+    if (isSpectator) {
+      Object.keys(keys).forEach((key) => { keys[key] = false; });
+      moveAxis = { x: 0, y: 0 };
+    }
+  }
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -61,24 +90,13 @@
   }
 
   function joinGame() {
-    playerName = playerNameInput.value.trim().slice(0, 24);
-    if (!playerName) {
-      message.textContent = 'Choisissez un pseudo pour rejoindre la partie.';
-      playerNameInput.focus();
-      return;
-    }
-    localStorage.setItem('voxelstrike_player_name', playerName);
-    playerLabel.textContent = playerName;
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      canvas.requestPointerLock?.();
-      overlay.hidden = true;
-      return;
-    }
-    canvas.requestPointerLock?.();
+    if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
     startButton.disabled = true;
-    message.textContent = 'Recherche d’une partie…';
+    startButton.innerHTML = 'CONNEXION AU SERVEUR… <span>↗</span>';
+    message.textContent = 'Connexion au salon de jeu…';
     const scheme = backendUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-    socket = new WebSocket(`${scheme}//${backendUrl.host}/ws/voxelstrike?name=${encodeURIComponent(playerName)}`);
+    const query = new URLSearchParams({ name: playerName, token: authToken });
+    socket = new WebSocket(`${scheme}//${backendUrl.host}/ws/voxelstrike?${query}`);
     socket.addEventListener('open', () => {
       statusLabel.textContent = 'Serveur connecté';
       active = true;
@@ -88,42 +106,120 @@
       if (data.type === 'welcome') {
         selfId = data.id;
         team = data.team;
+        isSpectator = Boolean(data.spectator);
         arena = data.arena;
+        roomStatus = data.status;
+        hostId = data.host_id;
         $('room-code').textContent = `· SALON ${data.room}`;
-        $('team-label').textContent = team === 'blue' ? 'BLEU' : 'ROUGE';
-        $('team-label').classList.toggle('red', team === 'red');
-        $('match-label').textContent = 'PARTIE EN COURS';
-        overlay.hidden = true;
+        $('lobby-room').textContent = data.room;
+        $('match-label').textContent = 'SALON D’ATTENTE';
+        $('lobby-panel').hidden = false;
+        $('feature-row')?.setAttribute('hidden', '');
+        updateSpectatorUI();
+        if (isSpectator) overlay.hidden = true;
+        updateLobby();
         updatePresenceCount();
       } else if (data.type === 'state') {
+        const wasInLobby = roomStatus === 'lobby';
         players = data.players;
+        const me = players.find((player) => player.id === selfId);
+        if (me) {
+          isSpectator = Boolean(me.spectator);
+          team = me.team;
+          updateSpectatorUI();
+        }
         scores = data.scores;
         winner = data.winner;
+        roomStatus = data.status;
+        hostId = data.host_id;
+        canStart = data.can_start;
+        if (roomStatus === 'lobby') {
+          overlay.hidden = false;
+          updateLobby();
+        } else if (wasInLobby) {
+          overlay.hidden = true;
+        }
         updateHud();
         updatePresenceCount();
       } else if (data.type === 'full') {
         active = false;
         statusLabel.textContent = 'Serveur complet';
         showOverlay('SERVEUR<br><span>COMPLET</span>', data.message, 'RÉESSAYER');
+        $('lobby-panel').hidden = true;
       }
     });
     socket.addEventListener('close', () => {
       active = false;
       Object.keys(keys).forEach((key) => { keys[key] = false; });
-      if (!overlay.hidden) return;
+      if (statusLabel.textContent === 'Serveur complet') return;
       showOverlay('CONNEXION<br><span>PERDUE</span>', 'La partie a été interrompue. Reconnectez-vous pour rejouer.', 'RECONNECTER');
+      $('lobby-panel').hidden = true;
       statusLabel.textContent = 'Déconnecté';
     });
     socket.addEventListener('error', () => {
       message.textContent = 'Impossible de joindre le serveur. Réessayez dans un instant.';
+      startButton.innerHTML = 'RÉESSAYER <span>↗</span>';
       startButton.disabled = false;
       statusLabel.textContent = 'Connexion impossible';
     });
   }
 
+  function updateLobby() {
+    const isHost = selfId === hostId;
+    const lobbyPlayers = $('lobby-players');
+    const count = players.length;
+    overlay.querySelector('h1').innerHTML = 'SALON<br><span>D’ATTENTE</span>';
+    overlay.querySelector('.intro-copy').textContent = 'Retrouvez votre équipe avant le début de la partie.';
+    $('lobby-count').textContent = `${count}/${10} JOUEURS`;
+    lobbyPlayers.replaceChildren();
+    players.forEach((player) => {
+      const item = document.createElement('li');
+      const name = document.createElement('span');
+      const teamName = document.createElement('small');
+      name.textContent = `${player.name}${player.id === hostId ? ' · HÔTE' : ''}${player.id === selfId ? ' (vous)' : ''}`;
+      teamName.textContent = player.team === 'blue' ? 'BLEU' : 'ROUGE';
+      teamName.className = player.team === 'blue' ? 'lobby-team-blue' : 'lobby-team-red';
+      item.append(name, teamName);
+      lobbyPlayers.append(item);
+    });
+    if (isHost) {
+      $('lobby-message').textContent = count < 2
+        ? 'Invitez un autre joueur. La partie démarre à partir de deux joueurs.'
+        : 'Tout le monde est prêt ? Lancez la partie.';
+      startButton.innerHTML = 'LANCER LA PARTIE <span>↗</span>';
+    } else {
+      $('lobby-message').textContent = 'En attente du lancement par l’hôte du salon.';
+      startButton.innerHTML = 'EN ATTENTE DE L’HÔTE <span>…</span>';
+    }
+    startButton.disabled = !isHost || !canStart;
+  }
+
+  function handlePrimaryAction() {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      joinGame();
+      return;
+    }
+    if (roomStatus === 'lobby') {
+      if (selfId === hostId && canStart) {
+        canvas.requestPointerLock?.();
+        socket.send(JSON.stringify({ type: 'start' }));
+        startButton.disabled = true;
+        $('lobby-message').textContent = 'Démarrage de la partie…';
+      }
+      return;
+    }
+    if (isSpectator) {
+      overlay.hidden = true;
+      return;
+    }
+    canvas.requestPointerLock?.();
+    overlay.hidden = true;
+  }
+
   function updatePresenceCount() {
-    const alive = players.filter((player) => player.alive).length;
-    $('alive-count').textContent = `${alive} joueur${alive !== 1 ? 's' : ''} en vie`;
+    const alive = players.filter((player) => player.alive && !player.spectator).length;
+    const spectators = players.filter((player) => player.spectator).length;
+    $('alive-count').textContent = `${alive} joueur${alive !== 1 ? 's' : ''} en vie · ${spectators} observateur${spectators !== 1 ? 's' : ''}`;
     $('blue-score').textContent = scores.blue;
     $('red-score').textContent = scores.red;
     const me = players.find((player) => player.id === selfId);
@@ -139,9 +235,13 @@
       $('health-bar').style.width = `${me.hp}%`;
       $('health-bar').style.background = me.hp < 35 ? '#ff526e' : 'linear-gradient(90deg,#a6e84e,#d7ff55)';
       $('hit-marker').hidden = !me.hit;
-      $('death-overlay').hidden = me.alive;
+      $('death-overlay').hidden = isSpectator || me.alive;
     }
-    if (winner) {
+    if (isSpectator) {
+      $('match-label').textContent = 'OBSERVATEUR';
+    } else if (roomStatus === 'lobby') {
+      $('match-label').textContent = 'SALON D’ATTENTE';
+    } else if (winner) {
       $('match-label').textContent = winner === team ? 'VICTOIRE' : 'DÉFAITE';
     } else {
       $('match-label').textContent = 'PARTIE EN COURS';
@@ -318,27 +418,34 @@
   function drawMinimap() {
     if (!arena.length) return;
     const size = mini.width;
-    const cell = size / arena[0].length;
+    const cell = size / Math.max(arena.length, arena[0].length);
+    const offsetX = (size - arena[0].length * cell) / 2;
+    const offsetY = (size - arena.length * cell) / 2;
     miniCtx.clearRect(0, 0, size, size);
     miniCtx.fillStyle = '#111a27';
     miniCtx.fillRect(0, 0, size, size);
     arena.forEach((row, z) => [...row].forEach((tile, x) => {
       if (tile === '#') {
         miniCtx.fillStyle = '#536274';
-        miniCtx.fillRect(x * cell + 1, z * cell + 1, cell - 2, cell - 2);
+        miniCtx.fillRect(offsetX + x * cell + 1, offsetY + z * cell + 1, cell - 2, cell - 2);
       }
     }));
     players.forEach((player) => {
-      if (!player.alive) return;
+      if (!player.alive && !player.spectator) return;
       miniCtx.beginPath();
-      miniCtx.fillStyle = player.team === 'blue' ? '#54c8ff' : '#ff526e';
-      miniCtx.arc((player.x + .5) * cell, (player.z + .5) * cell, player.id === selfId ? 4 : 2.4, 0, Math.PI * 2);
+      miniCtx.fillStyle = player.spectator ? '#d7ff55' : (player.team === 'blue' ? '#54c8ff' : '#ff526e');
+      miniCtx.arc(offsetX + player.x * cell, offsetY + player.z * cell, player.id === selfId ? 4 : 2.4, 0, Math.PI * 2);
+      if (player.spectator) {
+        miniCtx.strokeStyle = '#d7ff55';
+        miniCtx.lineWidth = 1.5;
+        miniCtx.stroke();
+      }
       miniCtx.fill();
     });
   }
 
   function sendInput(now) {
-    if (!active || !socket || socket.readyState !== WebSocket.OPEN || now - lastInput < 50) return;
+    if (isSpectator || !active || roomStatus !== 'playing' || !socket || socket.readyState !== WebSocket.OPEN || now - lastInput < 50) return;
     lastInput = now;
     const inputKeys = { ...keys };
     if (moveAxis.y < -.25) inputKeys.forward = true;
@@ -355,7 +462,7 @@
   requestAnimationFrame(render);
   requestAnimationFrame(animation);
 
-  startButton.addEventListener('click', joinGame);
+  startButton.addEventListener('click', handlePrimaryAction);
   document.addEventListener('pointerlockchange', () => {
     if (document.pointerLockElement === canvas) {
       overlay.hidden = true;
@@ -368,7 +475,7 @@
   });
   document.addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
-    const map = { w: 'forward', arrowup: 'forward', s: 'back', arrowdown: 'back', a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right' };
+    const map = { z: 'forward', w: 'forward', arrowup: 'forward', s: 'back', arrowdown: 'back', q: 'left', a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right' };
     if (map[key]) {
       keys[map[key]] = true;
       event.preventDefault();
@@ -376,7 +483,7 @@
   });
   document.addEventListener('keyup', (event) => {
     const key = event.key.toLowerCase();
-    const map = { w: 'forward', arrowup: 'forward', s: 'back', arrowdown: 'back', a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right' };
+    const map = { z: 'forward', w: 'forward', arrowup: 'forward', s: 'back', arrowdown: 'back', q: 'left', a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right' };
     if (map[key]) keys[map[key]] = false;
   });
   canvas.addEventListener('mousedown', (event) => {
@@ -384,7 +491,7 @@
   });
   document.addEventListener('mouseup', () => { keys.fire = false; });
   canvas.addEventListener('click', () => {
-    if (active && document.pointerLockElement !== canvas && !overlay.hidden) canvas.requestPointerLock?.();
+    if (!isSpectator && active && roomStatus === 'playing' && document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
   });
   canvas.addEventListener('touchstart', (event) => {
     if (event.touches[0] && event.touches[0].clientX > window.innerWidth * .42) touchLookX = event.touches[0].clientX;
@@ -428,6 +535,8 @@
   });
   fireButton.addEventListener('pointerup', () => { keys.fire = false; });
   fireButton.addEventListener('pointercancel', () => { keys.fire = false; });
+
+  joinGame();
 
   window.addEventListener('beforeunload', () => socket?.close());
 })();

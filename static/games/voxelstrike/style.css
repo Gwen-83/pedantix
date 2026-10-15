@@ -58,7 +58,11 @@ button { color: inherit; }
 .weapon-card b { font: 700 .91rem 'Barlow Condensed',sans-serif; letter-spacing: .08em; }
 .weapon-card i { color: #d7ff55; font-style: normal; }
 .kill-feed { align-self: center; margin: 0 auto; color: #d7ff55; font: 500 .68rem 'DM Mono',monospace; text-shadow: 0 2px 5px #000; }
-#minimap { position: absolute; right: 23px; top: 84px; width: 118px; height: 118px; opacity: .85; border: 1px solid #ffffff3d; border-radius: 5px; background: #080d18bd; }
+#minimap { position: absolute; right: 23px; top: 174px; width: 118px; height: 118px; opacity: .85; border: 1px solid #ffffff3d; border-radius: 5px; background: #080d18bd; }
+.control-hint { position: absolute; top: 71px; right: 23px; display: grid; gap: 5px; padding: 9px 10px; border: 1px solid #ffffff2b; border-radius: 6px; background: #080d18d9; color: #c9ced7; font: 500 .53rem 'DM Mono',monospace; }
+.control-hint span { display: flex; align-items: center; justify-content: flex-end; gap: 3px; white-space: nowrap; }
+.control-hint kbd { min-width: 17px; text-align: center; }
+.control-hint span:last-child kbd { padding: 3px 4px; font-size: .45rem; }
 
 .overlay { position: absolute; z-index: 5; inset: 0; display: grid; place-items: center; padding: 24px; background: linear-gradient(90deg,#080d18dd,#0b1127b0 55%,#080d1866),radial-gradient(ellipse at 70% 50%,#4b69a126,transparent 55%); }
 .intro-card { width: min(560px,100%); padding: clamp(27px,5vw,54px); border: 1px solid #ffffff24; border-radius: 12px; background: linear-gradient(145deg,#111827eb,#0c1220e8); box-shadow: 0 24px 80px #0008; backdrop-filter: blur(12px); }
@@ -69,14 +73,21 @@ h1 span { color: #d7ff55; }
 .feature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px 18px; margin-bottom: 29px; color: #b4bac7; font-size: .68rem; }
 .feature-row span { display: flex; align-items: center; gap: 8px; }
 .feature-row i { color: #d7ff55; font: 500 .59rem 'DM Mono',monospace; font-style: normal; }
-.name-label { display: block; margin: 0 0 6px; color: #b0b6c2; font: 500 .56rem 'DM Mono',monospace; letter-spacing: .1em; }
-.name-input { width: 100%; height: 42px; margin-bottom: 12px; padding: 0 12px; border: 1px solid #ffffff26; border-radius: 5px; outline: none; color: #f3f5fa; background: #080d18b8; font: 500 .72rem 'DM Mono',monospace; }
-.name-input:focus { border-color: #d7ff55; }
 .primary-button { min-height: 52px; width: 100%; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border: 0; border-radius: 5px; background: #d7ff55; color: #10150b; font: 800 .78rem 'DM Mono',monospace; letter-spacing: .04em; transition: transform .15s,background .15s; }
 .primary-button:hover { transform: translateY(-2px); background: #e4ff8c; }
-.primary-button:disabled { cursor: wait; opacity: .7; }
+.primary-button:disabled { cursor: wait; opacity: .62; }
 .primary-button span { font-size: 1.2rem; }
 .connection-message { min-height: 16px; margin: 13px 0 0; color: #8992a3; text-align: center; font: 400 .59rem 'DM Mono',monospace; }
+.lobby-panel { margin: 17px 0 14px; padding: 13px 15px; border: 1px solid #ffffff20; border-radius: 6px; background: #080d187a; }
+.lobby-summary { display: flex; align-items: center; gap: 9px; color: #aeb6c4; font: 500 .54rem 'DM Mono',monospace; letter-spacing: .06em; }
+.lobby-summary b { color: #d7ff55; font-size: .72rem; }
+.lobby-summary span:last-child { margin-left: auto; }
+.lobby-message { margin: 9px 0; color: #b9c0cc; font-size: .68rem; }
+.lobby-players { max-height: 150px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.lobby-players li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid #ffffff12; color: #f0f2f7; font-size: .67rem; }
+.lobby-players small { font: 500 .52rem 'DM Mono',monospace; }
+.lobby-team-blue { color: var(--blue); }
+.lobby-team-red { color: var(--red); }
 .death-overlay { position: absolute; z-index: 4; top: 37%; left: 50%; display: grid; justify-items: center; gap: 6px; transform: translate(-50%,-50%); text-shadow: 0 2px 10px #000; }
 .death-overlay strong { color: #ff607b; font: 900 2.1rem 'Barlow Condensed',sans-serif; letter-spacing: .14em; }
 .death-overlay span { color: #e1e4ea; font: 500 .67rem 'DM Mono',monospace; }
@@ -97,7 +108,10 @@ kbd { padding: 3px 5px; border: 1px solid #ffffff20; border-radius: 3px; color: 
   .team-score b { font-size: 1rem; }
   .player-label { gap: 4px; font-size: .61rem; }
   .team-pill { padding: 3px 5px; }
-  #minimap { top: 60px; right: 11px; width: 87px; height: 87px; }
+  #minimap { top: 151px; right: 11px; width: 87px; height: 87px; }
+  .control-hint { top: 62px; right: 11px; gap: 4px; padding: 6px 7px; font-size: .46rem; }
+  .control-hint kbd { min-width: 14px; padding: 2px 3px; }
+  .control-hint span:last-child kbd { padding: 2px 3px; font-size: .4rem; }
   .hud-bottom { right: 12px; bottom: 12px; left: 12px; }
   .health-card { width: 145px; padding: 8px 10px; }
   .weapon-card { min-width: 112px; padding: 8px 9px; }
@@ -105,6 +119,8 @@ kbd { padding: 3px 5px; border: 1px solid #ffffff20; border-radius: 3px; color: 
   .overlay { padding: 12px; }
   .intro-card { padding: 29px 23px; }
   .feature-row { font-size: .61rem; }
+  .lobby-panel { margin: 12px 0; padding: 10px 12px; }
+  .lobby-players { max-height: 110px; }
   .controls-footer { min-height: 40px; justify-content: center; }
   .controls-footer span:not(:last-child) { display: none; }
   .touch-controls { position: absolute; right: 19px; bottom: 85px; left: 19px; display: flex; justify-content: space-between; align-items: end; }

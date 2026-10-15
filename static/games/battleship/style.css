@@ -138,6 +138,8 @@ h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em;
 .naval-player-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 14px 0 20px; padding: 0; list-style: none; }
 .naval-player-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 9px; color: #dbe3ef; font-size: 0.82rem; }
 .naval-player-list small { color: #9aa6ba; }
+.naval-player-list li.naval-spectator { border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.07); }
+.naval-player-list li.naval-spectator small { color: #7dd3fc; }
 
 .naval-setup { display: grid; justify-items: center; gap: 12px; padding: 20px; border-radius: 16px; background: rgba(255, 255, 255, 0.035); }
 .naval-setup-copy { justify-self: stretch; }

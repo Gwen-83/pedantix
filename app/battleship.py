@@ -98,6 +98,7 @@ class BattleshipPlayer:
     ready: bool = False
     incoming_shots: Dict[str, str] = field(default_factory=dict)
     attacks: List[Dict[str, Any]] = field(default_factory=list)
+    is_spectator: bool = False
 
     @property
     def ship_cells(self) -> Dict[str, str]:
@@ -124,6 +125,7 @@ class BattleshipPlayer:
         return {
             "player_id": self.player_id,
             "name": self.name,
+            "is_spectator": self.is_spectator,
             "ready": self.ready,
             "eliminated": self.eliminated,
             "ships_remaining": len(self.fleet) - len(self.sunk_ships),
@@ -144,9 +146,14 @@ class BattleshipRoom:
     winner_player_id: Optional[str] = None
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
+    match_number: int = 1
 
     def _alive_ids(self) -> List[str]:
-        return [player_id for player_id, player in self.players.items() if not player.eliminated]
+        return [
+            player_id
+            for player_id, player in self.players.items()
+            if not player.is_spectator and not player.eliminated
+        ]
 
     def next_alive(self, after_player_id: str) -> Optional[str]:
         player_ids = list(self.players)
@@ -155,40 +162,59 @@ class BattleshipRoom:
         start = player_ids.index(after_player_id)
         for offset in range(1, len(player_ids) + 1):
             candidate = player_ids[(start + offset) % len(player_ids)]
-            if not self.players[candidate].eliminated:
+            if not self.players[candidate].is_spectator and not self.players[candidate].eliminated:
                 return candidate
         return None
 
     def target_for(self, player_id: str) -> Optional[str]:
-        if player_id not in self.players or self.players[player_id].eliminated:
+        if (
+            player_id not in self.players
+            or self.players[player_id].is_spectator
+            or self.players[player_id].eliminated
+        ):
             return None
         return self.next_alive(player_id)
 
     def to_dict(self, player_id: str) -> Dict[str, Any]:
         player = self.players[player_id]
-        target_id = self.target_for(player_id) if self.status == "playing" else None
-        own_fleet = [
+        view_player = player
+        if player.is_spectator:
+            observed_player_id = (
+                self.current_player_id
+                if self.status == "playing" and self.current_player_id in self.players
+                else self.host_player_id
+            )
+            view_player = self.players[observed_player_id]
+        else:
+            observed_player_id = None
+        target_id = (
+            self.target_for(view_player.player_id) if self.status == "playing" else None
+        )
+        own_fleet = [] if player.is_spectator else [
             {
                 "ship_id": ship_id,
                 "name": SHIP_NAMES[ship_id],
                 "length": self.ship_lengths[ship_id],
                 "cells": cells,
-                "sunk": ship_id in player.sunk_ships,
+                "sunk": ship_id in view_player.sunk_ships,
             }
-            for ship_id, cells in player.fleet.items()
+            for ship_id, cells in view_player.fleet.items()
         ]
         return {
             "room_id": self.room_id,
             "status": self.status,
+            "match_number": self.match_number,
             "difficulty": self.difficulty,
             "ship_lengths": self.ship_lengths,
             "host_player_id": self.host_player_id,
             "player_id": player_id,
+            "is_spectator": player.is_spectator,
+            "observed_player_id": observed_player_id,
             "players": [item.public_state() for item in self.players.values()],
             "can_start": (
                 self.status == "lobby"
-                and len(self.players) >= 2
-                and all(item.ready for item in self.players.values())
+                and len(self._active_players()) >= 2
+                and all(item.ready for item in self._active_players())
             ),
             "current_player_id": self.current_player_id,
             "target_player_id": target_id,
@@ -198,18 +224,18 @@ class BattleshipRoom:
             "incoming_shots": [
                 {
                     "coordinate": coordinate,
-                    "hit": coordinate in player.ship_cells,
+                    "hit": coordinate in view_player.ship_cells,
                     "shooter_id": shooter_id,
                     "sunk_ship": (
-                        player.ship_cells[coordinate]
-                        if coordinate in player.ship_cells
-                        and player.ship_cells[coordinate] in player.sunk_ships
+                        view_player.ship_cells[coordinate]
+                        if coordinate in view_player.ship_cells
+                        and view_player.ship_cells[coordinate] in view_player.sunk_ships
                         else None
                     ),
                 }
-                for coordinate, shooter_id in player.incoming_shots.items()
+                for coordinate, shooter_id in view_player.incoming_shots.items()
             ],
-            "attacks": player.attacks,
+            "attacks": view_player.attacks,
             "target_shots": [
                 {
                     "coordinate": attack["coordinate"],
@@ -217,10 +243,13 @@ class BattleshipRoom:
                     "sunk_ship": attack["sunk_ship"],
                     "eliminated": attack["eliminated"],
                 }
-                for attack in player.attacks
+                for attack in view_player.attacks
                 if attack["target_id"] == target_id
             ],
         }
+
+    def _active_players(self) -> List[BattleshipPlayer]:
+        return [player for player in self.players.values() if not player.is_spectator]
 
 
 class BattleshipManager:
@@ -294,12 +323,11 @@ class BattleshipManager:
             if player_id in room.players:
                 room.players[player_id].name = player_name
                 return room
-            if room.status != "lobby":
-                raise ValueError("La partie a commencé. Seuls les joueurs déjà inscrits peuvent revenir.")
             room.players[player_id] = BattleshipPlayer(
                 player_id,
                 player_name,
                 fleet=_generate_fleet(room.ship_lengths),
+                is_spectator=room.status != "lobby",
             )
             return room
 
@@ -316,7 +344,8 @@ class BattleshipManager:
                 {
                     "room_id": room.room_id,
                     "status": room.status,
-                    "player_count": len(room.players),
+                    "player_count": len(room._active_players()),
+                    "spectator_count": len(room.players) - len(room._active_players()),
                     "host_name": room.players[room.host_player_id].name,
                     "difficulty": room.difficulty,
                     "is_member": player_id in room.players if player_id else False,
@@ -332,6 +361,8 @@ class BattleshipManager:
             room = self.get_room(room_id, player_id)
             if room.status != "lobby":
                 raise ValueError("La flotte ne peut plus être modifiée après le départ.")
+            if room.players[player_id].is_spectator:
+                raise ValueError("Les spectateurs ne peuvent pas modifier leur flotte.")
             room.players[player_id].fleet = self.validate_fleet(
                 fleet, room.ship_lengths
             )
@@ -343,6 +374,8 @@ class BattleshipManager:
             room = self.get_room(room_id, player_id)
             if room.status != "lobby":
                 raise ValueError("La flotte ne peut plus être modifiée après le départ.")
+            if room.players[player_id].is_spectator:
+                raise ValueError("Les spectateurs ne peuvent pas modifier leur flotte.")
             room.players[player_id].fleet = _generate_fleet(room.ship_lengths)
             room.players[player_id].ready = False
             return room
@@ -352,6 +385,8 @@ class BattleshipManager:
             room = self.get_room(room_id, player_id)
             if room.status != "lobby":
                 raise ValueError("La préparation est terminée, la partie a commencé.")
+            if room.players[player_id].is_spectator:
+                raise ValueError("Les spectateurs ne peuvent pas confirmer leur flotte.")
             room.players[player_id].ready = ready
             return room
 
@@ -362,14 +397,36 @@ class BattleshipManager:
                 raise PermissionError("Seul l'hôte peut démarrer la partie.")
             if room.status != "lobby":
                 raise ValueError("Cette partie a déjà démarré.")
-            if len(room.players) < 2:
+            active_players = room._active_players()
+            if len(active_players) < 2:
                 raise ValueError("Il faut au moins deux joueurs pour démarrer.")
-            if not all(player.ready for player in room.players.values()):
+            if not all(player.ready for player in active_players):
                 raise ValueError("Tous les joueurs doivent confirmer leur flotte avant le départ.")
             room.status = "playing"
-            room.current_player_id = next(iter(room.players))
+            room.current_player_id = active_players[0].player_id
             room.turn_number = 1
             room.started_at = time.time()
+            return room
+
+    def restart_room(self, room_id: str, player_id: str) -> BattleshipRoom:
+        with self._lock:
+            room = self.get_room(room_id, player_id)
+            if player_id != room.host_player_id:
+                raise PermissionError("Seul l'hôte peut relancer une partie.")
+            if room.status != "finished":
+                raise ValueError("La partie doit être terminée avant de la relancer.")
+            for player in room.players.values():
+                player.is_spectator = False
+                player.fleet = _generate_fleet(room.ship_lengths)
+                player.ready = False
+                player.incoming_shots.clear()
+                player.attacks.clear()
+            room.match_number += 1
+            room.status = "lobby"
+            room.current_player_id = None
+            room.turn_number = 0
+            room.winner_player_id = None
+            room.started_at = None
             return room
 
     def fire(
@@ -379,6 +436,8 @@ class BattleshipManager:
             room = self.get_room(room_id, player_id)
             if room.status != "playing":
                 raise ValueError("La partie n'est pas en cours.")
+            if room.players[player_id].is_spectator:
+                raise ValueError("Les spectateurs ne peuvent pas tirer.")
             if room.current_player_id != player_id:
                 raise ValueError("Ce n'est pas votre tour.")
             target_id = room.target_for(player_id)

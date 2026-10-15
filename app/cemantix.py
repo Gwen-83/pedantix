@@ -84,6 +84,7 @@ class CemantixPlayer:
     player_id: str
     name: str
     guesses: List[Dict[str, Any]] = field(default_factory=list)
+    is_spectator: bool = False
 
 
 @dataclass
@@ -109,12 +110,14 @@ class CemantixRoom:
     winner_player_id: Optional[str] = None
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
+    match_number: int = 1
 
     def to_dict(self, player_id: str, now: float) -> Dict[str, Any]:
         player = self.players[player_id]
         return {
             "room_id": self.room_id,
             "status": self.status,
+            "match_number": self.match_number,
             "host_player_id": self.host_player_id,
             "difficulty": self.difficulty,
             "round_number": self.round_number,
@@ -127,6 +130,7 @@ class CemantixRoom:
                 "name": player.name,
                 "guesses": player.guesses,
                 "has_submitted": player_id in self.pending,
+                "is_spectator": player.is_spectator,
                 "hints": self.hint_words[
                     :_visible_hint_count(self.difficulty, len(player.guesses))
                 ],
@@ -137,12 +141,17 @@ class CemantixRoom:
                     "name": item.name,
                     "guesses": item.guesses,
                     "has_submitted": item.player_id in self.pending,
+                    "is_spectator": item.is_spectator,
                 }
                 for item in self.players.values()
             ],
             "submitted_count": len(self.pending),
-            "player_count": len(self.players),
-            "can_start": self.status == "lobby" and len(self.players) >= 2,
+            "player_count": sum(not item.is_spectator for item in self.players.values()),
+            "spectator_count": sum(item.is_spectator for item in self.players.values()),
+            "can_start": self.status == "lobby"
+            and sum(not item.is_spectator for item in self.players.values()) >= 2,
+            "can_restart": self.status == "finished" and player_id == self.host_player_id,
+            "restart_available": self.status == "finished",
             "winner_player_id": self.winner_player_id,
             "target": self.target if self.status == "finished" else None,
         }
@@ -321,7 +330,12 @@ class CemantixManager:
                 rooms.append({
                     "room_id": room.room_id,
                     "status": room.status,
-                    "player_count": len(room.players),
+                    "player_count": sum(
+                        not player.is_spectator for player in room.players.values()
+                    ),
+                    "spectator_count": sum(
+                        player.is_spectator for player in room.players.values()
+                    ),
                     "host_name": room.players[room.host_player_id].name,
                     "difficulty": room.difficulty,
                     "is_member": player_id in room.players if player_id else False,
@@ -331,10 +345,14 @@ class CemantixManager:
     def _advance_room(self, room: CemantixRoom, now: float) -> None:
         if room.status != "playing" or room.deadline_at is None:
             return
-        if len(room.pending) < len(room.players) and now < room.deadline_at:
+        active_players = [
+            player for player in room.players.values() if not player.is_spectator
+        ]
+        if len(room.pending) < len(active_players) and now < room.deadline_at:
             return
 
-        for player_id, player in room.players.items():
+        for player in active_players:
+            player_id = player.player_id
             submission = room.pending.get(player_id)
             if submission:
                 player.guesses.append(
@@ -372,6 +390,9 @@ class CemantixManager:
         room.round_number += 1
         room.deadline_at = now + CEMANTIX_ROUND_SECONDS
         room.pending.clear()
+        for player in room.players.values():
+            if player.is_spectator:
+                player.is_spectator = False
 
     def join_room(
         self, room_id: str, player_id: str, player_name: str
@@ -383,6 +404,13 @@ class CemantixManager:
             self._advance_room(room, self._clock())
             if player_id in room.players:
                 room.players[player_id].name = player_name
+                return room
+            if room.status == "playing":
+                if len(room.players) >= CEMANTIX_MAX_PLAYERS:
+                    raise ValueError(f"Ce salon est complet ({CEMANTIX_MAX_PLAYERS} joueurs maximum).")
+                room.players[player_id] = CemantixPlayer(
+                    player_id, player_name, is_spectator=True
+                )
                 return room
             if room.status != "lobby":
                 raise ValueError("La partie a commencé. Seuls les joueurs déjà inscrits peuvent revenir.")
@@ -406,12 +434,34 @@ class CemantixManager:
                 raise PermissionError("Seul l'hôte peut démarrer la partie.")
             if room.status != "lobby":
                 raise ValueError("Cette partie a déjà démarré.")
-            if len(room.players) < 2:
+            if sum(not player.is_spectator for player in room.players.values()) < 2:
                 raise ValueError("Il faut au moins deux joueurs pour démarrer.")
             now = self._clock()
             room.status = "playing"
             room.round_number = 1
             room.deadline_at = now + CEMANTIX_ROUND_SECONDS
+            room.started_at = now
+            return room
+
+    def restart_room(self, room_id: str, player_id: str) -> CemantixRoom:
+        with self._lock:
+            room = self.get_room(room_id, player_id)
+            if room.host_player_id != player_id:
+                raise PermissionError("Seul l'hôte peut redémarrer la partie.")
+            if room.status != "finished":
+                raise ValueError("La partie doit être terminée pour être redémarrée.")
+            now = self._clock()
+            room.target = self._pick_target()
+            room.match_number += 1
+            room.hint_words = self._hint_words(room.target)
+            for player in room.players.values():
+                player.guesses.clear()
+                player.is_spectator = False
+            room.status = "playing"
+            room.round_number = 1
+            room.deadline_at = now + CEMANTIX_ROUND_SECONDS
+            room.pending.clear()
+            room.winner_player_id = None
             room.started_at = now
             return room
 
@@ -422,6 +472,8 @@ class CemantixManager:
             room = self.get_room(room_id, player_id)
             if room.status != "playing":
                 raise ValueError("La partie n'est pas en cours.")
+            if room.players[player_id].is_spectator:
+                raise ValueError("Les spectateurs ne peuvent pas proposer de mot.")
             if player_id in room.pending:
                 raise ValueError("Votre proposition pour cette manche a déjà été envoyée.")
 

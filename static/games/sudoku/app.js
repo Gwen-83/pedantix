@@ -107,13 +107,18 @@
       const title = document.createElement('strong');
       title.textContent = `Salon ${room.room_id}`;
       const details = document.createElement('small');
-      details.textContent = `${room.player_count} joueur${room.player_count === 1 ? '' : 's'} · ${room.difficulty} · ${room.status === 'playing' ? 'En cours' : 'En attente'}`;
+      const spectators = room.spectator_count
+        ? ` · ${room.spectator_count} observateur${room.spectator_count === 1 ? '' : 's'}`
+        : '';
+      details.textContent = `${room.player_count} joueur${room.player_count === 1 ? '' : 's'}${spectators} · ${room.difficulty} · ${room.status === 'playing' ? 'En cours' : 'En attente'}`;
       copy.append(title, details);
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'sudoku-secondary-button';
-      button.textContent = room.is_member ? 'Reprendre' : room.status === 'lobby' ? 'Rejoindre' : 'En cours';
-      button.disabled = !room.is_member && room.status !== 'lobby';
+      button.textContent = room.is_member
+        ? 'Reprendre'
+        : room.status === 'lobby' ? 'Rejoindre' : 'Observer';
+      button.disabled = !room.is_member && !['lobby', 'playing'].includes(room.status);
       if (!button.disabled) button.addEventListener('click', () => joinRoom(room.room_id));
       card.append(copy, button);
       roomDirectory.append(card);
@@ -172,7 +177,9 @@
 
   function canEdit() {
     if (!state || state.status !== 'playing') return false;
-    return !ownPlayer()?.solved && !ownPlayer()?.eliminated;
+    return !ownPlayer()?.is_spectator
+      && !ownPlayer()?.solved
+      && !ownPlayer()?.eliminated;
   }
 
   function renderGrid() {
@@ -254,9 +261,12 @@
       const name = document.createElement('span');
       name.textContent = player.name + (player.player_id === state.host_player_id ? ' (hôte)' : '');
       const status = document.createElement('small');
-      status.textContent = player.solved
+      status.textContent = player.is_spectator
+        ? 'Observateur · en attente de la prochaine partie'
+        : player.solved
         ? `Terminé · ${player.points} pt${player.points === 1 ? '' : 's'}`
         : player.eliminated ? 'Éliminé · 0 vie' : `${player.lives} vies restantes`;
+      if (player.is_spectator) item.classList.add('sudoku-spectator');
       item.append(name, status);
       return item;
     }));
@@ -269,8 +279,10 @@
       'La même grille pour tout le monde, mais chacun joue sur son propre plateau.';
     document.getElementById('sudoku-lobby').hidden = false;
     document.getElementById('sudoku-round').hidden = true;
+    const activeCount = state.players.filter((player) => !player.is_spectator).length;
+    const spectatorCount = state.players.length - activeCount;
     document.getElementById('sudoku-lobby-status').textContent =
-      `${state.players.length} joueur${state.players.length === 1 ? '' : 's'} dans le salon. Au moins deux joueurs sont nécessaires.`;
+      `${activeCount} joueur${activeCount === 1 ? '' : 's'}${spectatorCount ? ` · ${spectatorCount} observateur${spectatorCount === 1 ? '' : 's'}` : ''} dans le salon. Au moins deux joueurs sont nécessaires.`;
     document.getElementById('sudoku-invite-code').textContent = `Code : ${state.room_id}`;
     const inviteUrl = new URL(window.location.href);
     inviteUrl.search = new URLSearchParams({ room: state.room_id }).toString();
@@ -296,22 +308,30 @@
   function renderRound() {
     const room = gameType === 'room';
     const player = ownPlayer();
+    const isSpectator = room && player?.is_spectator;
     document.getElementById('sudoku-lobby').hidden = true;
     document.getElementById('sudoku-round').hidden = false;
     document.getElementById('sudoku-game-mode').textContent = room
       ? `Multijoueur · ${state.difficulty}`
       : `Solo · ${state.difficulty}`;
-    document.getElementById('sudoku-game-title').textContent = player?.eliminated
-      ? 'Vous êtes éliminé'
-      : state.status === 'finished' ? 'Grille résolue !' : 'Complétez la grille.';
+    document.getElementById('sudoku-game-title').textContent = isSpectator
+      ? 'Vous observez la partie'
+      : player?.eliminated ? 'Vous êtes éliminé'
+        : state.status === 'finished' ? 'Grille résolue !' : 'Complétez la grille.';
     document.getElementById('sudoku-game-hint').textContent = 'Chaque chiffre doit apparaître une seule fois par ligne, colonne et carré 3×3.';
     const lives = document.getElementById('sudoku-lives');
-    lives.textContent = `Vies restantes : ${player.lives} / 3`;
-    lives.classList.toggle('sudoku-eliminated', player.eliminated);
+    lives.textContent = isSpectator
+      ? `Grille observée : ${state.observed_player?.name || 'un joueur actif'} · vous rejoindrez la prochaine partie.`
+      : `Vies restantes : ${player.lives} / 3`;
+    lives.classList.toggle('sudoku-eliminated', !isSpectator && player.eliminated);
     document.getElementById('sudoku-timer-panel').hidden = !room || !state.deadline_at;
     if (room && state.deadline_at && state.status === 'playing') updateCountdown();
     const message = document.getElementById('sudoku-round-message');
-    if (player?.eliminated) {
+    if (isSpectator) {
+      message.textContent = state.status === 'finished'
+        ? 'La partie est terminée. Vous rejoindrez la prochaine partie lorsque l’hôte la relancera.'
+        : `Vous observez en direct la grille de ${state.observed_player?.name || 'un joueur actif'}.`;
+    } else if (player?.eliminated) {
       message.textContent = 'Trois erreurs : vous êtes éliminé. Les chiffres incorrects restent affichés en rouge.';
     } else if (!room) {
       message.textContent = state.solved
@@ -333,12 +353,15 @@
     renderNumberPad();
 
     const scoreboard = document.getElementById('sudoku-scoreboard');
-    scoreboard.hidden = !(room && player.solved);
+    scoreboard.hidden = !(room && !isSpectator && player.solved);
     if (!scoreboard.hidden) {
       const place = player.rank === 1 ? '1re' : `${player.rank}e`;
       scoreboard.textContent = `Votre place : ${place} · points gagnés : ${player.points}`;
     }
     renderRanking();
+    const restartButton = document.getElementById('sudoku-restart-game');
+    restartButton.hidden = !room || state.status !== 'finished' || playerId !== state.host_player_id;
+    restartButton.disabled = roomBusy;
   }
 
   function updateView() {
@@ -347,19 +370,12 @@
     if (state.status === 'lobby') renderLobby();
     else renderRound();
     if (gameType === 'room') {
-      if (state.status !== 'finished') {
-        if (!pollingTimer) pollingTimer = window.setInterval(refreshRoom, 1400);
-        if (state.status === 'playing' && state.deadline_at && !countdownTimer) {
-          countdownTimer = window.setInterval(updateCountdown, 250);
-        }
-        if ((state.status !== 'playing' || !state.deadline_at) && countdownTimer) {
-          window.clearInterval(countdownTimer);
-          countdownTimer = null;
-        }
-      } else {
-        if (pollingTimer) window.clearInterval(pollingTimer);
-        if (countdownTimer) window.clearInterval(countdownTimer);
-        pollingTimer = null;
+      if (!pollingTimer) pollingTimer = window.setInterval(refreshRoom, 1400);
+      if (state.status === 'playing' && state.deadline_at && !countdownTimer) {
+        countdownTimer = window.setInterval(updateCountdown, 250);
+      }
+      if ((state.status !== 'playing' || !state.deadline_at) && countdownTimer) {
+        window.clearInterval(countdownTimer);
         countdownTimer = null;
       }
     } else if (gameType === 'solo' && state.status === 'playing' && !elapsedTimer) {
@@ -485,6 +501,24 @@
     }
   }
 
+  async function restartRoom() {
+    if (gameType !== 'room' || state?.status !== 'finished' || roomBusy) return;
+    roomBusy = true;
+    const button = document.getElementById('sudoku-restart-game');
+    button.disabled = true;
+    try {
+      state = await post('/api/sudoku/room/restart', roomPayload());
+      selectedCell = [0, 0];
+      updateView();
+    } catch (error) {
+      showError(playError, error.message);
+    } finally {
+      roomBusy = false;
+      if (state?.status === 'finished') renderRound();
+      else if (state?.status === 'lobby') renderLobby();
+    }
+  }
+
   function setCell(value) {
     if (!canEdit()) return;
     const [row, column] = selectedCell;
@@ -555,6 +589,7 @@
 
   function handleKeydown(event) {
     if (play.hidden || !state || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (gameType === 'room' && ownPlayer()?.is_spectator) return;
     const [row, column] = selectedCell;
     if (/^[1-9]$/.test(event.key)) {
       event.preventDefault();
@@ -592,6 +627,7 @@
     }
   });
   document.getElementById('sudoku-start-game').addEventListener('click', startRoom);
+  document.getElementById('sudoku-restart-game').addEventListener('click', restartRoom);
   document.getElementById('sudoku-home-button').addEventListener('click', () => {
     localStorage.setItem('sudoku_active_game_mode', 'home');
     localStorage.removeItem('sudoku_active_room_id');

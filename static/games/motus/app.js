@@ -113,8 +113,10 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'motus-secondary-button';
-      button.textContent = room.is_member ? 'Reprendre' : room.status === 'lobby' ? 'Rejoindre' : 'En cours';
-      button.disabled = !room.is_member && room.status !== 'lobby';
+      button.textContent = room.is_member
+        ? 'Reprendre'
+        : room.status === 'playing' ? 'Observer' : 'Rejoindre';
+      button.disabled = !room.is_member && !['lobby', 'playing'].includes(room.status);
       if (!button.disabled) button.addEventListener('click', () => joinRoom(room.room_id));
       card.append(copy, button);
       roomDirectory.append(card);
@@ -141,7 +143,9 @@
     if (!state) return;
     showPlay();
     const isRoom = gameType === 'room';
-    document.getElementById('motus-game-mode').textContent = isRoom ? 'Défi multijoueur' : 'Partie solo';
+    document.getElementById('motus-game-mode').textContent = isRoom
+      ? state.player.is_spectator ? 'Défi multijoueur · Spectateur' : 'Défi multijoueur'
+      : 'Partie solo';
     document.getElementById('motus-game-title').textContent = state.status === 'finished'
       ? 'Partie terminée'
       : 'Trouvez le mot';
@@ -156,17 +160,23 @@
     const roomId = state.room_id;
     const inviteUrl = new URL(window.location.href);
     inviteUrl.search = new URLSearchParams({ room: roomId }).toString();
+    const activePlayers = state.players.filter((player) => !player.is_spectator);
+    const spectators = state.players.length - activePlayers.length;
     document.getElementById('motus-lobby-status').textContent =
-      `${state.players.length} joueur${state.players.length === 1 ? '' : 's'} dans le salon. Il en faut au moins deux pour démarrer.`;
+      `${activePlayers.length} joueur${activePlayers.length === 1 ? '' : 's'} dans le salon`
+      + (spectators ? ` · ${spectators} spectateur${spectators === 1 ? '' : 's'}` : '')
+      + '. Il en faut au moins deux pour démarrer.';
     document.getElementById('motus-invite-code').textContent = `Code : ${roomId}`;
     document.getElementById('motus-copy-invite').dataset.inviteUrl = inviteUrl.href;
     const list = document.getElementById('motus-player-list');
     list.replaceChildren(...state.players.map((player) => {
       const item = document.createElement('li');
       const name = document.createElement('span');
-      name.textContent = player.name + (player.player_id === state.host_player_id ? ' (hôte)' : '');
+      name.textContent = player.name
+        + (player.player_id === state.host_player_id ? ' (hôte)' : '')
+        + (player.is_spectator ? ' (spectateur)' : '');
       const status = document.createElement('small');
-      status.textContent = 'Prêt';
+      status.textContent = player.is_spectator ? 'En attente' : 'Prêt';
       item.append(name, status);
       return item;
     }));
@@ -189,7 +199,8 @@
     }
 
     const message = document.getElementById('motus-round-message');
-    const roundFinished = player.finished || state.status === 'finished';
+    const isSpectator = player.is_spectator;
+    const roundFinished = isSpectator || player.finished || state.status === 'finished';
     guessInput.disabled = roundFinished;
     const displayedEntry = entry.map((letter) => letter || ' ').join('');
     if (guessInput.value !== displayedEntry) guessInput.value = displayedEntry;
@@ -198,7 +209,9 @@
     guessInput.placeholder = `${state.first_letter}_____`;
     renderBoard(player.guesses, state.first_letter, state.max_attempts, entry);
 
-    if (state.status === 'finished') {
+    if (isSpectator) {
+      message.textContent = 'Vous observez cette partie. Vous pourrez jouer au prochain redémarrage.';
+    } else if (state.status === 'finished') {
       message.textContent = state.target
         ? `Le mot était ${state.target}.`
         : 'La partie est terminée.';
@@ -311,19 +324,30 @@
     title.textContent = state.status === 'finished' ? 'Résultats du défi' : 'Joueurs';
     const results = document.createElement('ol');
     const ordered = [...state.players].sort((a, b) =>
-      Number(b.solved) - Number(a.solved)
+      Number(a.is_spectator) - Number(b.is_spectator)
+      || Number(b.solved) - Number(a.solved)
       || (b.score - a.score)
       || (a.attempts - b.attempts)
       || a.name.localeCompare(b.name));
     for (const player of ordered) {
       const item = document.createElement('li');
-      const result = player.solved
+      const result = player.is_spectator
+        ? 'Spectateur · en attente du prochain match'
+        : player.solved
         ? `${player.score} pts · ${player.attempts} essai${player.attempts > 1 ? 's' : ''}`
         : player.finished ? 'Mot non trouvé' : `${player.attempts} / ${state.max_attempts} essais`;
       item.textContent = `${player.name} — ${result}`;
       results.appendChild(item);
     }
     scoreboard.append(title, results);
+    if (state.can_restart) {
+      const restart = document.createElement('button');
+      restart.type = 'button';
+      restart.className = 'motus-primary-button';
+      restart.id = 'motus-restart-room';
+      restart.textContent = 'Relancer une partie';
+      scoreboard.appendChild(restart);
+    }
   }
 
   function nextEditableIndex(startIndex) {
@@ -340,7 +364,7 @@
     guessInput.value = entry.map((letter) => letter || ' ').join('');
     renderBoard(state.player.guesses, state.first_letter, state.max_attempts, entry);
     guessForm.querySelector('button').disabled =
-      state.player.finished || entry.some((letter) => !letter);
+      state.player.finished || state.player.is_spectator || entry.some((letter) => !letter);
     guessInput.focus();
     guessInput.setSelectionRange(nextIndex, nextIndex);
   }
@@ -526,9 +550,28 @@
     }
   }
 
+  async function restartRoom() {
+    if (!state || state.status !== 'finished' || !state.can_restart || roomBusy) return;
+    roomBusy = true;
+    hideError(playError);
+    try {
+      state = await post('/api/motus/room/restart', {
+        room_id: state.room_id,
+        player_id: playerId,
+        player_name: playerName,
+      });
+      renderedGuesses = '';
+      updateView();
+    } catch (error) {
+      showError(playError, error.message);
+    } finally {
+      roomBusy = false;
+    }
+  }
+
   async function submitGuess(event) {
     event.preventDefault();
-    if (!state || state.player.finished) return;
+    if (!state || state.player.finished || state.player.is_spectator) return;
     hideError(playError);
     if (entry.some((letter) => !letter)) {
       showError(playError, 'Complétez les cases vides avant de valider.');
@@ -579,7 +622,7 @@
       state = nextState;
       if (becameFinished) renderedGuesses = '';
       updateView();
-      if (state.status === 'finished') stopPolling();
+      if (state.status === 'finished' && !state.restart_available) stopPolling();
     } catch (error) {
       stopPolling();
       showError(playError, error.message);
@@ -633,6 +676,7 @@
   });
   document.getElementById('motus-scoreboard').addEventListener('click', (event) => {
     if (event.target.id === 'motus-new-game') startSolo();
+    if (event.target.id === 'motus-restart-room') restartRoom();
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !play.hidden) showHome();

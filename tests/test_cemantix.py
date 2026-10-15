@@ -116,7 +116,7 @@ class CemantixTests(unittest.TestCase):
         self.assertTrue(state["players"][0]["guesses"][0]["solved"])
         self.assertTrue(state["players"][1]["guesses"][0]["solved"])
 
-    def test_only_host_can_start_and_only_enrolled_players_can_rejoin(self):
+    def test_only_host_can_start_and_enrolled_players_can_rejoin(self):
         room = self.manager.create_room("host", "Hôte")
         with self.assertRaisesRegex(ValueError, "deux joueurs"):
             self.manager.start_room(room.room_id, "host")
@@ -124,9 +124,75 @@ class CemantixTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.manager.start_room(room.room_id, "guest")
         self.manager.start_room(room.room_id, "host")
-        with self.assertRaisesRegex(ValueError, "a commencé"):
-            self.manager.join_room(room.room_id, "new-player", "Nouveau")
+        self.manager.join_room(room.room_id, "new-player", "Nouveau")
+        self.assertTrue(room.players["new-player"].is_spectator)
         self.assertIs(self.manager.join_room(room.room_id, "guest", "Invité"), room)
+
+    def test_spectator_cannot_submit_and_joins_only_after_round_boundary(self):
+        room = self.create_started_room()
+        self.manager.join_room(room.room_id, "observer", "Observateur")
+        self.assertTrue(room.players["observer"].is_spectator)
+
+        state = self.manager.get_room(room.room_id, "observer").to_dict("observer", self.now)
+        self.assertTrue(state["player"]["is_spectator"])
+        self.assertEqual(state["player_count"], 2)
+        self.assertEqual(state["spectator_count"], 1)
+        self.assertEqual(state["submitted_count"], 0)
+        with self.assertRaisesRegex(ValueError, "spectateurs"):
+            self.manager.submit_room_guess(room.room_id, "observer", "animal")
+        self.assertNotIn("observer", room.pending)
+        self.assertEqual(room.players["observer"].guesses, [])
+
+        self.manager.submit_room_guess(room.room_id, "host", "chien")
+        self.manager.submit_room_guess(room.room_id, "guest", "maison")
+
+        self.assertEqual(room.round_number, 2)
+        self.assertFalse(room.players["observer"].is_spectator)
+        self.assertEqual(room.players["observer"].guesses, [])
+        state = self.manager.get_room(room.room_id, "observer").to_dict("observer", self.now)
+        self.assertFalse(state["player"]["is_spectator"])
+        self.assertEqual(state["player_count"], 3)
+        self.manager.submit_room_guess(room.room_id, "observer", "animal")
+        self.assertIn("observer", room.pending)
+
+    def test_spectators_remain_unpromoted_when_a_correct_guess_ends_the_match(self):
+        room = self.create_started_room()
+        self.manager.join_room(room.room_id, "observer", "Observateur")
+        self.manager.submit_room_guess(room.room_id, "host", "chat")
+        self.manager.submit_room_guess(room.room_id, "guest", "chat")
+
+        self.assertEqual(room.status, "finished")
+        self.assertTrue(room.players["observer"].is_spectator)
+        self.assertEqual(room.players["observer"].guesses, [])
+
+    def test_host_restart_resets_match_and_promotes_queued_spectators(self):
+        room = self.create_started_room()
+        with self.assertRaisesRegex(ValueError, "terminée"):
+            self.manager.restart_room(room.room_id, "host")
+        self.manager.join_room(room.room_id, "observer", "Observateur")
+        self.manager.submit_room_guess(room.room_id, "host", "chat")
+        self.manager.submit_room_guess(room.room_id, "guest", "chat")
+
+        self.assertTrue(room.to_dict("host", self.now)["can_restart"])
+        self.assertFalse(room.to_dict("guest", self.now)["can_restart"])
+        with self.assertRaises(PermissionError):
+            self.manager.restart_room(room.room_id, "guest")
+        restarted = self.manager.restart_room(room.room_id, "host")
+
+        self.assertIs(restarted, room)
+        self.assertEqual(room.status, "playing")
+        self.assertEqual(room.round_number, 1)
+        self.assertEqual(room.deadline_at, self.now + 60)
+        self.assertIsNone(room.winner_player_id)
+        self.assertEqual(room.pending, {})
+        self.assertFalse(room.players["observer"].is_spectator)
+        self.assertEqual(room.players["host"].guesses, [])
+        self.assertEqual(room.players["guest"].guesses, [])
+        self.assertEqual(room.players["observer"].guesses, [])
+        state = room.to_dict("observer", self.now)
+        self.assertFalse(state["player"]["is_spectator"])
+        self.assertEqual(state["player_count"], 3)
+        self.assertFalse(state["restart_available"])
 
 
 if __name__ == "__main__":

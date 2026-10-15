@@ -5,6 +5,7 @@ import socket
 import time
 import math
 import hmac
+import hashlib
 import datetime
 import asyncio
 import threading
@@ -335,6 +336,9 @@ class GeoGuessrRoomPlayerRequest(BaseModel):
     player_id: str
     player_name: str
 
+class GeoGuessrRoomCreateRequest(GeoGuessrPlayerRequest):
+    round_count: int = Field(default=5, ge=1, le=20)
+
 class GeoGuessrSoloGuessRequest(GeoGuessrPlayerRequest):
     game_id: str
     latitude: float = Field(ge=-90, le=90)
@@ -446,6 +450,51 @@ async def health_check():
         "database": db_status["active_type"],
         "database_details": db_status,
     }
+
+
+@app.post("/api/webhooks/github")
+async def github_push_webhook(request: Request):
+    secret = os.environ.get("GITHUB_WEBHOOK_SECRET", "").strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail="GitHub webhook is not configured.")
+
+    body = await request.body()
+    signature = request.headers.get("x-hub-signature-256", "")
+    if not signature.startswith("sha256="):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature.")
+    expected_signature = "sha256=" + hmac.new(
+        secret.encode("utf-8"),
+        body,
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(signature, expected_signature):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature.")
+
+    if request.headers.get("x-github-event") != "push":
+        return {"status": "ignored"}
+
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid webhook payload.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid webhook payload.")
+
+    repository = payload.get("repository")
+    repository_name = repository.get("full_name", "") if isinstance(repository, dict) else ""
+    ref = payload.get("ref", "")
+    branch = ref.removeprefix("refs/heads/") if isinstance(ref, str) else ""
+    commits = payload.get("commits", [])
+    message = {
+        "type": "github_push_notice",
+        "repository": repository_name[:120] if isinstance(repository_name, str) else "",
+        "branch": branch[:120],
+        "commit_count": len(commits) if isinstance(commits, list) else 0,
+    }
+    for room in list(room_manager.rooms.values()):
+        if room.websockets:
+            await room.broadcast(message)
+    return {"status": "broadcast"}
 
 
 @app.get("/api/rooms")
@@ -1314,7 +1363,31 @@ async def start_motus_room(req: MotusRoomPlayerRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     record_multigame_session_start(
-        f"motus:{room.room_id}", "motus", "multiplayer", "Motus", room.difficulty
+        f"motus:{room.room_id}:{room.match_number}",
+        "motus",
+        "multiplayer",
+        "Motus",
+        room.difficulty,
+    )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/motus/room/restart")
+async def restart_motus_room(req: MotusRoomPlayerRequest):
+    try:
+        room = motus_manager.restart_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"motus:{room.room_id}:{room.match_number}",
+        "motus",
+        "multiplayer",
+        "Motus",
+        room.difficulty,
     )
     return room.to_dict(req.player_id)
 
@@ -1329,6 +1402,8 @@ async def guess_motus_room(req: MotusRoomGuessRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if room.status == "finished":
         for player in room.players.values():
+            if player.is_spectator:
+                continue
             if player.score:
                 increment_player_score(player.name, player.score, "motus")
             record_user_game_finish(
@@ -1336,7 +1411,7 @@ async def guess_motus_room(req: MotusRoomGuessRequest):
                 won=player.solved,
                 attempts=len(player.guesses),
                 points=player.score,
-                session_id=f"motus:{room.room_id}",
+                session_id=f"motus:{room.room_id}:{room.match_number}",
                 mode="multiplayer",
                 title="Motus",
                 duration_seconds=max(0, int(time.time() - (room.started_at or time.time()))),
@@ -1445,7 +1520,27 @@ async def start_cemantix_room(req: CemantixRoomPlayerRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     record_multigame_session_start(
-        f"cemantix:{room.room_id}",
+        f"cemantix:{room.room_id}:{room.match_number}",
+        "cemantix",
+        "multiplayer",
+        "Cémantix",
+        room.difficulty,
+    )
+    return room.to_dict(req.player_id, time.time())
+
+
+@app.post("/api/cemantix/room/restart")
+async def restart_cemantix_room(req: CemantixRoomPlayerRequest):
+    try:
+        room = cemantix_manager.restart_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"cemantix:{room.room_id}:{room.match_number}",
         "cemantix",
         "multiplayer",
         "Cémantix",
@@ -1459,6 +1554,8 @@ def _record_cemantix_room_results(room) -> None:
         return
     duration = max(0, int(time.time() - (room.started_at or time.time())))
     for player in room.players.values():
+        if player.is_spectator:
+            continue
         best_similarity = max(
             (guess["score"] for guess in player.guesses if guess.get("score") is not None),
             default=0,
@@ -1468,7 +1565,7 @@ def _record_cemantix_room_results(room) -> None:
             won=player.player_id == room.winner_player_id,
             attempts=len(player.guesses),
             points=0,
-            session_id=f"cemantix:{room.room_id}",
+            session_id=f"cemantix:{room.room_id}:{room.match_number}",
             mode="multiplayer",
             title="Cémantix",
             duration_seconds=duration,
@@ -1567,13 +1664,15 @@ def _record_sudoku_room_results(room) -> None:
         return
     duration = max(0, int(time.time() - (room.started_at or time.time())))
     for player in room.players.values():
+        if player.is_spectator:
+            continue
         mistakes = 3 - player.lives
         record_user_game_finish(
             player.name,
             won=player.rank is not None,
             attempts=mistakes,
             points=player.points,
-            session_id=f"sudoku:{room.room_id}",
+            session_id=f"sudoku:{room.room_id}:{room.match_number}",
             mode="multiplayer",
             title="Sudoku",
             duration_seconds=duration,
@@ -1661,12 +1760,27 @@ async def start_sudoku_room(req: SudokuRoomPlayerRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     record_multigame_session_start(
-        f"sudoku:{room.room_id}",
+        f"sudoku:{room.room_id}:{room.match_number}",
         "sudoku",
         "multiplayer",
         "Sudoku",
         room.difficulty,
     )
+    return room.to_dict(req.player_id, time.time())
+
+
+@app.post("/api/sudoku/room/restart")
+async def restart_sudoku_room(req: SudokuRoomPlayerRequest):
+    try:
+        room = sudoku_manager.restart_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return room.to_dict(req.player_id, time.time())
 
 
@@ -1736,8 +1850,9 @@ def _record_geoguessr_room_results(room) -> None:
     if room.status != "finished" or room.stats_recorded:
         return
     duration = max(0, int(time.time() - (room.started_at or room.created_at)))
-    best_score = max(player.total_score for player in room.players.values())
-    for player in room.players.values():
+    participants = [player for player in room.players.values() if player.results]
+    best_score = max(player.total_score for player in participants)
+    for player in participants:
         metrics = _geoguessr_metrics(player.results, player.total_score, room.region, room.variant)
         increment_player_score(player.name, player.total_score, "geoguessr")
         record_user_game_finish(
@@ -1745,7 +1860,7 @@ def _record_geoguessr_room_results(room) -> None:
             won=player.total_score == best_score,
             attempts=len(player.results),
             points=player.total_score,
-            session_id=f"geoguessr:{room.room_id}",
+            session_id=f"geoguessr:{room.room_id}:{room.match_number}",
             mode="multiplayer",
             title="GeoGuessr — Photos immersives" if room.variant == "panorama" else "GeoGuessr",
             duration_seconds=duration,
@@ -1852,7 +1967,7 @@ async def list_geoguessr_rooms(player_id: Optional[str] = Query(None)):
 
 
 @app.post("/api/geoguessr/room/create")
-async def create_geoguessr_room(req: GeoGuessrPlayerRequest):
+async def create_geoguessr_room(req: GeoGuessrRoomCreateRequest):
     try:
         room = await asyncio.to_thread(
             geoguessr_manager.create_room,
@@ -1860,6 +1975,7 @@ async def create_geoguessr_room(req: GeoGuessrPlayerRequest):
             req.player_name,
             req.region,
             req.variant,
+            req.round_count,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1892,7 +2008,31 @@ async def start_geoguessr_room(req: GeoGuessrRoomPlayerRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     record_multigame_session_start(
-        f"geoguessr:{room.room_id}",
+        f"geoguessr:{room.room_id}:{room.match_number}",
+        "geoguessr",
+        "multiplayer",
+        "GeoGuessr — Photos immersives" if room.variant == "panorama" else "GeoGuessr",
+        room.region,
+    )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/geoguessr/room/restart")
+async def restart_geoguessr_room(req: GeoGuessrRoomPlayerRequest):
+    try:
+        room = await asyncio.to_thread(
+            geoguessr_manager.restart_room,
+            req.room_id,
+            req.player_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"geoguessr:{room.room_id}:{room.match_number}",
         "geoguessr",
         "multiplayer",
         "GeoGuessr — Photos immersives" if room.variant == "panorama" else "GeoGuessr",
@@ -1969,12 +2109,25 @@ async def start_battleship_room(req: BattleshipRoomPlayerRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     record_multigame_session_start(
-        f"battleship:{room.room_id}",
+        f"battleship:{room.room_id}:{room.match_number}",
         "battleship",
         "multiplayer",
         "Bataille navale",
         room.difficulty,
     )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/restart")
+async def restart_battleship_room(req: BattleshipRoomPlayerRequest):
+    try:
+        room = battleship_manager.restart_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return room.to_dict(req.player_id)
 
 
@@ -1989,12 +2142,14 @@ async def fire_battleship_shot(req: BattleshipFireRequest):
     if room.status == "finished":
         duration = max(0, int(time.time() - (room.started_at or time.time())))
         for player in room.players.values():
+            if player.is_spectator:
+                continue
             attacks = player.attacks
             record_user_game_finish(
                 player.name,
                 won=player.player_id == room.winner_player_id,
                 attempts=len(attacks),
-                session_id=f"battleship:{room.room_id}",
+                session_id=f"battleship:{room.room_id}:{room.match_number}",
                 mode="multiplayer",
                 title="Bataille navale",
                 duration_seconds=duration,

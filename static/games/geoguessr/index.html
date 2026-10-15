@@ -89,10 +89,11 @@
       </div>
       <div id="geo-map-stage" hidden>
       <p id="geo-round-message" class="geo-round-message" role="status" aria-live="polite">Cliquez sur la carte pour placer votre estimation.</p>
+      <p id="geo-round-timer" class="geo-round-timer" role="timer" hidden></p>
       <section id="geo-panorama-panel" class="geo-panorama-panel" hidden aria-label="Photo immersive navigable">
         <div id="geo-panorama-viewer" class="geo-panorama-viewer"></div>
         <p>Explorez la scène avec la souris ou le tactile. Cliquez sur les flèches dans la photo pour avancer, puis placez votre estimation sur la carte.</p>
-        <small>Les attributions du fournisseur photo sont affichées dans le lecteur.</small>
+        <small>Google Street View est filtré sur les vues extérieures ; Mapillary utilise des séquences navigables. Le type de caméra n’est pas certifié par les fournisseurs.</small>
       </section>
       <div id="geo-map" class="geo-map" role="application" aria-label="Carte interactive du monde"></div>
       <div class="geo-map-actions">
@@ -137,7 +138,7 @@
         <section class="shared-room-action">
           <div>
             <h3>Créer un salon</h3>
-            <p>Jusqu’à huit joueurs, cinq manches identiques pour tous.</p>
+            <p>Jusqu’à huit joueurs. Choisissez de 1 à 20 manches ; 5 par défaut.</p>
             <label class="geo-region-label" for="geo-room-variant">Type de GeoGuessr</label>
             <select id="geo-room-variant" class="geo-select">
               <option value="cities">Villes sur carte</option>
@@ -149,6 +150,8 @@
               <option value="europe">Europe</option>
               <option value="world" selected>Monde</option>
             </select>
+            <label class="geo-region-label" for="geo-room-round-count">Nombre de manches (1 à 20)</label>
+            <input id="geo-room-round-count" class="geo-select" type="number" min="1" max="20" step="1" value="5" required>
           </div>
           <button type="button" id="geo-create-room" class="geo-primary-button">Créer le salon</button>
         </section>

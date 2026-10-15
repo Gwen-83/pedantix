@@ -26,3 +26,5 @@ services:
         sync: false              # Maps JavaScript API, restreinte aux domaines du site
       - key: GOOGLE_MAPS_SERVER_API_KEY
         sync: false              # Street View Static API, réservée au serveur et non exposée au navigateur
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false              # secret du webhook GitHub configuré sur /api/webhooks/github

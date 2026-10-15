@@ -217,6 +217,63 @@ class SudokuTests(unittest.TestCase):
         self.assertEqual(member_room["difficulty"], "facile")
         self.assertEqual(resumed.players["guest"].board[row][column], room.solution[row][column])
 
+    def test_joining_a_running_room_adds_a_blocked_live_spectator(self):
+        room = self.manager.create_room("host", "Hôte", "facile")
+        self.manager.join_room(room.room_id, "guest", "Invité")
+        self.manager.start_room(room.room_id, "host")
+        row, column = next(
+            (row, column)
+            for row in range(9)
+            for column in range(9)
+            if room.puzzle[row][column] == 0
+        )
+        self.manager.set_room_cell(
+            room.room_id, "host", row, column, room.solution[row][column]
+        )
+
+        self.manager.join_room(room.room_id, "observer", "Observateur")
+        state = room.to_dict("observer", self.now)
+        self.assertTrue(room.players["observer"].is_spectator)
+        self.assertTrue(state["is_spectator"])
+        self.assertEqual(state["observed_player"]["player_id"], "host")
+        self.assertEqual(state["board"][row][column], room.solution[row][column])
+        self.assertEqual(state["solved_count"], 0)
+        self.assertEqual(self.manager.list_rooms("observer")[0]["player_count"], 2)
+        with self.assertRaisesRegex(ValueError, "spectateurs"):
+            self.manager.set_room_cell(room.room_id, "observer", row, column, 0)
+
+    def test_host_restart_resets_match_and_promotes_queued_spectators(self):
+        room = self.manager.create_room("host", "Hôte", "facile")
+        self.manager.join_room(room.room_id, "guest", "Invité")
+        self.manager.start_room(room.room_id, "host")
+        self.manager.join_room(room.room_id, "observer", "Observateur")
+        room.players["host"].rank = 1
+        room.players["host"].points = 3
+        room.players["host"].lives = 1
+        room.players["host"].incorrect_cells.add((0, 0))
+        with self.assertRaisesRegex(ValueError, "terminée"):
+            self.manager.restart_room(room.room_id, "host")
+        room.status = "finished"
+        room.finish_reason = "podium"
+        room.deadline_at = self.now + 10
+
+        with self.assertRaises(PermissionError):
+            self.manager.restart_room(room.room_id, "guest")
+        restarted = self.manager.restart_room(room.room_id, "host")
+
+        self.assertIs(restarted, room)
+        self.assertEqual(room.status, "lobby")
+        self.assertIsNone(room.finish_reason)
+        self.assertIsNone(room.deadline_at)
+        self.assertFalse(room.players["observer"].is_spectator)
+        self.assertEqual(room.players["host"].rank, None)
+        self.assertEqual(room.players["host"].points, 0)
+        self.assertEqual(room.players["host"].lives, 3)
+        self.assertFalse(room.players["host"].incorrect_cells)
+        self.assertEqual(room.players["host"].board, room.puzzle)
+        self.assertTrue(room.to_dict("observer", self.now)["can_start"])
+        self.assertEqual(self.manager.start_room(room.room_id, "host").status, "playing")
+
 
 if __name__ == "__main__":
     unittest.main()

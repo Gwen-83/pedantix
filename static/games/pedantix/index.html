@@ -30,6 +30,15 @@
   <!-- CANVAS FOR CONFETTI -->
   <canvas id="confetti-canvas"></canvas>
 
+  <aside id="push-joke-alert" class="push-joke-alert" role="status" aria-live="polite" hidden>
+    <div class="push-joke-copy">
+      <strong>😅 Blague : un push vient d’arriver !</strong>
+      <span id="push-joke-details"></span>
+    </div>
+    <button id="push-joke-play" type="button">🎵 Jouer le jingle</button>
+    <button id="push-joke-close" class="push-joke-close" type="button" aria-label="Fermer la notification">×</button>
+  </aside>
+
   <section id="app" class="pedantix-app-root">
     <article class="game-container">
 

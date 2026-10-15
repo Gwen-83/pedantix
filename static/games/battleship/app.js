@@ -110,13 +110,18 @@
       const title = document.createElement('strong');
       title.textContent = `Salon ${room.room_id}`;
       const details = document.createElement('small');
-      details.textContent = `${room.player_count} joueur${room.player_count === 1 ? '' : 's'} · ${room.difficulty} · ${room.status === 'playing' ? 'En cours' : 'En attente'}`;
+      const spectators = room.spectator_count
+        ? ` · ${room.spectator_count} observateur${room.spectator_count === 1 ? '' : 's'}`
+        : '';
+      details.textContent = `${room.player_count} joueur${room.player_count === 1 ? '' : 's'}${spectators} · ${room.difficulty} · ${room.status === 'playing' ? 'En cours' : 'En attente'}`;
       copy.append(title, details);
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'naval-secondary-button';
-      button.textContent = room.is_member ? 'Reprendre' : room.status === 'lobby' ? 'Rejoindre' : 'En cours';
-      button.disabled = !room.is_member && room.status !== 'lobby';
+      button.textContent = room.is_member
+        ? 'Reprendre'
+        : room.status === 'lobby' ? 'Rejoindre' : 'Observer';
+      button.disabled = !room.is_member && !['lobby', 'playing'].includes(room.status);
       if (!button.disabled) button.addEventListener('click', () => joinRoom(room.room_id));
       card.append(copy, button);
       roomDirectory.append(card);
@@ -223,7 +228,9 @@
   }
 
   function isMyTurn() {
-    return state?.status === 'playing' && state.current_player_id === playerId;
+    return state?.status === 'playing'
+      && !myPlayer()?.is_spectator
+      && state.current_player_id === playerId;
   }
 
   function myPlayer() {
@@ -256,8 +263,10 @@
     document.getElementById('naval-title').textContent = `Salon ${state.room_id}`;
     document.getElementById('naval-lobby').hidden = false;
     document.getElementById('naval-battle').hidden = true;
+    const activeCount = players.filter((player) => !player.is_spectator).length;
+    const spectatorCount = players.length - activeCount;
     document.getElementById('naval-lobby-status').textContent =
-      `${players.length} joueur${players.length === 1 ? '' : 's'} dans le salon. Au moins deux joueurs sont nécessaires.`;
+      `${activeCount} joueur${activeCount === 1 ? '' : 's'}${spectatorCount ? ` · ${spectatorCount} observateur${spectatorCount === 1 ? '' : 's'}` : ''} dans le salon. Au moins deux joueurs sont nécessaires.`;
     document.getElementById('naval-invite-code').textContent = `Code : ${state.room_id}`;
     const inviteUrl = new URL(window.location.href);
     inviteUrl.search = new URLSearchParams({ room: state.room_id }).toString();
@@ -268,7 +277,10 @@
       const name = document.createElement('span');
       name.textContent = player.name + (player.player_id === state.host_player_id ? ' (hôte)' : '');
       const ready = document.createElement('small');
-      ready.textContent = player.ready ? 'Flotte confirmée' : 'Préparation…';
+      ready.textContent = player.is_spectator
+        ? 'Observateur · en attente de la prochaine partie'
+        : player.ready ? 'Flotte confirmée' : 'Préparation…';
+      if (player.is_spectator) item.classList.add('naval-spectator');
       item.append(name, ready);
       return item;
     }));
@@ -329,7 +341,11 @@
     } else {
       shotMessage.textContent = '';
     }
-    if (state.status === 'finished') {
+    if (ownPlayer?.is_spectator) {
+      turnMessage.textContent = state.status === 'finished'
+        ? 'Vous observez la partie terminée. Vous rejoindrez la prochaine partie au redémarrage.'
+        : `Vous observez la partie en direct${current ? ` · tour de ${current.name}` : ''}.`;
+    } else if (state.status === 'finished') {
       const winner = state.players.find((player) => player.player_id === state.winner_player_id);
       turnMessage.textContent = winner ? `${winner.name} remporte la bataille !` : 'La bataille est terminée.';
     } else if (isMyTurn()) {
@@ -340,8 +356,17 @@
       turnMessage.textContent = current ? `Au tour de ${current.name} de tirer.` : 'En attente du prochain tir…';
     }
 
-    document.getElementById('naval-own-ships-count').textContent =
-      `${ownPlayer?.ships_remaining ?? 0} navire${ownPlayer?.ships_remaining === 1 ? '' : 's'} à flot`;
+    const viewedPlayer = state.players.find(
+      (player) => player.player_id === (ownPlayer?.is_spectator
+        ? state.observed_player_id
+        : playerId),
+    );
+    document.getElementById('naval-own-ships-count').textContent = ownPlayer?.is_spectator
+      ? `${viewedPlayer?.ships_remaining ?? 0} navire${viewedPlayer?.ships_remaining === 1 ? '' : 's'} à flot`
+      : `${ownPlayer?.ships_remaining ?? 0} navire${ownPlayer?.ships_remaining === 1 ? '' : 's'} à flot`;
+    document.getElementById('naval-own-board-title').textContent = ownPlayer?.is_spectator
+      ? `Impacts subis par ${viewedPlayer?.name || 'le joueur actif'}`
+      : 'Votre flotte';
     document.getElementById('naval-target-title').textContent =
       target ? `Plateau de ${target.name}` : 'Plateau adverse';
     document.getElementById('naval-turn-badge').textContent =
@@ -359,9 +384,12 @@
       const name = document.createElement('span');
       name.textContent = player.name + (player.player_id === playerId ? ' (vous)' : '');
       const status = document.createElement('small');
-      status.textContent = player.eliminated
+      status.textContent = player.is_spectator
+        ? 'Observateur · en attente de la prochaine partie'
+        : player.eliminated
         ? 'Éliminé'
         : `${player.ships_remaining} navire${player.ships_remaining === 1 ? '' : 's'} à flot`;
+      if (player.is_spectator) item.classList.add('naval-spectator');
       item.append(name, status);
       return item;
     }));
@@ -373,6 +401,9 @@
       heading.textContent = turnMessage.textContent;
       scoreboard.append(heading);
     }
+    const restartButton = document.getElementById('naval-restart-button');
+    restartButton.hidden = state.status !== 'finished' || playerId !== state.host_player_id;
+    restartButton.disabled = roomBusy;
   }
 
   function updateView() {
@@ -380,7 +411,6 @@
     showPlay();
     if (state.status === 'lobby') renderLobby();
     else renderBattle();
-    if (state.status === 'finished') stopPolling();
   }
 
   async function createRoom() {
@@ -511,6 +541,25 @@
     }
   }
 
+  async function restartGame() {
+    if (!state || state.status !== 'finished' || roomBusy) return;
+    roomBusy = true;
+    const button = document.getElementById('naval-restart-button');
+    button.disabled = true;
+    try {
+      state = await post('/api/battleship/room/restart', roomPayload());
+      lastShotResult = null;
+      draftFleet = {};
+      updateView();
+    } catch (error) {
+      showError(playError, error.message);
+    } finally {
+      roomBusy = false;
+      if (state?.status === 'finished') renderBattle();
+      else if (state?.status === 'lobby') renderLobby();
+    }
+  }
+
   async function fire(coordinateValue) {
     if (!state || !isMyTurn() || roomBusy) return;
     roomBusy = true;
@@ -576,6 +625,7 @@
     else setReady(true);
   });
   document.getElementById('naval-start-button').addEventListener('click', startGame);
+  document.getElementById('naval-restart-button').addEventListener('click', restartGame);
 
   const roomId = params.get('room');
   if (roomId) {

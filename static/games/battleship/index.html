@@ -117,7 +117,7 @@
         <div class="naval-battle-boards">
           <section class="naval-board-card">
             <div class="naval-board-heading">
-              <div><h2>Votre flotte</h2><p>Les impacts subis apparaissent ici.</p></div>
+              <div><h2 id="naval-own-board-title">Votre flotte</h2><p>Les impacts subis apparaissent ici.</p></div>
               <span id="naval-own-ships-count" class="naval-board-badge"></span>
             </div>
             <div id="naval-own-grid" class="naval-grid-wrap"></div>
@@ -135,6 +135,7 @@
           <ul id="naval-battle-player-list" class="naval-player-list"></ul>
         </section>
         <div id="naval-scoreboard" class="naval-scoreboard" hidden></div>
+        <button type="button" id="naval-restart-button" class="naval-primary-button" hidden>Relancer une partie</button>
       </section>
       <p id="naval-play-error" class="naval-error" role="alert" hidden></p>
     </section>

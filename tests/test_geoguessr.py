@@ -5,10 +5,15 @@ from unittest.mock import Mock, patch
 
 import app.database as database
 from app.geoguessr import (
+    CITY_ADDITIONS,
+    CITY_LOCATIONS,
     GOOGLE_STREETVIEW_MONTHLY_LIMIT,
     MAX_SCORE_PER_ROUND,
     ROUND_COUNT,
+    ROOM_ROUND_TIME_LIMIT_SECONDS,
     GeoGuessrManager,
+    _city_pool,
+    _diverse_city_order,
     distance_km,
     score_distance_km,
 )
@@ -23,6 +28,46 @@ class GeoGuessrTests(unittest.TestCase):
         self.assertEqual(score_distance_km(0), MAX_SCORE_PER_ROUND)
         self.assertGreater(score_distance_km(100), score_distance_km(1_000))
         self.assertGreaterEqual(score_distance_km(50_000), 0)
+
+    def test_city_pools_cover_many_city_sizes_and_regions(self):
+        self.assertGreaterEqual(len(_city_pool("france")), 90)
+        self.assertGreaterEqual(len(_city_pool("europe")), 200)
+        self.assertGreaterEqual(len(_city_pool("world")), 350)
+        self.assertEqual(len(CITY_LOCATIONS), len(set(CITY_LOCATIONS)))
+
+    def test_added_city_pools_respect_population_thresholds(self):
+        thresholds = {"france": 50_000, "europe": 200_000, "world": 1_000_000}
+        for region, threshold in thresholds.items():
+            eligible = [
+                city for city in CITY_ADDITIONS
+                if (region == "world" or city[2] == region
+                    or (region == "europe" and city[2] == "france"))
+                and city[5] >= threshold
+                and (
+                    region != "europe"
+                    or city[2] != "france"
+                    or (41 <= city[3] <= 52 and -6 <= city[4] <= 10)
+                )
+            ]
+            pool = {(city[0], city[1]) for city in _city_pool(region)}
+            self.assertTrue(eligible, region)
+            self.assertTrue(all((city[0], city[1]) in pool for city in eligible))
+        european_cities = {city[0] for city in _city_pool("europe")}
+        self.assertNotIn("Cayenne", european_cities)
+        self.assertNotIn("Saint-Denis (La Réunion)", european_cities)
+
+    def test_panorama_city_order_avoids_repeats_and_spreads_countries(self):
+        for region in ("france", "europe", "world"):
+            ordered = _diverse_city_order(region)
+            unique_countries = len({city[1] for city in ordered})
+            first_batch_size = min(20, unique_countries)
+            self.assertEqual(
+                len({city[1] for city in ordered[:first_batch_size]}),
+                first_batch_size,
+                region,
+            )
+            city_keys = [(city[0], city[1]) for city in ordered]
+            self.assertEqual(len(city_keys), len(set(city_keys)), region)
 
     def test_solo_rounds_hide_coordinates_until_guess_and_can_be_resumed(self):
         game = self.manager.create_solo("alice", "Alice", "france")
@@ -65,6 +110,11 @@ class GeoGuessrTests(unittest.TestCase):
 
     def test_multiplayer_rounds_share_target_and_reveal_only_after_all_guesses(self):
         room = self.manager.create_room("host", "Hôte", "europe")
+        self.assertEqual(room.round_count, ROUND_COUNT)
+        self.assertEqual(
+            room.to_dict("host")["round_time_limit_seconds"],
+            ROOM_ROUND_TIME_LIMIT_SECONDS,
+        )
         self.assertIsNone(room.to_dict("host")["prompt"])
         with self.assertRaisesRegex(ValueError, "deux joueurs"):
             self.manager.start_room(room.room_id, "host")
@@ -89,6 +139,7 @@ class GeoGuessrTests(unittest.TestCase):
             )
             self.assertEqual(completed_result["target"]["city"], target[0])
             self.assertEqual(len(completed_result["guesses"]), 2)
+            self.assertIsNone(room.round_deadline)
             previous_round_number += 1
 
         self.assertEqual(room.status, "finished")
@@ -96,6 +147,120 @@ class GeoGuessrTests(unittest.TestCase):
         self.assertEqual(room.to_dict("guest")["round_number"], ROUND_COUNT)
         with self.assertRaisesRegex(ValueError, "n'accepte pas"):
             self.manager.guess_room(room.room_id, "host", 0, 0)
+
+    def test_joining_during_a_round_spectates_until_the_next_round(self):
+        room = self.manager.create_room("host", "Hôte", "france", round_count=2)
+        self.manager.join_room(room.room_id, "guest", "Invité")
+        self.manager.start_room(room.room_id, "host")
+        spectator = self.manager.join_room(room.room_id, "viewer", "Observateur")
+
+        state = spectator.to_dict("viewer")
+        self.assertTrue(state["player"]["is_spectator"])
+        self.assertEqual(state["player_count"], 2)
+        self.assertEqual(state["spectator_count"], 1)
+        with self.assertRaisesRegex(ValueError, "spectateur"):
+            self.manager.guess_room(room.room_id, "viewer", 0, 0)
+
+        target = room.target
+        for player_id in ("host", "guest"):
+            self.manager.guess_room(room.room_id, player_id, target[3], target[4])
+
+        self.assertFalse(room.players["viewer"].is_spectator)
+        self.assertEqual(room.round_index, 1)
+        self.assertIsNone(room.players["viewer"].guess)
+        self.manager.guess_room(room.room_id, "viewer", room.target[3], room.target[4])
+
+    def test_active_panorama_room_does_not_expose_its_city_prompt(self):
+        room = self.manager.create_room("host", "Hôte", "france")
+        room.variant = "panorama"
+        room.status = "playing"
+
+        self.assertIsNone(room.to_dict("host")["prompt"])
+
+    def test_spectator_in_final_round_is_promoted_when_host_restarts(self):
+        room = self.manager.create_room("host", "Hôte", "france", round_count=1)
+        self.manager.join_room(room.room_id, "guest", "Invité")
+        self.manager.start_room(room.room_id, "host")
+        self.manager.join_room(room.room_id, "viewer", "Observateur")
+        target = room.target
+        for player_id in ("host", "guest"):
+            self.manager.guess_room(room.room_id, player_id, target[3], target[4])
+
+        self.assertEqual(room.status, "finished")
+        self.assertTrue(room.players["viewer"].is_spectator)
+        room = self.manager.restart_room(room.room_id, "host")
+        self.assertFalse(room.players["viewer"].is_spectator)
+        self.assertEqual(room.to_dict("viewer")["player_count"], 3)
+
+    def test_multiplayer_room_round_count_is_configurable_and_bounded(self):
+        room = self.manager.create_room("host", "Hôte", "france", round_count=1)
+        self.assertEqual(room.round_count, 1)
+        self.assertEqual(room.to_dict("host")["round_count"], 1)
+        self.assertEqual(
+            self.manager.list_rooms("host")[0]["round_count"],
+            1,
+        )
+        for round_count in (0, 21, True):
+            with self.subTest(round_count=round_count), self.assertRaises(ValueError):
+                self.manager.create_room(
+                    "host", "Hôte", "france", round_count=round_count
+                )
+
+    def test_multiplayer_round_timeout_starts_on_first_guess_and_marks_missed_players(self):
+        with patch("app.geoguessr.time.time", return_value=100):
+            room = self.manager.create_room("host", "Hôte", "france", round_count=2)
+            self.manager.join_room(room.room_id, "guest", "Invité")
+            self.manager.start_room(room.room_id, "host")
+            target = room.target
+            room, result = self.manager.guess_room(
+                room.room_id, "host", target[3], target[4]
+            )
+
+        self.assertIsNone(result)
+        self.assertEqual(room.round_deadline, 100 + ROOM_ROUND_TIME_LIMIT_SECONDS)
+        self.assertEqual(
+            room.to_dict("guest")["round_deadline"],
+            100 + ROOM_ROUND_TIME_LIMIT_SECONDS,
+        )
+        with patch("app.geoguessr.time.time", return_value=119):
+            self.manager.get_room(room.room_id, "guest")
+        self.assertEqual(room.round_index, 0)
+
+        with patch("app.geoguessr.time.time", return_value=121):
+            self.manager.get_room(room.room_id, "guest")
+        self.assertEqual(room.round_index, 1)
+        self.assertEqual(room.status, "playing")
+        self.assertIsNone(room.round_deadline)
+        self.assertEqual(room.last_round["missed_players"], ["Invité"])
+        self.assertEqual([guess["name"] for guess in room.last_round["guesses"]], ["Hôte"])
+        self.assertEqual(room.players["host"].results[0]["score"], MAX_SCORE_PER_ROUND)
+        self.assertEqual(room.players["guest"].total_score, 0)
+
+    def test_finished_room_can_be_replayed_by_host_with_a_fresh_scoreboard(self):
+        room = self.manager.create_room("host", "Hôte", "france")
+        self.manager.join_room(room.room_id, "guest", "Invité")
+        self.manager.start_room(room.room_id, "host")
+        for _ in range(ROUND_COUNT):
+            target = room.target
+            for player_id in ("host", "guest"):
+                room, _ = self.manager.guess_room(
+                    room.room_id, player_id, target[3], target[4]
+                )
+
+        self.assertEqual(room.status, "finished")
+        with self.assertRaises(PermissionError):
+            self.manager.restart_room(room.room_id, "guest")
+
+        room = self.manager.restart_room(room.room_id, "host")
+        self.assertEqual(room.status, "playing")
+        self.assertEqual(room.round_index, 0)
+        self.assertEqual(room.match_number, 2)
+        self.assertIsNone(room.last_round)
+        self.assertEqual(room.to_dict("host")["round_number"], 1)
+        for player in room.players.values():
+            self.assertEqual(player.total_score, 0)
+            self.assertEqual(player.results, [])
+            self.assertIsNone(player.guess)
 
     def test_rooms_are_independent_and_invalid_region_is_rejected(self):
         first = self.manager.create_room("alice", "Alice", "france")
@@ -109,25 +274,34 @@ class GeoGuessrTests(unittest.TestCase):
             self.manager.create_solo("alice", "Alice", "north-america")
 
     def test_panorama_mode_uses_navigable_mapillary_images_and_hides_target(self):
-        response = Mock()
-        response.ok = True
-        response.status_code = 200
-        response.json.return_value = {
-            "data": [
-                {
+        responses = []
+        for index in range(ROUND_COUNT):
+            response = Mock()
+            response.ok = True
+            response.status_code = 200
+            response.json.return_value = {
+                "data": [{
                     "id": f"image-{index}",
                     "sequence_id": f"sequence-{index}",
                     "geometry": {"coordinates": [-73.9 + index * 0.01, 40.7]},
                     "is_pano": True,
-                }
-                for index in range(ROUND_COUNT)
-            ]
-        }
+                }]
+            }
+            responses.append(response)
         manager = GeoGuessrManager(mapillary_access_token="test-token")
-        with patch("app.geoguessr.requests.get", return_value=response) as get_images:
+        with patch("app.geoguessr.requests.get", side_effect=responses) as get_images:
             game = manager.create_solo("alice", "Alice", "world", "panorama")
 
-        get_images.assert_called_once()
+        self.assertEqual(get_images.call_count, ROUND_COUNT)
+        selected_images = manager.photo_cache["world"]
+        self.assertEqual(
+            len({image["source_city_name"] for image in selected_images}),
+            ROUND_COUNT,
+        )
+        self.assertEqual(
+            len({image["source_country"] for image in selected_images}),
+            ROUND_COUNT,
+        )
         self.assertEqual(game.to_dict()["variant"], "panorama")
         self.assertIn(game.to_dict()["image_id"], {f"image-{index}" for index in range(ROUND_COUNT)})
         self.assertIsNone(game.to_dict()["target"])
@@ -145,12 +319,15 @@ class GeoGuessrTests(unittest.TestCase):
 
     def test_panorama_room_reuses_same_images_and_requires_mapillary_token(self):
         manager = GeoGuessrManager(mapillary_access_token="test-token")
+        cities = _city_pool("france")[:ROUND_COUNT]
         images = [
             {
                 "image_id": f"image-{index}",
                 "sequence_id": f"sequence-{index}",
                 "latitude": 48.0 + index / 10,
                 "longitude": 2.0 + index / 10,
+                "source_city_name": cities[index][0],
+                "source_country": cities[index][1],
             }
             for index in range(ROUND_COUNT)
         ]
@@ -165,6 +342,29 @@ class GeoGuessrTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "MAPILLARY_ACCESS_TOKEN"):
             GeoGuessrManager().create_solo("alice", "Alice", "france", "panorama")
+
+    def test_mapillary_does_not_reuse_cached_photos_in_the_next_game(self):
+        responses = []
+        for index in range(ROUND_COUNT * 2):
+            response = Mock()
+            response.ok = True
+            response.status_code = 200
+            response.json.return_value = {
+                "data": [{
+                    "id": f"image-{index}",
+                    "sequence_id": f"sequence-{index}",
+                    "geometry": {"coordinates": [-73.9 + index * 0.01, 40.7]},
+                    "is_pano": True,
+                }]
+            }
+            responses.append(response)
+        manager = GeoGuessrManager(mapillary_access_token="test-token")
+        with patch("app.geoguessr.requests.get", side_effect=responses):
+            first_game = manager.create_solo("alice", "Alice", "world", "panorama")
+            first_image_ids = set(first_game.image_ids)
+            second_game = manager.create_solo("alice", "Alice", "world", "panorama")
+
+        self.assertTrue(first_image_ids.isdisjoint(second_game.image_ids))
 
     def test_google_street_view_is_selected_and_monthly_views_are_reserved(self):
         responses = []
@@ -191,6 +391,10 @@ class GeoGuessrTests(unittest.TestCase):
         self.assertIn(game.to_dict()["image_id"], {f"google-pano-{i}" for i in range(ROUND_COUNT)})
         self.assertNotIn("latitude", game.to_dict())
         self.assertEqual(get_metadata.call_count, ROUND_COUNT)
+        self.assertTrue(all(
+            call.kwargs["params"]["source"] == "outdoor"
+            for call in get_metadata.call_args_list
+        ))
         reserve.assert_called_once_with(ROUND_COUNT, GOOGLE_STREETVIEW_MONTHLY_LIMIT)
         self.assertTrue(manager.authorize_google_view("alice", game_id=game.game_id))
         reserve.assert_called_once_with(ROUND_COUNT, GOOGLE_STREETVIEW_MONTHLY_LIMIT)
@@ -207,12 +411,15 @@ class GeoGuessrTests(unittest.TestCase):
             google_maps_browser_api_key="test-browser-key",
             google_usage_reader=Mock(return_value=GOOGLE_STREETVIEW_MONTHLY_LIMIT - 4),
         )
+        cities = _city_pool("france")[:ROUND_COUNT]
         manager.photo_cache["france"] = [
             {
                 "image_id": f"mapillary-{index}",
                 "sequence_id": f"sequence-{index}",
                 "latitude": 48.0 + index / 10,
                 "longitude": 2.0 + index / 10,
+                "source_city_name": cities[index][0],
+                "source_country": cities[index][1],
             }
             for index in range(ROUND_COUNT)
         ]
@@ -238,12 +445,15 @@ class GeoGuessrTests(unittest.TestCase):
             ],
             [f"google-{index}" for index in range(ROUND_COUNT)],
         ))
+        cities = _city_pool("france")[:ROUND_COUNT]
         manager.photo_cache["france"] = [
             {
                 "image_id": f"mapillary-{index}",
                 "sequence_id": f"sequence-{index}",
                 "latitude": 48.0 + index / 10,
                 "longitude": 2.0 + index / 10,
+                "source_city_name": cities[index][0],
+                "source_country": cities[index][1],
             }
             for index in range(ROUND_COUNT)
         ]

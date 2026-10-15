@@ -94,6 +94,7 @@ class MotusPlayer:
     finished: bool = False
     score: int = 0
     connected: bool = True
+    is_spectator: bool = False
 
     def submit(
         self,
@@ -141,6 +142,7 @@ class MotusPlayer:
             "score": self.score,
             "attempts": len(self.guesses),
             "connected": self.connected,
+            "is_spectator": self.is_spectator,
         }
 
 
@@ -176,6 +178,7 @@ class MotusRoom:
     status: str = "lobby"
     started_at: Optional[float] = None
     created_at: float = field(default_factory=time.time)
+    match_number: int = 1
 
     def to_dict(self, player_id: str) -> Dict[str, Any]:
         player = self.players[player_id]
@@ -188,6 +191,7 @@ class MotusRoom:
         return {
             "room_id": self.room_id,
             "status": self.status,
+            "match_number": self.match_number,
             "host_player_id": self.host_player_id,
             "word_length": len(self.target),
             "max_attempts": MOTUS_DIFFICULTIES[self.difficulty],
@@ -196,7 +200,12 @@ class MotusRoom:
             "target": self.target.upper() if self.status == "finished" else None,
             "player": player.to_dict(),
             "players": players,
-            "can_start": self.status == "lobby" and len(self.players) >= 2,
+            "player_count": sum(not item.is_spectator for item in self.players.values()),
+            "spectator_count": sum(item.is_spectator for item in self.players.values()),
+            "can_start": self.status == "lobby"
+            and sum(not item.is_spectator for item in self.players.values()) >= 2,
+            "can_restart": self.status == "finished" and player_id == self.host_player_id,
+            "restart_available": self.status == "finished",
         }
 
 
@@ -295,6 +304,13 @@ class MotusManager:
                 room.players[player_id].connected = True
                 room.players[player_id].name = player_name
                 return room
+            if room.status == "playing":
+                if len(room.players) >= 8:
+                    raise ValueError("Ce salon est complet (8 joueurs maximum).")
+                room.players[player_id] = MotusPlayer(
+                    player_id=player_id, name=player_name, is_spectator=True
+                )
+                return room
             if room.status != "lobby":
                 raise ValueError("Cette partie a déjà commencé. Seuls les joueurs déjà inscrits peuvent revenir.")
             if len(room.players) >= 8:
@@ -315,7 +331,12 @@ class MotusManager:
                 {
                     "room_id": room.room_id,
                     "status": room.status,
-                    "player_count": len(room.players),
+                    "player_count": sum(
+                        not player.is_spectator for player in room.players.values()
+                    ),
+                    "spectator_count": sum(
+                        player.is_spectator for player in room.players.values()
+                    ),
                     "host_name": room.players[room.host_player_id].name,
                     "difficulty": room.difficulty,
                     "is_member": player_id in room.players if player_id else False,
@@ -331,8 +352,27 @@ class MotusManager:
                 raise PermissionError("Seul l'hôte peut démarrer la partie.")
             if room.status != "lobby":
                 raise ValueError("Cette partie a déjà démarré.")
-            if len(room.players) < 2:
+            if sum(not player.is_spectator for player in room.players.values()) < 2:
                 raise ValueError("Il faut au moins deux joueurs pour démarrer.")
+            room.status = "playing"
+            room.started_at = time.time()
+            return room
+
+    def restart_room(self, room_id: str, player_id: str) -> MotusRoom:
+        with self._lock:
+            room = self.get_room(room_id, player_id)
+            if room.host_player_id != player_id:
+                raise PermissionError("Seul l'hôte peut redémarrer la partie.")
+            if room.status != "finished":
+                raise ValueError("La partie doit être terminée pour être redémarrée.")
+            room.target = self._pick_target()
+            room.match_number += 1
+            for player in room.players.values():
+                player.guesses.clear()
+                player.solved = False
+                player.finished = False
+                player.score = 0
+                player.is_spectator = False
             room.status = "playing"
             room.started_at = time.time()
             return room
@@ -342,13 +382,19 @@ class MotusManager:
             room = self.get_room(room_id, player_id)
             if room.status != "playing":
                 raise ValueError("La partie n'est pas en cours.")
+            if room.players[player_id].is_spectator:
+                raise ValueError("Les spectateurs ne peuvent pas proposer de mot.")
             result = room.players[player_id].submit(
                 guess,
                 room.target,
                 self.dictionary,
                 MOTUS_DIFFICULTIES[room.difficulty],
             )
-            if all(player.finished for player in room.players.values()):
+            if all(
+                player.finished
+                for player in room.players.values()
+                if not player.is_spectator
+            ):
                 room.status = "finished"
             return room, result
 

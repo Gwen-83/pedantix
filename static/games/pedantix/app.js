@@ -128,6 +128,7 @@ class PedantixApp {
 
     this.confetti = typeof ConfettiGenerator !== 'undefined' ? new ConfettiGenerator('confetti-canvas') : null;
     this.audioCtx = null;
+    this.pushAlertTimeout = null;
 
     // Chat and Network State
     this.chatMessages = [];
@@ -226,6 +227,10 @@ class PedantixApp {
       historyBtn: document.getElementById('history-button'),
       newGameBtn: document.getElementById('newgame-button'),
       soundBtn: document.getElementById('sound-button'),
+      pushJokeAlert: document.getElementById('push-joke-alert'),
+      pushJokeDetails: document.getElementById('push-joke-details'),
+      pushJokePlay: document.getElementById('push-joke-play'),
+      pushJokeClose: document.getElementById('push-joke-close'),
 
       // Summary sidebar (Left)
       puzzleLabel: document.getElementById('puzzle-label'),
@@ -635,6 +640,38 @@ class PedantixApp {
     }
   }
 
+  async playPushJingle() {
+    if (!this.soundEnabled) {
+      this.showToast('Activez les effets sonores pour jouer le jingle.');
+      return;
+    }
+    if (!this.audioCtx) {
+      this.showToast('La lecture audio n’est pas disponible sur ce navigateur.');
+      return;
+    }
+    try {
+      await this.audioCtx.resume();
+    } catch (error) {
+      this.showToast('Impossible de démarrer la lecture audio.');
+      return;
+    }
+
+    const now = this.audioCtx.currentTime;
+    [659.25, 523.25, 783.99, 1046.5, 783.99, 659.25, 523.25, 392].forEach((frequency, index) => {
+      const start = now + index * 0.16;
+      const oscillator = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.045, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
+      oscillator.connect(gain);
+      gain.connect(this.audioCtx.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.14);
+    });
+  }
+
   initEventListeners() {
     // Nav buttons
     if (this.dom.rulesBtn) this.dom.rulesBtn.addEventListener('click', () => this.openModal(this.dom.rulesModal));
@@ -654,6 +691,16 @@ class PedantixApp {
       this.showToast(this.soundEnabled ? 'Sons activés' : 'Sons désactivés');
       if (this.soundEnabled) this.playTone('click');
     });
+    if (this.dom.pushJokePlay) {
+      this.dom.pushJokePlay.addEventListener('click', () => this.playPushJingle());
+    }
+    if (this.dom.pushJokeClose) {
+      this.dom.pushJokeClose.addEventListener('click', () => {
+        this.dom.pushJokeAlert.hidden = true;
+        if (this.pushAlertTimeout) clearTimeout(this.pushAlertTimeout);
+        this.pushAlertTimeout = null;
+      });
+    }
 
     // Solo vs Multiplayer toggle buttons
     if (this.dom.btnTypeSolo) {
@@ -1103,6 +1150,21 @@ class PedantixApp {
     setTimeout(() => {
       this.dom.toast.classList.remove('visible');
     }, 2800);
+  }
+
+  showGitPushAlert(push) {
+    const details = [
+      push.repository,
+      push.branch,
+      `${push.commit_count || 0} commit${push.commit_count === 1 ? '' : 's'}`,
+    ].filter(Boolean);
+    this.dom.pushJokeDetails.textContent = details.join(' · ');
+    this.dom.pushJokeAlert.hidden = false;
+    if (this.pushAlertTimeout) clearTimeout(this.pushAlertTimeout);
+    this.pushAlertTimeout = setTimeout(() => {
+      this.dom.pushJokeAlert.hidden = true;
+      this.pushAlertTimeout = null;
+    }, 18000);
   }
 
   escapeHtml(str) {
@@ -2149,7 +2211,10 @@ class PedantixApp {
   }
 
   handleWebSocketMessage(msg) {
-    if (msg.type === 'init') {
+    if (msg.type === 'github_push_notice') {
+      this.showGitPushAlert(msg);
+
+    } else if (msg.type === 'init') {
       if (msg.game_mode) this.gameMode = msg.game_mode;
       if (msg.difficulty) this.currentDifficulty = msg.difficulty;
       if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;

@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#090d17">
   <title>Blockfire — FPS d’arène</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="/static/games/voxelstrike/style.css">
 </head>
 <body>
@@ -23,16 +31,19 @@
         <div class="intro-card">
           <p class="eyebrow"><span class="live-dot"></span> FPS multijoueur · gratuit</p>
           <h1>BLOCK<span>FIRE</span></h1>
-          <p class="intro-copy">Une arène. Deux équipes. À vous de jouer.</p>
-          <div class="feature-row">
-            <span><i>01</i> Matchmaking auto</span>
+          <p class="intro-copy">Connexion avec votre compte…</p>
+          <div id="feature-row" class="feature-row">
+            <span><i>01</i> Salons d’équipe</span>
             <span><i>02</i> Jusqu’à 40 joueurs</span>
             <span><i>03</i> Aucun téléchargement</span>
           </div>
-          <label class="name-label" for="player-name-input">VOTRE PSEUDO</label>
-          <input id="player-name-input" class="name-input" maxlength="24" autocomplete="nickname" placeholder="Choisissez un pseudo">
-          <button id="start-button" class="primary-button">REJOINDRE LA PARTIE <span>↗</span></button>
-          <p id="connection-message" class="connection-message" role="status">WASD pour bouger · souris pour viser · clic pour tirer</p>
+          <section id="lobby-panel" class="lobby-panel" hidden aria-live="polite">
+            <div class="lobby-summary"><span>SALON</span><b id="lobby-room">—</b><span id="lobby-count">0/10 JOUEURS</span></div>
+            <p id="lobby-message" class="lobby-message">Connexion au salon…</p>
+            <ul id="lobby-players" class="lobby-players"></ul>
+          </section>
+          <button id="start-button" class="primary-button" disabled>CONNEXION AU SERVEUR… <span>↗</span></button>
+          <p id="connection-message" class="connection-message" role="status">Connexion au salon de jeu…</p>
         </div>
       </section>
 
@@ -54,6 +65,12 @@
           <div class="weapon-card"><span>ARME PRINCIPALE</span><b>VX-7 <i>·</i> AUTO</b></div>
         </div>
         <canvas id="minimap" width="160" height="160" aria-label="Mini-carte"></canvas>
+        <aside id="control-hint" class="control-hint" aria-label="Commandes du jeu">
+          <span><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> Bouger</span>
+          <span><kbd>SOURIS</kbd> Viser</span>
+          <span><kbd>CLIC GAUCHE</kbd> Tirer</span>
+          <span><kbd>ÉCHAP</kbd> Pause</span>
+        </aside>
         <div id="touch-controls" class="touch-controls" aria-label="Commandes tactiles">
           <button id="move-pad" class="move-pad" aria-label="Déplacement"><i></i></button>
           <button id="touch-fire" class="touch-fire" aria-label="Tirer">FIRE</button>
@@ -63,7 +80,7 @@
       <div id="death-overlay" class="death-overlay" hidden><strong>ÉLIMINÉ</strong><span>Retour au combat…</span></div>
     </section>
     <footer class="controls-footer">
-      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Déplacement</span>
+      <span><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> Déplacement</span>
       <span><kbd>SOURIS</kbd> Viser</span>
       <span><kbd>CLIC</kbd> Tirer</span>
       <span><kbd>ESC</kbd> Pause</span>

@@ -8,6 +8,7 @@
   const regionSelect = document.getElementById('geo-region');
   const roomVariantSelect = document.getElementById('geo-room-variant');
   const roomRegionSelect = document.getElementById('geo-room-region');
+  const roomRoundCountInput = document.getElementById('geo-room-round-count');
   const roomInput = document.getElementById('geo-room-code');
   const roomDirectory = document.getElementById('geo-room-directory');
   const mapStage = document.getElementById('geo-map-stage');
@@ -30,6 +31,8 @@
   let guessMarker = null;
   let targetMarker = null;
   let answerLine = null;
+  let revealedGuessMarkers = [];
+  let revealedAnswerLines = [];
   let countryBoundaryLayer = null;
   let countryBoundaryLoading = null;
   let mapLabelsLayer = null;
@@ -37,6 +40,7 @@
   let mapReliefLayer = null;
   let selectedPosition = null;
   let pollingTimer = null;
+  let roundCountdownTimer = null;
   let roomRefreshing = false;
   let roomBusy = false;
   let renderedRound = null;
@@ -185,7 +189,7 @@
   }
 
   function googleGameRoundKey() {
-    return `${gameType}:${state?.game_id || state?.room_id}:${state?.round_number}`;
+    return `${gameType}:${state?.game_id || state?.room_id}:${state?.match_number || 1}:${state?.round_number}`;
   }
 
   async function handleGooglePanoramaChange() {
@@ -244,7 +248,9 @@
     try {
       const container = document.getElementById('geo-panorama-viewer');
       document.querySelector('#geo-panorama-panel > small').textContent =
-        provider === 'google' ? 'Google Street View' : 'Images © Mapillary contributors';
+        provider === 'google'
+          ? 'Google Street View extérieur'
+          : 'Séquences navigables · Images © Mapillary contributors';
       if (provider === 'google') {
         googlePanoramaRoundKey = googleGameRoundKey();
         googleLastPanoramaId = imageId;
@@ -278,7 +284,7 @@
           googlePanoramaViewer.setPano(imageId);
         }
         document.querySelector('#geo-panorama-panel > small').textContent =
-          'Google Street View · Cliquez sur les flèches dans la photo pour avancer.';
+          'Google Street View extérieur · Cliquez sur les flèches pour avancer.';
       } else {
         if (googlePanoramaViewer) {
           window.google?.maps?.event?.clearInstanceListeners(googlePanoramaViewer);
@@ -348,10 +354,14 @@
   function setMapStyle(isPanorama) {
     if (!map) return;
     if (isPanorama && !mapLabelsLayer) {
-      mapLabelsLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
-      }).addTo(map);
+      mapLabelsLayer = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> '
+            + '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+        },
+      ).addTo(map);
     } else if (!isPanorama) {
       if (mapLabelsLayer) {
         map.removeLayer(mapLabelsLayer);
@@ -388,7 +398,7 @@
     countryBoundaryLayer?.setStyle(countryBoundaryStyle(isPanorama));
     const attribution = document.querySelector('.geo-map-actions > span');
     attribution.textContent = isPanorama
-      ? 'Carte © OpenStreetMap · frontières © Natural Earth'
+      ? 'Carte © OpenStreetMap · CARTO · frontières © Natural Earth'
       : 'Carte physique et relief sans noms de villes · frontières © Natural Earth';
   }
 
@@ -414,12 +424,20 @@
   }
 
   function clearMapMarkers() {
-    for (const layer of [guessMarker, targetMarker, answerLine]) {
+    for (const layer of [
+      guessMarker,
+      targetMarker,
+      answerLine,
+      ...revealedGuessMarkers,
+      ...revealedAnswerLines,
+    ]) {
       if (layer && map) map.removeLayer(layer);
     }
     guessMarker = null;
     targetMarker = null;
     answerLine = null;
+    revealedGuessMarkers = [];
+    revealedAnswerLines = [];
     selectedPosition = null;
   }
 
@@ -434,9 +452,11 @@
     }).addTo(map);
   }
 
-  function showAnswerOnMap(target, guess) {
+  function showAnswerOnMap(target, guesses) {
     clearMapMarkers();
-    if (guess) setGuessMarker(guess.latitude, guess.longitude);
+    const revealedGuesses = Array.isArray(guesses)
+      ? guesses
+      : guesses ? [guesses] : [];
     targetMarker = L.circleMarker([target.latitude, target.longitude], {
       radius: 9,
       color: '#ffffff',
@@ -444,12 +464,29 @@
       fillColor: '#ef4444',
       fillOpacity: 1,
     }).addTo(map).bindTooltip(`${target.city}, ${target.country}`);
-    if (guess) {
-      answerLine = L.polyline([
-        [guess.latitude, guess.longitude],
-        [target.latitude, target.longitude],
-      ], { color: '#fbbf24', weight: 3, dashArray: '7 7' }).addTo(map);
-      map.fitBounds(answerLine.getBounds().pad(0.22), { maxZoom: 7 });
+    if (revealedGuesses.length) {
+      const answerBounds = L.latLngBounds([[target.latitude, target.longitude]]);
+      for (const guess of revealedGuesses) {
+        const isOwnGuess = !guess.player_id || guess.player_id === playerId;
+        const color = isOwnGuess ? '#16a34a' : '#2563eb';
+        const guessMarkerLayer = L.circleMarker([guess.latitude, guess.longitude], {
+          radius: 8,
+          color: '#ffffff',
+          weight: 3,
+          fillColor: color,
+          fillOpacity: 1,
+        }).addTo(map).bindTooltip(
+          `${guess.name ? `${guess.name} · ` : ''}${isOwnGuess ? 'votre estimation' : 'estimation adverse'}`,
+        );
+        const answerLineLayer = L.polyline([
+          [guess.latitude, guess.longitude],
+          [target.latitude, target.longitude],
+        ], { color, weight: 3, dashArray: '7 7' }).addTo(map);
+        revealedGuessMarkers.push(guessMarkerLayer);
+        revealedAnswerLines.push(answerLineLayer);
+        answerBounds.extend([guess.latitude, guess.longitude]);
+      }
+      map.fitBounds(answerBounds.pad(0.22), { maxZoom: 7 });
     } else {
       map.setView([target.latitude, target.longitude], 5);
     }
@@ -464,19 +501,53 @@
 
   function guessLocked() {
     if (!state || state.status !== 'playing') return true;
-    return gameType === 'room' && !!state.player?.submitted;
+    return gameType === 'room'
+      && (!!state.player?.is_spectator || !!state.player?.submitted);
   }
 
   function startPolling() {
     stopPolling();
     if (gameType !== 'room') return;
     pollingTimer = window.setInterval(refreshRoom, 1300);
+    updateRoundCountdown();
   }
 
   function stopPolling() {
     if (pollingTimer) window.clearInterval(pollingTimer);
     pollingTimer = null;
     roomRefreshing = false;
+    if (roundCountdownTimer) window.clearInterval(roundCountdownTimer);
+    roundCountdownTimer = null;
+    document.getElementById('geo-round-timer').hidden = true;
+  }
+
+  function updateRoundCountdown() {
+    const timer = document.getElementById('geo-round-timer');
+    const deadline = Number(state?.round_deadline);
+    if (
+      gameType !== 'room'
+      || state?.status !== 'playing'
+      || !Number.isFinite(deadline)
+      || deadline <= 0
+    ) {
+      timer.hidden = true;
+      if (roundCountdownTimer) window.clearInterval(roundCountdownTimer);
+      roundCountdownTimer = null;
+      return;
+    }
+
+    const seconds = Math.max(0, Math.ceil(deadline - Date.now() / 1000));
+    const activePlayers = state.players.filter((player) => !player.is_spectator);
+    const waitingPlayers = activePlayers.filter((player) => !player.submitted).length;
+    timer.textContent = state.player?.is_spectator
+      ? 'Vous observez cette manche. Vous rejoindrez la prochaine.'
+      : state.player?.submitted
+      ? `${waitingPlayers} joueur${waitingPlayers !== 1 ? 's' : ''} n’a${waitingPlayers !== 1 ? 'ont' : ''} pas encore validé · ${seconds} s restantes`
+      : `Vous avez ${seconds} s pour valider votre position.`;
+    timer.hidden = false;
+    if (!roundCountdownTimer) {
+      roundCountdownTimer = window.setInterval(updateRoundCountdown, 1000);
+    }
   }
 
   function showHome(clearActiveGame = true) {
@@ -528,13 +599,15 @@
       title.textContent = `Salon ${room.room_id}`;
       const details = document.createElement('small');
       const phase = room.status === 'playing' ? 'En cours' : 'En attente';
-      details.textContent = `${room.player_count}/${room.max_players} joueurs · ${regionLabel(room.region)} · ${phase}`;
+      details.textContent = `${room.player_count} joueurs + ${room.spectator_count || 0} spectateurs / ${room.max_players} places · ${room.round_count} manches · ${regionLabel(room.region)} · ${phase}`;
       copy.append(title, details);
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'geo-secondary-button';
-      button.textContent = room.is_member ? 'Reprendre' : room.status === 'lobby' ? 'Rejoindre' : 'En cours';
-      button.disabled = !room.is_member && room.status !== 'lobby';
+      button.textContent = room.is_member
+        ? 'Reprendre'
+        : room.status === 'playing' ? 'Observer' : 'Rejoindre';
+      button.disabled = !room.is_member && !['lobby', 'playing'].includes(room.status);
       if (!button.disabled) button.addEventListener('click', () => joinRoom(room.room_id));
       card.append(copy, button);
       roomDirectory.append(card);
@@ -560,6 +633,8 @@
       const status = document.createElement('small');
       status.textContent = state.status === 'lobby'
         ? 'Dans le salon'
+        : player.is_spectator
+          ? 'Spectateur · rejoindra la prochaine manche'
         : player.submitted ? 'Estimation validée' : `${player.total_score.toLocaleString('fr-FR')} points`;
       item.append(name, status);
       return item;
@@ -572,7 +647,7 @@
     const inviteUrl = new URL(window.location.href);
     inviteUrl.search = new URLSearchParams({ room: state.room_id }).toString();
     document.getElementById('geo-lobby-status').textContent =
-      `${state.players.length}/${state.max_players} joueurs · ${regionLabel(state.region)}. Il faut au moins deux joueurs pour démarrer.`;
+      `${state.player_count} joueurs + ${state.spectator_count} spectateurs / ${state.max_players} places · ${state.round_count} manches · ${regionLabel(state.region)}. Il faut au moins deux joueurs pour démarrer.`;
     document.getElementById('geo-invite-code').textContent = `Code : ${state.room_id}`;
     document.getElementById('geo-copy-invite').dataset.inviteUrl = inviteUrl.href;
     renderPlayers();
@@ -587,13 +662,14 @@
       `Salon multijoueur · ${variantLabel(state.variant)}`;
     document.getElementById('geo-round-heading').textContent = `Salon ${state.room_id}`;
     document.getElementById('geo-game-hint').textContent =
-      `${variantLabel(state.variant)} · ${regionLabel(state.region)} · 5 manches communes`;
+      `${variantLabel(state.variant)} · ${regionLabel(state.region)} · ${state.round_count} manches communes`;
   }
 
   function renderRoundResult(round, ownResult) {
     if (!round?.target) return;
     const signature = roundResultSignature(round);
     const waitingForNextRound = isWaitingForNextRound();
+    const isSpectator = isRoom && !!state.player?.is_spectator;
     if (signature === lastResultSignature && waitingForNextRound) return;
     if (!waitingForNextRound && state?.status !== 'finished') {
       roundResult.hidden = true;
@@ -625,11 +701,16 @@
       });
       roundResult.append(ranking);
     }
+    if (round.missed_players?.length) {
+      const missed = document.createElement('p');
+      missed.textContent = `Temps écoulé pour : ${round.missed_players.join(', ')}.`;
+      roundResult.append(missed);
+    }
     if (waitingForNextRound) {
       const continueButton = document.createElement('button');
       continueButton.type = 'button';
       continueButton.className = 'geo-primary-button';
-      continueButton.textContent = state?.variant === 'panorama' ? 'Manche suivante' : 'Ville suivante';
+      continueButton.textContent = 'Ville suivante';
       continueButton.addEventListener('click', () => {
         localStorage.setItem(roundResultStorageKey(), signature);
         clearMapMarkers();
@@ -651,13 +732,34 @@
     const list = document.createElement('ol');
     const scores = gameType === 'solo'
       ? [{ name: playerName, total_score: state.total_score }]
-      : [...state.players].sort((a, b) => b.total_score - a.total_score);
+      : [...state.players]
+        .filter((player) => player.round_results.length > 0)
+        .sort((a, b) => b.total_score - a.total_score);
     for (const player of scores) {
       const item = document.createElement('li');
       item.textContent = `${player.name} · ${player.total_score.toLocaleString('fr-FR')} points`;
       list.append(item);
     }
     scoreboard.append(list);
+    if (gameType === 'solo' || playerId === state.host_player_id) {
+      const replayButton = document.createElement('button');
+      replayButton.type = 'button';
+      replayButton.className = 'geo-primary-button';
+      replayButton.id = 'geo-replay-game';
+      replayButton.textContent = gameType === 'solo' ? 'Rejouer' : 'Relancer la partie';
+      replayButton.addEventListener('click', () => {
+        if (gameType === 'solo') {
+          startSolo(true);
+        } else {
+          restartRoom();
+        }
+      });
+      scoreboard.append(replayButton);
+    } else {
+      const waitingMessage = document.createElement('p');
+      waitingMessage.textContent = 'En attente que l’hôte relance la partie.';
+      scoreboard.append(waitingMessage);
+    }
   }
 
   function renderView() {
@@ -665,6 +767,7 @@
     home.hidden = true;
     play.hidden = false;
     hideError(playError);
+    updateRoundCountdown();
     const region = state.region || regionSelect.value;
     const isRoom = gameType === 'room';
     const isPanorama = state.variant === 'panorama';
@@ -697,7 +800,7 @@
     document.getElementById('geo-game-hint').textContent = isPanorama
       ? 'Explorez la photo avec la souris ou le tactile, puis situez-la sur la carte.'
       : isRoom
-        ? 'Une estimation par joueur et par manche. Le score apparaît quand tout le monde a répondu.'
+        ? 'Une estimation par joueur et par manche. Après la première réponse, les autres ont 20 secondes.'
         : 'Placez un marqueur sur la carte, puis validez votre estimation.';
     document.getElementById('geo-total-score').textContent =
       (state.total_score ?? state.player?.total_score ?? 0).toLocaleString('fr-FR');
@@ -733,7 +836,11 @@
     const locked = guessLocked();
     document.getElementById('geo-submit-guess').disabled = locked || !selectedPosition;
     document.getElementById('geo-map').classList.toggle('geo-map-disabled', locked);
-    document.getElementById('geo-round-message').textContent = state.status === 'finished'
+    document.getElementById('geo-round-message').textContent = isSpectator
+      ? state.status === 'finished'
+        ? 'Vous avez observé la partie. Vous pourrez jouer si l’hôte la relance.'
+        : 'Vous observez cette manche et serez joueur à la prochaine.'
+      : state.status === 'finished'
       ? 'Toutes les manches sont terminées.'
       : locked ? 'Votre position est validée. En attente des autres joueurs…'
         : isPanorama
@@ -745,11 +852,11 @@
       if (state.last_round) {
         const ownResult = state.last_round.guesses.find((guess) => guess.player_id === playerId);
         renderRoundResult(state.last_round, ownResult);
-        if (waitingForNextRound && ownResult) {
-          showAnswerOnMap(state.last_round.target, ownResult);
+        if (waitingForNextRound || state.status === 'finished') {
+          showAnswerOnMap(state.last_round.target, state.last_round.guesses);
         }
       }
-      if (state.player?.guess && locked) {
+      if (state.status === 'playing' && state.player?.guess && locked) {
         selectedPosition = state.player.guess;
         setGuessMarker(selectedPosition.latitude, selectedPosition.longitude);
       }
@@ -765,23 +872,27 @@
 
     if (state.status === 'finished') {
       const finalTarget = isRoom ? state.last_round?.target : state.last_result;
-      const finalGuess = isRoom
-        ? state.last_round?.guesses.find((guess) => guess.player_id === playerId)
+      const finalGuesses = isRoom
+        ? state.last_round?.guesses
         : state.last_result ? soloGuessMarker(state.last_result) : null;
-      if (finalTarget && finalGuess) showAnswerOnMap(finalTarget, finalGuess);
+      if (finalTarget && finalGuesses) showAnswerOnMap(finalTarget, finalGuesses);
       renderFinalScoreboard();
-      stopPolling();
+      if (isRoom) {
+        if (!pollingTimer) startPolling();
+      } else {
+        stopPolling();
+      }
     } else {
       scoreboard.hidden = true;
       if (isRoom && !pollingTimer) startPolling();
     }
   }
 
-  async function startSolo() {
+  async function startSolo(isReplay = false) {
     if (!ensureMap()) return;
-    const button = document.getElementById('geo-solo-button');
+    const button = document.getElementById(isReplay ? 'geo-replay-game' : 'geo-solo-button');
     setBusy(button, true, 'Préparation…');
-    hideError(homeError);
+    hideError(isReplay ? playError : homeError);
     try {
       state = await post('/api/geoguessr/solo/new', {
         player_id: playerId,
@@ -795,11 +906,14 @@
       localStorage.removeItem('geoguessr_active_room_id');
       history.replaceState(null, '', `${window.location.pathname}?mode=solo`);
       renderedRound = null;
+      renderedResultRound = null;
+      lastResultSignature = '';
+      selectedPosition = null;
       renderView();
       const view = mapView(state.region);
       map.setView(view.center, view.zoom);
     } catch (error) {
-      showError(homeError, error.message);
+      showError(isReplay ? playError : homeError, error.message);
     } finally {
       setBusy(button, false);
     }
@@ -864,6 +978,7 @@
   }
 
   async function createRoom() {
+    if (!roomRoundCountInput.reportValidity()) return;
     const button = document.getElementById('geo-create-room');
     setBusy(button, true, 'Création…');
     hideError(homeError);
@@ -873,6 +988,7 @@
         player_name: playerName,
         region: roomRegionSelect.value,
         variant: roomVariantSelect.value,
+        round_count: Number(roomRoundCountInput.value),
       });
       enterRoom();
     } catch (error) {
@@ -943,13 +1059,44 @@
     }
   }
 
+  async function restartRoom() {
+    if (!state || roomBusy) return;
+    roomBusy = true;
+    hideError(playError);
+    try {
+      state = await post('/api/geoguessr/room/restart', {
+        room_id: state.room_id,
+        player_id: playerId,
+        player_name: playerName,
+      });
+      renderedRound = null;
+      renderedResultRound = null;
+      lastResultSignature = '';
+      selectedPosition = null;
+      renderView();
+      const view = mapView(state.region);
+      map.setView(view.center, view.zoom);
+      if (!pollingTimer) startPolling();
+    } catch (error) {
+      showError(playError, error.message);
+    } finally {
+      roomBusy = false;
+    }
+  }
+
   async function refreshRoom() {
     if (!state || gameType !== 'room' || roomRefreshing) return;
     roomRefreshing = true;
     try {
-      state = await request(
+      const updatedState = await request(
         `/api/geoguessr/room/${encodeURIComponent(state.room_id)}?player_id=${encodeURIComponent(playerId)}`,
       );
+      if ((updatedState.match_number || 1) < (state.match_number || 1)) return;
+      const finalStateUnchanged = state.status === 'finished'
+        && updatedState.status === 'finished'
+        && (updatedState.match_number || 1) === (state.match_number || 1);
+      state = updatedState;
+      if (finalStateUnchanged) return;
       renderView();
     } catch (error) {
       stopPolling();
@@ -1004,7 +1151,7 @@
     }
     if (intro) {
       intro.textContent = panorama
-        ? 'Explorez une vraie photo de rue avec Google Street View ou Mapillary, puis placez votre estimation sur la carte. Jusqu’à 5 000 points par manche.'
+        ? 'Explorez des vues extérieures Google Street View ou des séquences Mapillary navigables, puis placez votre estimation sur la carte. Le type de caméra n’est pas certifié.'
         : 'Un nom de ville s’affiche. Placez votre estimation sur la carte : plus vous êtes proche, plus vous marquez de points. Jusqu’à 5 000 points par manche.';
     }
     if (soloTitle) {

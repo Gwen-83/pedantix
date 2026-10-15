@@ -120,6 +120,47 @@ class MotusTests(unittest.TestCase):
         self.assertIs(resumed, room)
         self.assertEqual(len(resumed.players["guest"].guesses), 1)
 
+    def test_spectator_cannot_guess_and_is_promoted_with_reset_on_host_restart(self):
+        room = self.manager.create_room("host", "Hôte")
+        self.manager.join_room(room.room_id, "guest", "Invité")
+        self.manager.start_room(room.room_id, "host")
+        with self.assertRaisesRegex(ValueError, "terminée"):
+            self.manager.restart_room(room.room_id, "host")
+        self.manager.join_room(room.room_id, "observer", "Observateur")
+
+        state = room.to_dict("observer")
+        self.assertTrue(state["player"]["is_spectator"])
+        self.assertEqual(state["player_count"], 2)
+        self.assertEqual(state["spectator_count"], 1)
+        self.assertTrue(state["players"][2]["is_spectator"])
+        with self.assertRaisesRegex(ValueError, "spectateurs"):
+            self.manager.guess_room(room.room_id, "observer", "tartes")
+        self.assertEqual(room.players["observer"].guesses, [])
+
+        self.manager.guess_room(room.room_id, "host", "talent")
+        self.assertEqual(room.status, "playing")
+        self.assertEqual(self.manager.list_rooms()[0]["player_count"], 2)
+        self.manager.guess_room(room.room_id, "guest", "talent")
+        self.assertEqual(room.status, "finished")
+        self.assertTrue(room.to_dict("host")["can_restart"])
+        self.assertFalse(room.to_dict("guest")["can_restart"])
+        with self.assertRaises(PermissionError):
+            self.manager.restart_room(room.room_id, "guest")
+
+        restarted = self.manager.restart_room(room.room_id, "host")
+
+        self.assertIs(restarted, room)
+        self.assertEqual(room.status, "playing")
+        self.assertFalse(room.players["observer"].is_spectator)
+        self.assertEqual(room.to_dict("observer")["player_count"], 3)
+        for player in room.players.values():
+            self.assertEqual(player.guesses, [])
+            self.assertFalse(player.solved)
+            self.assertFalse(player.finished)
+            self.assertEqual(player.score, 0)
+        self.manager.guess_room(room.room_id, "observer", "tartes")
+        self.assertEqual(len(room.players["observer"].guesses), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

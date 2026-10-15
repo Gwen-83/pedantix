@@ -187,6 +187,53 @@ class BattleshipTests(unittest.TestCase):
         self.assertIs(rejoined, room)
         self.assertEqual(rejoined.players["p2"].fleet, fleet)
 
+    def test_joining_a_running_room_adds_a_blocked_live_spectator(self):
+        room = self.create_room()
+        self.ready_room(room)
+        shot = room.players["p2"].fleet["carrier"][0]
+        self.manager.fire(room.room_id, "p1", shot)
+        spectator_room = self.manager.join_room(room.room_id, "observer", "Observateur")
+
+        spectator = spectator_room.players["observer"]
+        state = spectator_room.to_dict("observer")
+        self.assertTrue(spectator.is_spectator)
+        self.assertTrue(state["is_spectator"])
+        self.assertEqual(state["observed_player_id"], "p1")
+        self.assertEqual(state["own_fleet"], [])
+        self.assertEqual(state["target_shots"][0]["coordinate"], shot)
+        self.assertTrue(state["target_shots"][0]["hit"])
+        self.assertEqual(len(spectator_room._alive_ids()), 2)
+        self.assertEqual(self.manager.list_rooms("observer")[0]["player_count"], 2)
+        with self.assertRaisesRegex(ValueError, "spectateurs"):
+            self.manager.fire(room.room_id, "observer", "A1")
+
+    def test_host_restart_resets_match_and_promotes_queued_spectators(self):
+        room = self.create_room()
+        self.ready_room(room)
+        self.manager.join_room(room.room_id, "observer", "Observateur")
+        room.players["p1"].incoming_shots["A1"] = "p2"
+        room.players["p1"].attacks.append({"coordinate": "A1"})
+        with self.assertRaisesRegex(ValueError, "terminée"):
+            self.manager.restart_room(room.room_id, "p1")
+        room.status = "finished"
+
+        with self.assertRaises(PermissionError):
+            self.manager.restart_room(room.room_id, "p2")
+        restarted = self.manager.restart_room(room.room_id, "p1")
+
+        self.assertIs(restarted, room)
+        self.assertEqual(room.status, "lobby")
+        self.assertEqual(room.turn_number, 0)
+        self.assertIsNone(room.current_player_id)
+        self.assertIsNone(room.winner_player_id)
+        self.assertFalse(room.players["observer"].is_spectator)
+        self.assertTrue(all(not player.ready for player in room.players.values()))
+        self.assertTrue(all(not player.incoming_shots for player in room.players.values()))
+        self.assertTrue(all(not player.attacks for player in room.players.values()))
+        for player_id in room.players:
+            self.manager.set_ready(room.room_id, player_id, True)
+        self.assertEqual(self.manager.start_room(room.room_id, "p1").status, "playing")
+
 
 if __name__ == "__main__":
     unittest.main()

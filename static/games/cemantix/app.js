@@ -109,8 +109,10 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'cemantix-secondary-button';
-      button.textContent = room.is_member ? 'Reprendre' : room.status === 'lobby' ? 'Rejoindre' : 'En cours';
-      button.disabled = !room.is_member && room.status !== 'lobby';
+      button.textContent = room.is_member
+        ? 'Reprendre'
+        : room.status === 'playing' ? 'Observer' : 'Rejoindre';
+      button.disabled = !room.is_member && !['lobby', 'playing'].includes(room.status);
       if (!button.disabled) button.addEventListener('click', () => joinRoom(room.room_id));
       card.append(copy, button);
       roomDirectory.append(card);
@@ -139,7 +141,9 @@
     const isRoom = gameType === 'room';
     const isLobby = isRoom && state.status === 'lobby';
     document.getElementById('cemantix-game-mode').textContent =
-      isRoom ? 'Défi multijoueur' : 'Partie solo';
+      isRoom
+        ? state.player.is_spectator ? 'Défi multijoueur · Spectateur' : 'Défi multijoueur'
+        : 'Partie solo';
     document.getElementById('cemantix-game-title').textContent =
       state.status === 'finished' ? 'Le mot a été trouvé' : 'Quel est le mot secret ?';
     document.getElementById('cemantix-hint').textContent = isRoom
@@ -149,7 +153,7 @@
     document.getElementById('cemantix-round').hidden = isLobby;
     if (isLobby) renderLobby();
     else renderRound();
-    if (isRoom && state.status !== 'finished') {
+    if (isRoom && (state.status !== 'finished' || state.restart_available)) {
       if (!pollingTimer) startPolling();
     } else {
       stopPolling();
@@ -159,17 +163,23 @@
   function renderLobby() {
     const inviteUrl = new URL(window.location.href);
     inviteUrl.search = new URLSearchParams({ room: state.room_id }).toString();
+    const activePlayers = state.players.filter((player) => !player.is_spectator);
+    const spectators = state.players.length - activePlayers.length;
     document.getElementById('cemantix-lobby-status').textContent =
-      `${state.players.length} joueur${state.players.length === 1 ? '' : 's'} dans le salon. Il en faut au moins deux pour démarrer.`;
+      `${activePlayers.length} joueur${activePlayers.length === 1 ? '' : 's'} dans le salon`
+      + (spectators ? ` · ${spectators} spectateur${spectators === 1 ? '' : 's'}` : '')
+      + '. Il en faut au moins deux pour démarrer.';
     document.getElementById('cemantix-invite-code').textContent = `Code : ${state.room_id}`;
     document.getElementById('cemantix-copy-invite').dataset.inviteUrl = inviteUrl.href;
     const list = document.getElementById('cemantix-player-list');
     list.replaceChildren(...state.players.map((player) => {
       const item = document.createElement('li');
       const name = document.createElement('span');
-      name.textContent = player.name + (player.player_id === state.host_player_id ? ' (hôte)' : '');
+      name.textContent = player.name
+        + (player.player_id === state.host_player_id ? ' (hôte)' : '')
+        + (player.is_spectator ? ' (spectateur)' : '');
       const status = document.createElement('small');
-      status.textContent = 'Présent';
+      status.textContent = player.is_spectator ? 'En attente' : 'Présent';
       item.append(name, status);
       return item;
     }));
@@ -255,7 +265,7 @@
       const panel = document.createElement('section');
       panel.className = 'cemantix-player-history';
       const title = document.createElement('h2');
-      title.textContent = `${player.name}${player.player_id === state.winner_player_id ? ' — gagnant' : ''}`;
+      title.textContent = `${player.name}${player.is_spectator ? ' — spectateur' : ''}${player.player_id === state.winner_player_id ? ' — gagnant' : ''}`;
       const list = document.createElement('ol');
       list.className = 'cemantix-guess-list';
       player.guesses.forEach((guess) => appendGuessRow(list, guess));
@@ -301,10 +311,15 @@
       document.getElementById('cemantix-submission-count').textContent =
         `${state.submitted_count} / ${state.player_count} propositions reçues`;
       updateCountdown();
-      input.disabled = state.player.has_submitted;
-      submit.disabled = state.player.has_submitted;
-      input.placeholder = state.player.has_submitted ? 'En attente des autres…' : 'Votre mot…';
-      message.textContent = state.player.has_submitted
+      const isSpectator = state.player.is_spectator;
+      input.disabled = isSpectator || state.player.has_submitted;
+      submit.disabled = isSpectator || state.player.has_submitted;
+      input.placeholder = isSpectator
+        ? 'Mode spectateur'
+        : state.player.has_submitted ? 'En attente des autres…' : 'Votre mot…';
+      message.textContent = isSpectator
+        ? 'Vous observez cette manche. Vous pourrez jouer à partir de la prochaine.'
+        : state.player.has_submitted
         ? 'Proposition envoyée. Les scores seront révélés à la fin de la manche.'
         : 'Une seule proposition cette manche. Le mot et son score restent cachés jusqu’à la révélation.';
       renderRoomHistory(state.players);
@@ -343,15 +358,25 @@
     input.disabled = true;
     renderHints(state.player.hints || []);
     submit.disabled = true;
-    message.textContent = state.winner_player_id === state.player_id
-      ? 'Bravo, vous avez trouvé le mot en premier !'
-      : `${state.players.find((player) => player.player_id === state.winner_player_id)?.name || 'Un joueur'} a trouvé le mot en premier.`;
+    message.textContent = state.player.is_spectator
+      ? 'Vous avez observé cette partie jusqu’à la fin.'
+      : state.winner_player_id === state.player_id
+        ? 'Bravo, vous avez trouvé le mot en premier !'
+        : `${state.players.find((player) => player.player_id === state.winner_player_id)?.name || 'Un joueur'} a trouvé le mot en premier.`;
     renderRoomHistory(state.players);
     scoreboard.hidden = false;
     scoreboard.replaceChildren();
     const title = document.createElement('h2');
     title.textContent = `Le mot secret était « ${state.target} »`;
     scoreboard.appendChild(title);
+    if (state.can_restart) {
+      const restart = document.createElement('button');
+      restart.type = 'button';
+      restart.className = 'cemantix-primary-button';
+      restart.id = 'cemantix-restart-room';
+      restart.textContent = 'Relancer une partie';
+      scoreboard.appendChild(restart);
+    }
   }
 
   async function startSolo() {
@@ -465,9 +490,28 @@
     }
   }
 
+  async function restartRoom() {
+    if (!state || state.status !== 'finished' || !state.can_restart || roomBusy) return;
+    roomBusy = true;
+    roomRefreshGeneration += 1;
+    hideError(playError);
+    try {
+      state = await post('/api/cemantix/room/restart', {
+        room_id: state.room_id,
+        player_id: playerId,
+        player_name: playerName,
+      });
+      updateView();
+    } catch (error) {
+      showError(playError, error.message);
+    } finally {
+      roomBusy = false;
+    }
+  }
+
   async function submitGuess(event) {
     event.preventDefault();
-    if (!state || guessInput.disabled) return;
+    if (!state || guessInput.disabled || state.player.is_spectator) return;
     const isRoomGuess = gameType === 'room';
     if (isRoomGuess) {
       roomBusy = true;
@@ -545,6 +589,9 @@
     }
   });
   document.getElementById('cemantix-start-game').addEventListener('click', startRoom);
+  document.getElementById('cemantix-scoreboard').addEventListener('click', (event) => {
+    if (event.target.id === 'cemantix-restart-room') restartRoom();
+  });
   document.getElementById('cemantix-home-button').addEventListener('click', showHome);
   document.getElementById('cemantix-copy-invite').addEventListener('click', async (event) => {
     const url = event.currentTarget.dataset.inviteUrl;
