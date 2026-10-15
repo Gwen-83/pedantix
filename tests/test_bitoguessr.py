@@ -4,9 +4,11 @@ from pathlib import Path
 
 from app.bitoguessr import (
     COUNTRY_AVERAGES_CM,
+    COUNTRY_DATA,
     ROUND_COUNT,
     BitoguessrManager,
     _make_question,
+    get_country_data,
 )
 
 
@@ -16,7 +18,7 @@ class BitoguessrTests(unittest.TestCase):
 
     def test_country_dataset_is_unique_and_questions_hide_answers(self):
         countries = [code for code, _ in COUNTRY_AVERAGES_CM]
-        self.assertGreaterEqual(len(countries), 80)
+        self.assertGreaterEqual(len(countries), 200)
         self.assertEqual(len(countries), len(set(countries)))
         map_file = Path(__file__).resolve().parents[1] / "static/games/geoguessr/data/countries.geojson"
         with map_file.open(encoding="utf-8") as source:
@@ -24,7 +26,13 @@ class BitoguessrTests(unittest.TestCase):
                 feature["properties"]["ADM0_A3"]
                 for feature in json.load(source)["features"]
             }
-        self.assertEqual(set(countries) - map_codes, {"CPV", "SGP", "HKG"})
+        small_island_and_microstate_codes = {
+            "AND", "ATG", "BHR", "BRB", "COK", "COM", "CPV", "DMA", "FSM", "GRD",
+            "HKG", "KIR", "KNA", "LCA", "LIE", "MCO", "MDV", "MHL", "MLT", "MUS",
+            "NIU", "NRU", "PLW", "SGP", "SMR", "STP", "SYC", "TON", "TUV", "VAT",
+            "VCT", "WSM",
+        }
+        self.assertEqual(set(countries) - map_codes, small_island_and_microstate_codes)
 
         game = self.manager.create_solo("alice", "Alice", "normal")
         state = game.to_dict()
@@ -147,6 +155,32 @@ class BitoguessrTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "déjà été validée"):
             self.manager.guess_room(room.room_id, "host", option)
 
+    def test_country_data_dictionary_has_full_metadata_and_no_online_dependencies(self):
+        self.assertGreaterEqual(len(COUNTRY_DATA), 200)
+        for code, info in COUNTRY_DATA.items():
+            self.assertIn("name_fr", info)
+            self.assertIn("name_en", info)
+            self.assertIn("iso_a3", info)
+            self.assertIn("length_cm", info)
+            self.assertIn("length_in", info)
+            self.assertIn("height_m", info)
+            self.assertIn("percentage_of_height", info)
+            self.assertIn("continent", info)
+            self.assertIn("source", info)
+            self.assertIsInstance(info["length_cm"], float)
+            self.assertGreater(info["length_cm"], 5.0)
+            self.assertLess(info["length_cm"], 25.0)
+
+        fra = get_country_data("FRA")
+        self.assertIsNotNone(fra)
+        self.assertEqual(fra["name_fr"], "France")
+        self.assertEqual(fra["length_cm"], 15.74)
+
+        usa = get_country_data("usa")
+        self.assertIsNotNone(usa)
+        self.assertEqual(usa["name_fr"], "États-Unis")
+
 
 if __name__ == "__main__":
     unittest.main()
+

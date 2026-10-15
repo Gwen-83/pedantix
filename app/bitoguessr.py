@@ -8,37 +8,36 @@ from dataclasses import dataclass, field
 from threading import RLock
 from typing import Any, Dict, List, Optional, Tuple
 
+import json
+from pathlib import Path
+
 ROUND_COUNT = 10
 MAX_PLAYERS = 8
 DIFFICULTIES = {"normal", "difficile"}
 DATA_SOURCE_URL = "https://www.worlddata.info/average-penissize.php"
+COUNTRIES_DATA_PATH = Path(__file__).resolve().parent / "data" / "bitoguessr_countries.json"
 
-# Valeurs compilées par WorldData ; elles ne constituent pas un échantillon
-# représentatif. Les codes ISO-3 relient les réponses aux frontières de la carte.
-COUNTRY_AVERAGES_CM: Tuple[Tuple[str, float], ...] = (
-    ("ECU", 17.61), ("CMR", 16.67), ("BOL", 16.51), ("SDN", 16.47),
-    ("HTI", 16.01), ("SEN", 15.89), ("GMB", 15.88), ("CUB", 15.87),
-    ("NLD", 15.87), ("ZMB", 15.78), ("FRA", 15.74), ("AGO", 15.73),
-    ("CAN", 15.71), ("EGY", 15.69), ("ZWE", 15.68), ("GEO", 15.61),
-    ("PRY", 15.53), ("TCD", 15.39), ("ITA", 15.35), ("CAF", 15.33),
-    ("COL", 15.26), ("CIV", 15.22), ("BRA", 15.22), ("SWE", 15.08),
-    ("BGR", 15.02), ("CRI", 15.01), ("HND", 15.00), ("HUN", 14.99),
-    ("MEX", 14.92), ("DNK", 14.88), ("ARG", 14.88), ("SLV", 14.88),
-    ("SRB", 14.87), ("BEL", 14.77), ("HRV", 14.77), ("LVA", 14.69),
-    ("BLR", 14.63), ("CHL", 14.59), ("IRN", 14.55), ("AUT", 14.53),
-    ("DEU", 14.52), ("DZA", 14.49), ("COD", 14.48), ("AUS", 14.46),
-    ("NGA", 14.38), ("CHE", 14.35), ("NOR", 14.34), ("POL", 14.29),
-    ("ALB", 14.19), ("CPV", 14.05), ("NZL", 13.99), ("MKD", 13.98),
-    ("UKR", 13.97), ("ESP", 13.85), ("FIN", 13.77), ("LBY", 13.74),
-    ("IND", 13.72), ("AZE", 13.72), ("AFG", 13.69), ("ISR", 13.60),
-    ("USA", 13.58), ("JPN", 13.56), ("TKM", 13.48), ("VEN", 13.33),
-    ("GRC", 13.30), ("VNM", 13.22), ("RUS", 13.21), ("ARM", 13.14),
-    ("GBR", 13.13), ("TUR", 12.99), ("IRL", 12.78), ("MNG", 12.77),
-    ("ROU", 12.73), ("YEM", 12.72), ("KOR", 12.64), ("TWN", 12.60),
-    ("CHN", 12.43), ("PAK", 12.20), ("IDN", 11.67), ("SGP", 11.53),
-    ("MYS", 11.49), ("THA", 11.45), ("BGD", 11.20), ("HKG", 11.19),
-    ("LKA", 10.89), ("PHL", 10.85), ("MMR", 10.70), ("KHM", 10.04),
+
+def _load_country_data() -> Dict[str, Dict[str, Any]]:
+    with COUNTRIES_DATA_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+# Dictionnaire complet de tous les pays du monde avec leurs données physiques,
+# noms français / anglais, codes ISO et sources.
+COUNTRY_DATA: Dict[str, Dict[str, Any]] = _load_country_data()
+COUNTRIES = COUNTRY_DATA
+
+# Tuple (code, moyenne_cm) reliant les réponses au moteur de jeu et à la carte
+COUNTRY_AVERAGES_CM: Tuple[Tuple[str, float], ...] = tuple(
+    (code, data["length_cm"]) for code, data in COUNTRY_DATA.items()
 )
+
+
+def get_country_data(code: str) -> Optional[Dict[str, Any]]:
+    """Retourne les données physiques et métadonnées d'un pays."""
+    return COUNTRY_DATA.get(code.upper())
+
 
 
 def _make_question(

@@ -72,7 +72,40 @@
   }
 
   function countryName(code) {
-    const smallCountryNames = { CPV: 'Cap-Vert', SGP: 'Singapour', HKG: 'Hong Kong' };
+    const smallCountryNames = {
+      AND: 'Andorre',
+      ATG: 'Antigua-et-Barbuda',
+      BHR: 'Bahreïn',
+      BRB: 'Barbade',
+      COK: 'Îles Cook',
+      COM: 'Comores',
+      CPV: 'Cap-Vert',
+      DMA: 'Dominique',
+      FSM: 'Micronésie',
+      GRD: 'Grenade',
+      HKG: 'Hong Kong',
+      KIR: 'Kiribati',
+      KNA: 'Saint-Kitts-et-Nevis',
+      LCA: 'Sainte-Lucie',
+      LIE: 'Liechtenstein',
+      MCO: 'Monaco',
+      MDV: 'Maldives',
+      MHL: 'Îles Marshall',
+      MLT: 'Malte',
+      MUS: 'Maurice',
+      NIU: 'Nioué',
+      NRU: 'Nauru',
+      PLW: 'Palaos',
+      SGP: 'Singapour',
+      SMR: 'Saint-Marin',
+      STP: 'Sao Tomé-et-Principe',
+      SYC: 'Seychelles',
+      TON: 'Tonga',
+      TUV: 'Tuvalu',
+      VAT: 'Vatican',
+      VCT: 'Saint-Vincent-et-les Grenadines',
+      WSM: 'Samoa',
+    };
     if (smallCountryNames[code]) return smallCountryNames[code];
     const feature = countryLayer?.getLayers().find(
       (layer) => layer.feature.properties.ADM0_A3 === code,
@@ -180,9 +213,38 @@
         onEachFeature: onCountryFeature,
       }).addTo(map);
       [
+        ['AND', [42.50, 1.52]],
+        ['ATG', [17.06, -61.79]],
+        ['BHR', [26.06, 50.55]],
+        ['BRB', [13.19, -59.54]],
+        ['COK', [-21.23, -159.77]],
+        ['COM', [-11.64, 43.33]],
         ['CPV', [15.12, -23.62]],
-        ['SGP', [1.35, 103.82]],
+        ['DMA', [15.41, -61.37]],
+        ['FSM', [6.92, 158.16]],
+        ['GRD', [12.11, -61.67]],
         ['HKG', [22.32, 114.17]],
+        ['KIR', [1.87, -157.36]],
+        ['KNA', [17.35, -62.78]],
+        ['LCA', [13.90, -60.97]],
+        ['LIE', [47.16, 9.55]],
+        ['MCO', [43.73, 7.42]],
+        ['MDV', [3.20, 73.22]],
+        ['MHL', [7.13, 171.18]],
+        ['MLT', [35.93, 14.37]],
+        ['MUS', [-20.34, 57.55]],
+        ['NIU', [-19.05, -169.86]],
+        ['NRU', [-0.52, 166.93]],
+        ['PLW', [7.51, 134.58]],
+        ['SGP', [1.35, 103.82]],
+        ['SMR', [43.94, 12.45]],
+        ['STP', [0.18, 6.61]],
+        ['SYC', [-4.67, 55.49]],
+        ['TON', [-21.17, -175.19]],
+        ['TUV', [-7.10, 177.64]],
+        ['VAT', [41.90, 12.45]],
+        ['VCT', [13.25, -61.19]],
+        ['WSM', [-13.75, -172.10]],
       ].forEach(([code, coordinates]) => {
         const marker = L.circleMarker(coordinates, {
           radius: 5,
@@ -195,7 +257,7 @@
         marker.on('click', () => selectCountry(code));
         smallCountryMarkers.set(code, marker);
       });
-      status.textContent = 'Cliquez sur un pays coloré. Les pays grisés ne disposent pas de données.';
+      status.textContent = 'Cliquez sur un pays ou une île pour valider votre réponse.';
       updateMap();
     } catch (error) {
       status.textContent = `Impossible de charger la carte : ${error.message}`;
