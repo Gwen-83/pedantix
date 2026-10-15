@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr" data-presence-game="bitoguessr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#273238">
+  <title>Bitoguessr — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+  <link rel="stylesheet" href="/static/games/bitoguessr/style.css">
+</head>
+<body>
+  <main class="bito-shell">
+    <header class="bito-header">
+      <a href="/" class="bito-back">← <span>Ludothèque</span></a>
+      <p class="bito-brand">📏 BITOGUESSR</p>
+      <div class="bito-account">
+        <span id="bito-player-name"></span>
+        <label class="shared-theme-control" for="shared-theme-select">
+          <span aria-hidden="true">🎨</span><span>Thème</span>
+          <select id="shared-theme-select" aria-label="Thème de l’interface">
+            <option value="dark-colorful">Coloré sombre</option>
+            <option value="midnight">Nuit étoilée</option>
+            <option value="light-colorful">Coloré clair</option>
+            <option value="light-grey">Gris clair</option>
+            <option value="dark-grey">Charbon sombre</option>
+            <option value="parchment">Parchemin</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <section id="bito-home" class="bito-panel" aria-labelledby="bito-title">
+      <p class="bito-eyebrow">Quiz adulte · géographie approximative</p>
+      <h1 id="bito-title">Une moyenne, un pays. À vous de jouer.</h1>
+      <p class="bito-lead">Dix questions pour deviner à quel pays correspond une estimation moyenne. Chaque bonne réponse rapporte un point. Les chiffres sont des compilations indicatives, pas des données médicales représentatives.</p>
+      <p class="bito-age-note"><strong>18+</strong> Jeu réservé aux adultes. Aucun contenu explicite n’est affiché.</p>
+
+      <div class="bito-rule-grid">
+        <article><b>01</b><span><strong>Choisissez un mode</strong><small>En normal, le chiffre est arrondi ; plusieurs réponses peuvent convenir. En difficile, il est plus précis.</small></span></article>
+        <article><b>02</b><span><strong>Trouvez le pays</strong><small>Chaque manche propose une sélection de pays. Une réponse juste vaut un point.</small></span></article>
+        <article><b>03</b><span><strong>Comparez vos scores</strong><small>Jouez seul ou créez un salon privé avec un code à partager.</small></span></article>
+      </div>
+
+      <div class="bito-controls">
+        <label for="bito-solo-difficulty">Difficulté</label>
+        <select id="bito-solo-difficulty">
+          <option value="normal">Normal · moyenne arrondie</option>
+          <option value="difficile">Difficile · valeur précise</option>
+        </select>
+        <button id="bito-start-solo" class="bito-primary">Jouer en solo</button>
+      </div>
+
+      <section class="bito-multiplayer" aria-labelledby="bito-rooms-title">
+        <div class="bito-section-heading">
+          <div><h2 id="bito-rooms-title">Salons multijoueur</h2><p>De 2 à 8 joueurs, de 1 à 20 manches.</p></div>
+          <button id="bito-refresh-rooms" class="bito-secondary">Actualiser</button>
+        </div>
+        <div class="bito-room-actions">
+          <section>
+            <h3>Créer un salon</h3>
+            <label for="bito-room-difficulty">Difficulté</label>
+            <select id="bito-room-difficulty">
+              <option value="normal">Normal</option>
+              <option value="difficile">Difficile</option>
+            </select>
+            <label for="bito-room-round-count">Nombre de manches</label>
+            <input id="bito-room-round-count" type="number" min="1" max="20" value="10">
+            <button id="bito-create-room" class="bito-primary">Créer</button>
+          </section>
+          <section>
+            <h3>Rejoindre un salon</h3>
+            <label for="bito-room-code">Code d’invitation</label>
+            <div class="bito-join-row">
+              <input id="bito-room-code" maxlength="6" autocomplete="off" placeholder="ABC123">
+              <button id="bito-join-room" class="bito-secondary">Rejoindre</button>
+            </div>
+          </section>
+        </div>
+        <div id="bito-room-directory" class="bito-room-directory" aria-live="polite"></div>
+      </section>
+
+      <section class="bito-stats" aria-labelledby="bito-stats-title">
+        <div class="bito-section-heading">
+          <div><h2 id="bito-stats-title">Vos statistiques</h2><p>Historique lié à votre compte joueur.</p></div>
+        </div>
+        <div id="bito-personal-stats" class="bito-stat-grid"><p>Chargement…</p></div>
+        <h3>Meilleurs scores</h3>
+        <ol id="bito-leaderboard" class="bito-leaderboard"><li>Chargement…</li></ol>
+      </section>
+
+      <p id="bito-home-error" class="bito-error" role="alert" hidden></p>
+    </section>
+
+    <section id="bito-game" class="bito-panel" hidden aria-labelledby="bito-game-title">
+      <div class="bito-game-heading">
+        <div><p id="bito-mode-label" class="bito-eyebrow">Partie solo</p><h1 id="bito-game-title">Manche 1 sur 10</h1></div>
+        <button id="bito-leave" class="bito-secondary">Quitter</button>
+      </div>
+      <div class="bito-score-strip">
+        <span id="bito-score">0 point</span>
+        <span id="bito-difficulty-label"></span>
+      </div>
+      <section id="bito-lobby" class="bito-lobby" hidden>
+        <p id="bito-lobby-status" role="status"></p>
+        <div class="bito-invite"><span>Code du salon</span><strong id="bito-invite-code"></strong><button id="bito-copy-invite" class="bito-secondary">Copier le lien</button></div>
+        <ul id="bito-player-list" class="bito-player-list"></ul>
+        <button id="bito-start-room" class="bito-primary" hidden>Démarrer la partie</button>
+      </section>
+      <section id="bito-question" class="bito-question" hidden>
+        <p class="bito-question-label">À quel pays associer cette estimation&nbsp;?</p>
+        <p id="bito-prompt" class="bito-prompt"></p>
+        <div id="bito-options" class="bito-options"></div>
+        <p id="bito-waiting" class="bito-waiting" role="status" hidden></p>
+      </section>
+      <section id="bito-result" class="bito-result" aria-live="polite" hidden></section>
+      <section id="bito-scoreboard" class="bito-scoreboard" hidden></section>
+      <p id="bito-game-error" class="bito-error" role="alert" hidden></p>
+    </section>
+
+    <footer class="bito-footer">
+      Les moyennes affichées proviennent d’une compilation d’études de qualité et de tailles d’échantillons variables.
+      <a href="https://www.worlddata.info/average-penissize.php" target="_blank" rel="noopener noreferrer">Source et méthodologie (WorldData)</a>.
+      Elles ne permettent aucune conclusion sur un individu ni sur une population entière.
+    </footer>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
+  <script src="/static/games/bitoguessr/app.js"></script>
+</body>
+</html>

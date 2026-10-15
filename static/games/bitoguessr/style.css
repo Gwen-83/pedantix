@@ -1,0 +1,171 @@
+:root { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button, input, select { font: inherit; }
+button { color: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(ellipse at 12% 0%, var(--game-page-glow), transparent 38rem),
+    radial-gradient(ellipse at 90% 20%, var(--game-page-glow), transparent 32rem),
+    var(--game-page);
+  color: var(--game-text);
+}
+
+.bito-shell {
+  display: flex;
+  width: min(980px, 100%);
+  min-height: 100vh;
+  flex-direction: column;
+  margin: 0 auto;
+  padding: 18px 22px;
+}
+
+.bito-header {
+  display: grid;
+  min-height: 44px;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.bito-back, .bito-brand { color: var(--game-text); font-weight: 800; text-decoration: none; }
+.bito-back { font-size: .84rem; }
+.bito-brand { margin: 0; font-size: .98rem; letter-spacing: .12em; }
+.bito-account { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+#bito-player-name { color: var(--game-muted); font-size: .8rem; }
+
+.bito-panel {
+  margin: 28px 0 14px;
+  padding: clamp(20px, 4vw, 38px);
+  border: 1px solid var(--game-border);
+  border-radius: 22px;
+  background: var(--game-panel);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, .25);
+}
+
+.bito-eyebrow {
+  margin: 0 0 7px;
+  color: var(--game-accent);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.bito-panel h1 { margin: 0; font-size: clamp(1.6rem, 4.8vw, 2.45rem); letter-spacing: -.045em; }
+.bito-lead { max-width: 72ch; margin: 12px 0 16px; color: var(--game-muted); font-size: .92rem; line-height: 1.65; }
+.bito-age-note { margin: 0 0 22px; color: var(--game-accent); font-size: .79rem; }
+.bito-age-note strong { display: inline-grid; width: 31px; height: 25px; place-items: center; margin-right: 5px; border: 1px solid currentColor; border-radius: 7px; }
+
+.bito-rule-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.bito-rule-grid article {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--game-border);
+  border-radius: 12px;
+  background: rgba(255,255,255,.035);
+}
+.bito-rule-grid article > b { color: var(--game-accent); font: 800 .78rem 'Plus Jakarta Sans', sans-serif; }
+.bito-rule-grid strong, .bito-rule-grid small { display: block; }
+.bito-rule-grid strong { font-size: .82rem; }
+.bito-rule-grid small { margin-top: 5px; color: var(--game-muted); font-size: .71rem; line-height: 1.5; }
+
+.bito-controls { display: flex; align-items: center; gap: 10px; margin-top: 22px; }
+.bito-controls label, .bito-room-actions label { color: var(--game-text); font-size: .78rem; font-weight: 800; }
+.bito-controls select, .bito-room-actions input, .bito-room-actions select {
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 9px;
+  background: var(--game-input);
+  color: var(--game-text);
+}
+.bito-primary, .bito-secondary {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-size: .8rem;
+  font-weight: 800;
+}
+.bito-primary { background: var(--game-accent); color: var(--game-accent-contrast); }
+.bito-primary:hover:not(:disabled) { background: var(--game-accent-hover); }
+.bito-secondary { border-color: var(--game-border); background: var(--game-panel-raised); }
+.bito-secondary:hover:not(:disabled) { background: rgba(255,255,255,.12); }
+
+.bito-multiplayer, .bito-stats { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--game-border); }
+.bito-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bito-section-heading h2 { margin: 0; font-size: 1rem; }
+.bito-section-heading p { margin: 4px 0 0; color: var(--game-muted); font-size: .76rem; }
+.bito-room-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.bito-room-actions section { display: grid; align-content: start; gap: 8px; padding: 14px; border: 1px solid var(--game-border); border-radius: 12px; background: var(--game-panel-raised); }
+.bito-room-actions h3 { margin: 0 0 4px; font-size: .86rem; }
+.bito-room-actions input, .bito-room-actions select { width: 100%; }
+.bito-join-row { display: flex; gap: 7px; }
+.bito-join-row input { min-width: 0; text-transform: uppercase; }
+.bito-room-directory { display: grid; gap: 8px; margin-top: 12px; }
+.bito-room-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--game-border); border-radius: 10px; background: var(--game-panel-raised); }
+.bito-room-card strong, .bito-room-card small { display: block; }
+.bito-room-card strong { font-size: .82rem; }
+.bito-room-card small { margin-top: 4px; color: var(--game-muted); font-size: .72rem; }
+.bito-stats h3 { margin: 16px 0 8px; font-size: .84rem; }
+.bito-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; margin-top: 13px; }
+.bito-stat-card { padding: 12px; border: 1px solid var(--game-border); border-radius: 10px; background: var(--game-panel-raised); }
+.bito-stat-card strong, .bito-stat-card small { display: block; }
+.bito-stat-card strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.bito-stat-card small { margin-top: 3px; color: var(--game-muted); font-size: .7rem; }
+.bito-leaderboard { display: grid; gap: 5px; margin: 0; padding-left: 24px; color: var(--game-text); font-size: .78rem; }
+.bito-error { margin: 12px 0 0; color: #ef4444; font-size: .83rem; }
+
+.bito-game-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.bito-game-heading h1 { font-size: clamp(1.5rem, 4vw, 2rem); }
+.bito-score-strip { display: flex; justify-content: space-between; gap: 10px; margin: 18px 0; padding: 11px 13px; border: 1px solid var(--game-border); border-radius: 10px; background: var(--game-panel-raised); color: var(--game-accent); font-size: .84rem; font-weight: 800; }
+.bito-lobby, .bito-question, .bito-result, .bito-scoreboard { margin-top: 14px; padding: 18px; border: 1px solid var(--game-border); border-radius: 14px; background: var(--game-panel-raised); }
+.bito-lobby > p { color: var(--game-muted); font-size: .86rem; }
+.bito-invite { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
+.bito-invite span { color: var(--game-muted); font-size: .76rem; }
+.bito-invite strong { color: var(--game-accent); font-size: 1.25rem; letter-spacing: .13em; }
+.bito-player-list { display: grid; gap: 7px; margin: 12px 0; padding: 0; list-style: none; }
+.bito-player-list li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 11px; border: 1px solid var(--game-border); border-radius: 9px; }
+.bito-player-list small { color: var(--game-muted); }
+.bito-lobby #bito-start-room { width: 100%; margin-top: 4px; }
+.bito-question { text-align: center; }
+.bito-question-label { margin: 0; color: var(--game-muted); font-size: .84rem; }
+.bito-prompt { margin: 10px 0 18px; color: var(--game-accent); font-size: clamp(2.8rem, 10vw, 5rem); font-weight: 800; letter-spacing: -.06em; line-height: 1; }
+.bito-prompt small { font-size: .38em; letter-spacing: 0; }
+.bito-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.bito-option { min-height: 52px; padding: 10px; border: 1px solid var(--game-border); border-radius: 11px; background: var(--game-panel-raised); color: var(--game-text); font-weight: 700; }
+.bito-option:hover:not(:disabled) { border-color: var(--game-accent); background: var(--game-panel-raised); }
+.bito-waiting { color: var(--game-accent); font-size: .84rem; }
+.bito-result h2, .bito-scoreboard h2 { margin: 0 0 8px; font-size: .95rem; }
+.bito-result p { margin: 6px 0; color: var(--game-text); font-size: .84rem; }
+.bito-result ol, .bito-scoreboard ol { display: grid; gap: 7px; margin: 10px 0 0; padding-left: 22px; }
+.bito-result .bito-primary { margin-top: 14px; }
+.bito-scoreboard li { color: var(--game-text); font-size: .84rem; }
+.bito-footer { margin-top: auto; padding: 12px 8px 0; color: var(--game-muted); font-size: .7rem; line-height: 1.6; text-align: center; }
+.bito-footer a { color: var(--game-accent); }
+
+@media (max-width: 650px) {
+  .bito-shell { padding: 12px 14px 18px; }
+  .bito-header { grid-template-columns: 1fr auto; grid-template-rows: auto auto; }
+  .bito-brand { grid-column: 1 / -1; grid-row: 1; justify-self: center; }
+  .bito-back, .bito-account { grid-row: 2; }
+  .bito-panel { margin-top: 20px; border-radius: 17px; }
+  .bito-rule-grid { grid-template-columns: 1fr; }
+  .bito-controls { align-items: stretch; flex-direction: column; }
+  .bito-controls select { width: 100%; }
+  .bito-room-actions { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 420px) {
+  .bito-account { gap: 5px; }
+  #bito-player-name { display: none; }
+  .bito-options { grid-template-columns: 1fr; }
+  .bito-stat-grid { grid-template-columns: 1fr; }
+}

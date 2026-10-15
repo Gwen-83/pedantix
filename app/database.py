@@ -356,6 +356,7 @@ _GAME_CATALOG = (
     ("battleship", "Bataille navale"),
     ("geoguessr", "GeoGuessr"),
     ("undercover", "Undercover"),
+    ("bitoguessr", "Bitoguessr"),
 )
 
 
@@ -1418,6 +1419,16 @@ def _summarize_game_metrics(game_id: str, metric_rows: List[Dict[str, Any]]) -> 
             "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
             "best_score": max(scores) if scores else None,
             "avg_distance_km": round(sum(distances) / len(distances), 1) if distances else None,
+        }
+    if game_id == "bitoguessr":
+        scores = numbers("score")
+        correct = numbers("correct_answers")
+        rounds = numbers("rounds")
+        total_rounds = sum(rounds)
+        return {
+            "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+            "best_score": max(scores) if scores else None,
+            "avg_accuracy": round(sum(correct) / total_rounds * 100, 1) if total_rounds else None,
         }
     return {}
 

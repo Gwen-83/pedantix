@@ -8,6 +8,7 @@
     battleship: 'Bataille navale',
     geoguessr: 'GeoGuessr',
     undercover: 'Undercover',
+    bitoguessr: 'Bitoguessr',
     store: 'La ludothèque',
   };
   const gameId = document.documentElement.dataset.presenceGame

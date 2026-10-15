@@ -211,11 +211,38 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
         self.assertEqual(stats["game_metrics"]["avg_distance_km"], 1_250.0)
         self.assertEqual(stats["recent_games"][0]["difficulty"], "europe")
 
+    def test_bitoguessr_metrics_are_summarized_per_game(self):
+        database._record_user_game_finish_sync(
+            "Alice",
+            True,
+            10,
+            7,
+            "bitoguessr:solo-session",
+            "solo",
+            "Bitoguessr",
+            False,
+            120,
+            0,
+            0,
+            "bitoguessr",
+            "normal",
+            {"score": 7, "correct_answers": 7, "rounds": 10},
+        )
+
+        stats = database.get_user_stats("Alice", "bitoguessr")
+        self.assertEqual(stats["games_played"], 1)
+        self.assertEqual(stats["game_metrics"]["avg_score"], 7)
+        self.assertEqual(stats["game_metrics"]["best_score"], 7)
+        self.assertEqual(stats["game_metrics"]["avg_accuracy"], 70.0)
+
     def test_catalog_lists_enabled_games(self):
         catalog = database.get_game_catalog()
         self.assertEqual(
             {item["game_id"] for item in catalog},
-            {"pedantix", "motus", "cemantix", "sudoku", "battleship", "geoguessr"},
+            {
+                "pedantix", "motus", "cemantix", "sudoku", "battleship",
+                "geoguessr", "undercover", "bitoguessr",
+            },
         )
 
     def test_started_but_unfinished_session_is_counted_separately(self):

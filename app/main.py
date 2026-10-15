@@ -51,6 +51,10 @@ from app.geoguessr import (
     GOOGLE_STREETVIEW_MONTHLY_LIMIT,
     geoguessr_manager,
 )
+from app.bitoguessr import (
+    DATA_SOURCE_URL as BITOGUESSR_DATA_SOURCE_URL,
+    bitoguessr_manager,
+)
 from app.game import GameManager, GameSession
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
@@ -182,7 +186,7 @@ class PresenceRequest(BaseModel):
     username: str = Field(min_length=1, max_length=24)
     game_id: Literal[
         "pedantix", "motus", "cemantix", "sudoku", "battleship", "geoguessr",
-        "undercover", "store"
+        "undercover", "bitoguessr", "store"
     ]
 
 class AuthRegisterRequest(BaseModel):
@@ -367,6 +371,29 @@ class GeoGuessrPanoramaViewRequest(BaseModel):
     room_id: Optional[str] = None
     navigation: bool = False
 
+class BitoguessrPlayerRequest(BaseModel):
+    player_id: str = Field(min_length=1, max_length=100)
+    player_name: str = Field(min_length=1, max_length=40)
+
+class BitoguessrSoloCreateRequest(BitoguessrPlayerRequest):
+    difficulty: Literal["normal", "difficile"] = "normal"
+
+class BitoguessrRoomCreateRequest(BitoguessrSoloCreateRequest):
+    round_count: int = Field(default=10, ge=1, le=20)
+
+class BitoguessrRoomPlayerRequest(BitoguessrPlayerRequest):
+    room_id: str = Field(min_length=1, max_length=6)
+
+class BitoguessrSoloGuessRequest(BitoguessrPlayerRequest):
+    game_id: str = Field(min_length=1, max_length=64)
+    guess: str = Field(min_length=1, max_length=48)
+
+class BitoguessrSoloNextRequest(BitoguessrPlayerRequest):
+    game_id: str = Field(min_length=1, max_length=64)
+
+class BitoguessrRoomGuessRequest(BitoguessrRoomPlayerRequest):
+    guess: str = Field(min_length=1, max_length=48)
+
 class RoomChatRequest(BaseModel):
     room_id: str = "default"
     player_id: str
@@ -459,6 +486,13 @@ async def undercover_page():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page Undercover est introuvable.")
+
+@app.get("/games/bitoguessr/")
+async def bitoguessr_page():
+    index_path = os.path.join(STATIC_DIR, "games", "bitoguessr", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Bitoguessr est introuvable.")
 
 
 @app.get("/health")
@@ -2194,6 +2228,210 @@ async def get_geoguessr_room(room_id: str, player_id: str = Query(...)):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     _record_geoguessr_room_results(room)
+    return room.to_dict(player_id)
+
+
+def _record_bitoguessr_solo_result(game) -> None:
+    if game.status != "finished":
+        return
+    correct_answers = sum(result["correct"] for result in game.results)
+    increment_player_score(game.player_name, game.score, "bitoguessr")
+    record_user_game_finish(
+        game.player_name,
+        won=correct_answers >= (len(game.results) + 1) // 2,
+        attempts=len(game.results),
+        points=game.score,
+        session_id=f"bitoguessr:{game.game_id}",
+        mode="solo",
+        title="Bitoguessr",
+        duration_seconds=max(0, int(time.time() - game.created_at)),
+        game_id="bitoguessr",
+        difficulty=game.difficulty,
+        metrics={
+            "score": game.score,
+            "correct_answers": correct_answers,
+            "rounds": len(game.results),
+        },
+    )
+
+
+def _record_bitoguessr_room_results(room) -> None:
+    if room.status != "finished" or room.stats_recorded:
+        return
+    best_score = max(player.score for player in room.players.values())
+    duration = max(0, int(time.time() - room.created_at))
+    for player in room.players.values():
+        correct_answers = sum(result["correct"] for result in player.results)
+        increment_player_score(player.name, player.score, "bitoguessr")
+        record_user_game_finish(
+            player.name,
+            won=player.score == best_score,
+            attempts=len(player.results),
+            points=player.score,
+            session_id=f"bitoguessr:{room.room_id}",
+            mode="multiplayer",
+            title="Bitoguessr",
+            duration_seconds=duration,
+            game_id="bitoguessr",
+            difficulty=room.difficulty,
+            metrics={
+                "score": player.score,
+                "correct_answers": correct_answers,
+                "rounds": len(player.results),
+                "players": len(room.players),
+            },
+        )
+    room.stats_recorded = True
+
+
+@app.get("/api/bitoguessr/config")
+async def get_bitoguessr_config():
+    return {
+        "round_count": 10,
+        "max_players": 8,
+        "data_source_url": BITOGUESSR_DATA_SOURCE_URL,
+        "data_limitations": (
+            "Compilation d'études hétérogènes, parfois avec peu de participants par pays ; "
+            "les valeurs ne sont pas représentatives."
+        ),
+    }
+
+
+@app.post("/api/bitoguessr/solo/new")
+async def create_bitoguessr_solo(req: BitoguessrSoloCreateRequest):
+    try:
+        game = bitoguessr_manager.create_solo(
+            req.player_id, req.player_name, req.difficulty
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"bitoguessr:{game.game_id}",
+        "bitoguessr",
+        "solo",
+        "Bitoguessr",
+        game.difficulty,
+    )
+    return game.to_dict()
+
+
+@app.get("/api/bitoguessr/solo/{game_id}")
+async def get_bitoguessr_solo(game_id: str, player_id: str = Query(...)):
+    try:
+        game = bitoguessr_manager.get_solo(game_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return game.to_dict()
+
+
+@app.post("/api/bitoguessr/solo/guess")
+async def guess_bitoguessr_solo(req: BitoguessrSoloGuessRequest):
+    try:
+        game, result = bitoguessr_manager.guess_solo(
+            req.game_id, req.player_id, req.guess
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_bitoguessr_solo_result(game)
+    return {"result": result, **game.to_dict()}
+
+
+@app.post("/api/bitoguessr/solo/next")
+async def next_bitoguessr_solo(req: BitoguessrSoloNextRequest):
+    try:
+        game = bitoguessr_manager.next_solo(req.game_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return game.to_dict()
+
+
+@app.get("/api/bitoguessr/rooms")
+async def list_bitoguessr_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": bitoguessr_manager.list_rooms(player_id)}
+
+
+@app.post("/api/bitoguessr/room/create")
+async def create_bitoguessr_room(req: BitoguessrRoomCreateRequest):
+    try:
+        room = bitoguessr_manager.create_room(
+            req.player_id, req.player_name, req.difficulty, req.round_count
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/bitoguessr/room/join")
+async def join_bitoguessr_room(req: BitoguessrRoomPlayerRequest):
+    try:
+        room = bitoguessr_manager.join_room(
+            req.room_id, req.player_id, req.player_name
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/bitoguessr/room/start")
+async def start_bitoguessr_room(req: BitoguessrRoomPlayerRequest):
+    try:
+        room = bitoguessr_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"bitoguessr:{room.room_id}",
+        "bitoguessr",
+        "multiplayer",
+        "Bitoguessr",
+        room.difficulty,
+    )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/bitoguessr/room/guess")
+async def guess_bitoguessr_room(req: BitoguessrRoomGuessRequest):
+    try:
+        room, result = bitoguessr_manager.guess_room(
+            req.room_id, req.player_id, req.guess
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_bitoguessr_room_results(room)
+    return {"result": result, **room.to_dict(req.player_id)}
+
+
+@app.post("/api/bitoguessr/room/next")
+async def next_bitoguessr_room(req: BitoguessrRoomPlayerRequest):
+    try:
+        room = bitoguessr_manager.next_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.get("/api/bitoguessr/room/{room_id}")
+async def get_bitoguessr_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = bitoguessr_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_bitoguessr_room_results(room)
     return room.to_dict(player_id)
 
 
