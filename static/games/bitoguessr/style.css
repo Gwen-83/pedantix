@@ -139,9 +139,19 @@ body {
 .bito-question-label { margin: 0; color: var(--game-muted); font-size: .84rem; }
 .bito-prompt { margin: 10px 0 18px; color: var(--game-accent); font-size: clamp(2.8rem, 10vw, 5rem); font-weight: 800; letter-spacing: -.06em; line-height: 1; }
 .bito-prompt small { font-size: .38em; letter-spacing: 0; }
-.bito-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.bito-option { min-height: 52px; padding: 10px; border: 1px solid var(--game-border); border-radius: 11px; background: var(--game-panel-raised); color: var(--game-text); font-weight: 700; }
-.bito-option:hover:not(:disabled) { border-color: var(--game-accent); background: var(--game-panel-raised); }
+#bito-map {
+  width: 100%;
+  height: clamp(340px, 52vh, 570px);
+  overflow: hidden;
+  border: 1px solid var(--game-border);
+  border-radius: 12px;
+  background: #dce5e6;
+  text-align: left;
+}
+.bito-map-status { min-height: 1.3em; margin: 9px 0 0; color: var(--game-muted); font-size: .75rem; }
+.bito-question .leaflet-container { z-index: 0; font: inherit; }
+.bito-question .leaflet-control-attribution { font-size: 9px; }
+.bito-question .leaflet-tooltip { color: #172126; }
 .bito-waiting { color: var(--game-accent); font-size: .84rem; }
 .bito-result h2, .bito-scoreboard h2 { margin: 0 0 8px; font-size: .95rem; }
 .bito-result p { margin: 6px 0; color: var(--game-text); font-size: .84rem; }
@@ -166,6 +176,6 @@ body {
 @media (max-width: 420px) {
   .bito-account { gap: 5px; }
   #bito-player-name { display: none; }
-  .bito-options { grid-template-columns: 1fr; }
+  #bito-map { height: 56vh; min-height: 340px; }
   .bito-stat-grid { grid-template-columns: 1fr; }
 }

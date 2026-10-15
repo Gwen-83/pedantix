@@ -21,6 +21,11 @@
   let busy = false;
   let refreshing = false;
   let pollTimer = null;
+  let map = null;
+  let countryLayer = null;
+  const smallCountryMarkers = new Map();
+  let mapCountries = new Set();
+  let selectedCountry = null;
 
   document.getElementById('bito-player-name').textContent = playerName;
 
@@ -64,6 +69,137 @@
 
   function setUrl(query = '') {
     history.replaceState(null, '', `${window.location.pathname}${query}`);
+  }
+
+  function countryName(code) {
+    const smallCountryNames = { CPV: 'Cap-Vert', SGP: 'Singapour', HKG: 'Hong Kong' };
+    if (smallCountryNames[code]) return smallCountryNames[code];
+    const feature = countryLayer?.getLayers().find(
+      (layer) => layer.feature.properties.ADM0_A3 === code,
+    );
+    return feature?.feature.properties.NAME_FR
+      || feature?.feature.properties.ADMIN
+      || code;
+  }
+
+  function roundResult() {
+    return gameType === 'solo' ? state?.result : state?.last_round;
+  }
+
+  function updateMap() {
+    if (!countryLayer || !state) return;
+    const result = roundResult();
+    const correctCountries = new Set(result?.correct_countries || []);
+    const ownGuess = gameType === 'room'
+      ? result?.guesses?.find((guess) => guess.player_id === playerId)?.guess
+        || state.player?.guess
+      : result?.guess;
+    countryLayer.setStyle((feature) => {
+      const code = feature.properties.ADM0_A3;
+      const playable = mapCountries.has(code);
+      const correct = correctCountries.has(code);
+      const incorrectGuess = code === ownGuess && result && !correct;
+      const selected = code === (ownGuess || selectedCountry);
+      return {
+        color: correct ? '#62d3a0' : incorrectGuess ? '#ff7373' : selected ? '#7cc9ee' : '#9eabb1',
+        weight: correct || incorrectGuess || selected ? 2 : 0.7,
+        fillColor: correct ? '#16845a' : incorrectGuess ? '#a33d4a' : selected ? '#287da7' : playable ? '#65777c' : '#344147',
+        fillOpacity: correct || incorrectGuess || selected ? 0.78 : playable ? 0.55 : 0.36,
+        opacity: playable || correct || selected ? 0.9 : 0.55,
+      };
+    });
+    smallCountryMarkers.forEach((marker, code) => {
+      const correct = correctCountries.has(code);
+      const incorrectGuess = code === ownGuess && result && !correct;
+      const selected = code === (ownGuess || selectedCountry);
+      marker.setStyle({
+        color: correct ? '#62d3a0' : incorrectGuess ? '#ff7373' : selected ? '#7cc9ee' : '#fff',
+        fillColor: correct ? '#16845a' : incorrectGuess ? '#a33d4a' : selected ? '#287da7' : '#8d6263',
+        fillOpacity: 1,
+        weight: 2,
+      });
+    });
+  }
+
+  function selectCountry(code) {
+    if (!state || !mapCountries.has(code)) {
+      document.getElementById('bito-map-status').textContent =
+        'Aucune estimation disponible pour ce pays dans cette compilation.';
+      return;
+    }
+    if (busy || state.player?.submitted || roundResult()) return;
+    selectedCountry = code;
+    document.getElementById('bito-map-status').textContent =
+      `Pays sélectionné : ${countryName(code)}.`;
+    updateMap();
+    submitGuess(code);
+  }
+
+  function onCountryFeature(feature, layer) {
+    const code = feature.properties.ADM0_A3;
+    layer.bindTooltip(feature.properties.NAME_FR || feature.properties.ADMIN);
+    layer.on({
+      click: () => selectCountry(code),
+      mouseover: (event) => {
+        if (mapCountries.has(code) && !roundResult()) {
+          event.target.setStyle({ weight: 1.8, fillOpacity: 0.76 });
+          event.target.bringToFront();
+        }
+      },
+      mouseout: () => updateMap(),
+    });
+  }
+
+  async function initializeMap() {
+    const status = document.getElementById('bito-map-status');
+    if (!window.L) {
+      status.textContent = 'La carte est indisponible. Rechargez la page pour réessayer.';
+      return;
+    }
+    map = L.map('bito-map', {
+      worldCopyJump: true,
+      minZoom: 1,
+      maxZoom: 6,
+      zoomSnap: 0.5,
+    }).setView([18, 0], 1.5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 6,
+      attribution: '&copy; OpenStreetMap',
+    }).addTo(map);
+    try {
+      const response = await fetch('/static/games/geoguessr/data/countries.geojson');
+      if (!response.ok) throw new Error(`Erreur ${response.status}`);
+      const countries = await response.json();
+      countryLayer = L.geoJSON(countries, {
+        style: () => ({
+          color: '#9eabb1',
+          weight: 0.7,
+          fillColor: '#344147',
+          fillOpacity: 0.36,
+        }),
+        onEachFeature: onCountryFeature,
+      }).addTo(map);
+      [
+        ['CPV', [15.12, -23.62]],
+        ['SGP', [1.35, 103.82]],
+        ['HKG', [22.32, 114.17]],
+      ].forEach(([code, coordinates]) => {
+        const marker = L.circleMarker(coordinates, {
+          radius: 5,
+          color: '#fff',
+          weight: 2,
+          fillColor: '#8d6263',
+          fillOpacity: 1,
+        }).addTo(map);
+        marker.bindTooltip(countryName(code));
+        marker.on('click', () => selectCountry(code));
+        smallCountryMarkers.set(code, marker);
+      });
+      status.textContent = 'Cliquez sur un pays coloré. Les pays grisés ne disposent pas de données.';
+      updateMap();
+    } catch (error) {
+      status.textContent = `Impossible de charger la carte : ${error.message}`;
+    }
   }
 
   function formatPrompt(value) {
@@ -118,7 +254,8 @@
     heading.textContent = ownResult?.correct ? 'Bien vu !' : 'Raté pour cette fois';
     const detail = document.createElement('p');
     const earned = ownResult?.score || 0;
-    detail.textContent = `${result.answer} était une réponse valable · ${formatPrompt(result.prompt_cm)} · +${earned} point${earned === 1 ? '' : 's'}.`;
+    const correctNames = (result.correct_countries || []).map(countryName);
+    detail.textContent = `Réponse${correctNames.length > 1 ? 's' : ''} valable${correctNames.length > 1 ? 's' : ''} : ${correctNames.join(', ')} · ${formatPrompt(result.prompt_cm)} · +${earned} point${earned === 1 ? '' : 's'}.`;
     section.append(heading, detail);
 
     if (gameType === 'room' && Array.isArray(result.guesses)) {
@@ -127,7 +264,7 @@
         .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name, 'fr'))
         .forEach((guess) => {
           const item = document.createElement('li');
-          item.textContent = `${guess.name} · ${guess.guess || 'sans réponse'} · ${guess.correct ? 'juste' : 'faux'} · +${guess.score}`;
+          item.textContent = `${guess.name} · ${guess.guess ? countryName(guess.guess) : 'sans réponse'} · ${guess.correct ? 'juste' : 'faux'} · +${guess.score}`;
           ranking.append(item);
         });
       section.append(ranking);
@@ -180,35 +317,34 @@
 
   function renderQuestion() {
     const question = document.getElementById('bito-question');
-    const options = document.getElementById('bito-options');
     const waiting = document.getElementById('bito-waiting');
     const prompt = document.getElementById('bito-prompt');
-    const result = gameType === 'solo' ? state.result : state.last_round;
+    const result = roundResult();
     const isLobby = state.status === 'lobby';
     const isComplete = Boolean(result);
     const submitted = gameType === 'room' && state.player?.submitted;
 
-    question.hidden = isLobby || state.status === 'finished' || isComplete;
-    options.replaceChildren();
+    question.hidden = isLobby;
     waiting.hidden = true;
 
     if (!question.hidden) {
-      prompt.textContent = formatPrompt(state.prompt_cm);
-      if (submitted) {
+      prompt.textContent = formatPrompt(result?.prompt_cm ?? state.prompt_cm);
+      mapCountries = new Set(state.countries || []);
+      if (map) window.setTimeout(() => map.invalidateSize(), 0);
+      if (submitted && !isComplete) {
         waiting.textContent = 'Réponse enregistrée. En attente des autres joueurs…';
         waiting.hidden = false;
-      } else {
-        state.options.forEach((country) => {
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.className = 'bito-option';
-          button.textContent = country;
-          button.disabled = busy;
-          button.addEventListener('click', () => submitGuess(country));
-          options.append(button);
-        });
+        document.getElementById('bito-map-status').textContent =
+          `Votre réponse : ${countryName(state.player.guess)}.`;
+      } else if (isComplete) {
+        document.getElementById('bito-map-status').textContent =
+          'Les pays en vert correspondent à cette valeur ; votre réponse apparaît en rouge si elle est incorrecte.';
+      } else if (!selectedCountry) {
+        document.getElementById('bito-map-status').textContent =
+          'Cliquez sur un pays coloré. Les pays grisés ne disposent pas de données.';
       }
     }
+    updateMap();
     renderResult(result);
   }
 
@@ -319,6 +455,7 @@
     const button = document.getElementById('bito-start-solo');
     setBusy(button, true, 'Préparation…');
     clearError(homeError);
+    selectedCountry = null;
     try {
       state = await post('/api/bitoguessr/solo/new', {
         player_id: playerId,
@@ -380,6 +517,7 @@
     if (busy) return;
     busy = true;
     clearError(gameError);
+    selectedCountry = null;
     try {
       state = await post('/api/bitoguessr/solo/next', {
         player_id: playerId,
@@ -476,6 +614,7 @@
     if (busy) return;
     busy = true;
     clearError(gameError);
+    selectedCountry = null;
     try {
       state = await post('/api/bitoguessr/room/next', {
         room_id: state.room_id,
@@ -546,6 +685,7 @@
 
   refreshRooms();
   loadStats();
+  initializeMap();
   if (params.has('room')) {
     resumeRoom(params.get('room'));
   } else if (params.get('mode') === 'solo' && params.has('game_id')) {

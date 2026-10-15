@@ -13,16 +13,31 @@ MAX_PLAYERS = 8
 DIFFICULTIES = {"normal", "difficile"}
 DATA_SOURCE_URL = "https://www.worlddata.info/average-penissize.php"
 
-# Petit échantillon de faits numériques d'une compilation d'études hétérogènes.
-# La source indique qu'ils ne constituent pas un échantillon représentatif.
+# Valeurs compilées par WorldData ; elles ne constituent pas un échantillon
+# représentatif. Les codes ISO-3 relient les réponses aux frontières de la carte.
 COUNTRY_AVERAGES_CM: Tuple[Tuple[str, float], ...] = (
-    ("Bolivie", 16.51), ("Soudan", 16.47), ("Haïti", 16.01),
-    ("Sénégal", 15.89), ("Pays-Bas", 15.87), ("France", 15.74),
-    ("Canada", 15.71), ("Italie", 15.35), ("Colombie", 15.26),
-    ("Suède", 15.08), ("Honduras", 15.00), ("Argentine", 14.88),
-    ("Belgique", 14.77), ("Chili", 14.59), ("Allemagne", 14.52),
-    ("Australie", 14.46), ("Espagne", 13.85), ("États-Unis", 13.58),
-    ("Japon", 13.56), ("Thaïlande", 11.45),
+    ("ECU", 17.61), ("CMR", 16.67), ("BOL", 16.51), ("SDN", 16.47),
+    ("HTI", 16.01), ("SEN", 15.89), ("GMB", 15.88), ("CUB", 15.87),
+    ("NLD", 15.87), ("ZMB", 15.78), ("FRA", 15.74), ("AGO", 15.73),
+    ("CAN", 15.71), ("EGY", 15.69), ("ZWE", 15.68), ("GEO", 15.61),
+    ("PRY", 15.53), ("TCD", 15.39), ("ITA", 15.35), ("CAF", 15.33),
+    ("COL", 15.26), ("CIV", 15.22), ("BRA", 15.22), ("SWE", 15.08),
+    ("BGR", 15.02), ("CRI", 15.01), ("HND", 15.00), ("HUN", 14.99),
+    ("MEX", 14.92), ("DNK", 14.88), ("ARG", 14.88), ("SLV", 14.88),
+    ("SRB", 14.87), ("BEL", 14.77), ("HRV", 14.77), ("LVA", 14.69),
+    ("BLR", 14.63), ("CHL", 14.59), ("IRN", 14.55), ("AUT", 14.53),
+    ("DEU", 14.52), ("DZA", 14.49), ("COD", 14.48), ("AUS", 14.46),
+    ("NGA", 14.38), ("CHE", 14.35), ("NOR", 14.34), ("POL", 14.29),
+    ("ALB", 14.19), ("CPV", 14.05), ("NZL", 13.99), ("MKD", 13.98),
+    ("UKR", 13.97), ("ESP", 13.85), ("FIN", 13.77), ("LBY", 13.74),
+    ("IND", 13.72), ("AZE", 13.72), ("AFG", 13.69), ("ISR", 13.60),
+    ("USA", 13.58), ("JPN", 13.56), ("TKM", 13.48), ("VEN", 13.33),
+    ("GRC", 13.30), ("VNM", 13.22), ("RUS", 13.21), ("ARM", 13.14),
+    ("GBR", 13.13), ("TUR", 12.99), ("IRL", 12.78), ("MNG", 12.77),
+    ("ROU", 12.73), ("YEM", 12.72), ("KOR", 12.64), ("TWN", 12.60),
+    ("CHN", 12.43), ("PAK", 12.20), ("IDN", 11.67), ("SGP", 11.53),
+    ("MYS", 11.49), ("THA", 11.45), ("BGD", 11.20), ("HKG", 11.19),
+    ("LKA", 10.89), ("PHL", 10.85), ("MMR", 10.70), ("KHM", 10.04),
 )
 
 
@@ -30,29 +45,24 @@ def _make_question(
     difficulty: str,
     country_average: Optional[Tuple[str, float]] = None,
 ) -> Dict[str, Any]:
-    country, average = country_average or random.choice(COUNTRY_AVERAGES_CM)
+    country_code, average = country_average or random.choice(COUNTRY_AVERAGES_CM)
     if difficulty == "normal":
         prompt = int(average + 0.5)
         accepted = [
-            name for name, value in COUNTRY_AVERAGES_CM
+            code for code, value in COUNTRY_AVERAGES_CM
             if int(value + 0.5) == prompt
         ]
     else:
         prompt = round(average, 2)
-        accepted = [country]
-
-    distractors = [
-        name for name, _ in COUNTRY_AVERAGES_CM if name not in accepted
-    ]
-    options = list(accepted)
-    option_count = min(max(0, 4 - len(options)), len(distractors))
-    options.extend(random.sample(distractors, k=option_count))
-    random.shuffle(options)
+        accepted = [
+            code for code, value in COUNTRY_AVERAGES_CM
+            if round(value, 2) == prompt
+        ]
     return {
         "prompt_cm": prompt,
-        "options": options,
+        "countries": [code for code, _ in COUNTRY_AVERAGES_CM],
         "accepted": accepted,
-        "answer": country,
+        "answer": country_code,
     }
 
 
@@ -94,7 +104,7 @@ class BitoguessrSoloGame:
             "score": self.score,
             "player_name": self.player_name,
             "prompt_cm": current["prompt_cm"] if current else None,
-            "options": current["options"] if current else [],
+            "countries": current["countries"] if current else [],
             "result": result,
             "results": self.results,
         }
@@ -141,6 +151,7 @@ class BitoguessrRoom:
                 "round_number": revealed_round + 1,
                 "prompt_cm": revealed.question["prompt_cm"],
                 "answer": revealed.question["answer"],
+                "correct_countries": revealed.question["accepted"],
                 "guesses": [
                     {
                         "player_id": player.player_id,
@@ -178,9 +189,10 @@ class BitoguessrRoom:
                 "name": player.name,
                 "score": player.score,
                 "submitted": bool(current and player_id in current.guesses),
+                "guess": current.guesses.get(player_id) if current else None,
             },
             "prompt_cm": current.question["prompt_cm"] if current and not completed else None,
-            "options": current.question["options"] if current and not completed else [],
+            "countries": current.question["countries"] if current and not completed else [],
             "last_round": last_round,
         }
 
@@ -227,8 +239,8 @@ class BitoguessrManager:
             if game.status != "playing":
                 raise ValueError("Cette partie est terminée.")
             question = game.questions[game.round_index]
-            if guess not in question["options"]:
-                raise ValueError("Choisissez un pays proposé.")
+            if guess not in question["countries"]:
+                raise ValueError("Ce pays n’a pas de données pour cette partie.")
             correct = guess in question["accepted"]
             points = int(correct)
             game.score += points
@@ -237,7 +249,7 @@ class BitoguessrManager:
                 "prompt_cm": question["prompt_cm"],
                 "guess": guess,
                 "answer": question["answer"],
-                "accepted_answers": question["accepted"],
+                "correct_countries": question["accepted"],
                 "correct": correct,
                 "score": points,
                 "total_score": game.score,
@@ -319,8 +331,8 @@ class BitoguessrManager:
                 raise ValueError("L’hôte doit passer à la manche suivante.")
             if player_id in current.guesses:
                 raise ValueError("Votre réponse a déjà été validée.")
-            if guess not in current.question["options"]:
-                raise ValueError("Choisissez un pays proposé.")
+            if guess not in current.question["countries"]:
+                raise ValueError("Ce pays n’a pas de données pour cette partie.")
             current.guesses[player_id] = guess
             correct = guess in current.question["accepted"]
             score = int(correct)
@@ -331,6 +343,7 @@ class BitoguessrManager:
                 "prompt_cm": current.question["prompt_cm"],
                 "guess": guess,
                 "answer": current.question["answer"],
+                "correct_countries": current.question["accepted"],
                 "correct": correct,
                 "score": score,
             })

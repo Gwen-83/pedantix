@@ -402,6 +402,18 @@ html.store-mode .game-store {
   text-align: center;
 }
 
+.store-secret-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.store-secret-link:hover,
+.store-secret-link:focus-visible {
+  color: var(--game-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .store-auth-overlay {
   position: fixed;
   z-index: 10000;
