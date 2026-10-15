@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 150" preserveAspectRatio="none" role="img">
+  <defs>
+    <linearGradient id="hull" x2="0" y2="1">
+      <stop stop-color="#b7c7cd"/>
+      <stop offset=".5" stop-color="#627b87"/>
+      <stop offset="1" stop-color="#304753"/>
+    </linearGradient>
+  </defs>
+  <path d="M35 81h430l-28 37q-11 14-33 14H84q-22 0-34-16z" fill="url(#hull)" stroke="#dbe5e7" stroke-width="4"/>
+  <path d="M55 75h365l24 14H41z" fill="#c7d3d7" stroke="#e3eaec" stroke-width="3"/>
+  <path d="M125 71V46h39V31h23v40h57V52h25V37h24v34h64" fill="#899da5" stroke="#dbe4e6" stroke-width="3"/>
+  <path d="M136 47h17m95 5h17m19-15h14m-116 19v14m109-10v10" stroke="#304753" stroke-width="4"/>
+  <path d="M65 91h76v16H65zm155 0h65v16h-65zm130 0h63v16h-63z" fill="#344d5b" stroke="#d2dfe2" stroke-width="3"/>
+  <path d="M105 84v-9m143 9v-9m136 9v-9" stroke="#304753" stroke-width="4"/>
+  <path d="M65 117h38m28 0h38m28 0h38m28 0h38m28 0h38m28 0h38" stroke="#e0e8ea" stroke-width="3" opacity=".65"/>
+  <path d="M441 86h28" stroke="#ef5350" stroke-width="5"/>
+</svg>

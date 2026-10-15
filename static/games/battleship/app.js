@@ -14,13 +14,13 @@
     destroyer: 'Torpilleur',
     frigate: 'Frégate',
   };
-  const shipIcons = {
-    carrier: '🛳️',
-    battleship: '🚢',
-    cruiser: '⛴️',
-    submarine: '🐟',
-    destroyer: '🛥️',
-    frigate: '⚓',
+  const shipImages = {
+    carrier: 'carrier.svg',
+    battleship: 'battleship.svg',
+    cruiser: 'cruiser.svg',
+    submarine: 'submarine.svg',
+    destroyer: 'destroyer.svg',
+    frigate: 'frigate.svg',
   };
   const difficultySelect = document.getElementById('naval-difficulty');
   const roomDirectory = document.getElementById('naval-room-directory');
@@ -43,8 +43,7 @@
   let draftFleet = {};
   let lastShotResult = null;
   let knownSunkShips = new Set();
-  let sinkingShipAnimation = null;
-  let sinkingAnnouncementPending = false;
+  let sinkingAnnouncementExpiresAt = 0;
 
   document.getElementById('naval-player-name').textContent = playerName;
 
@@ -170,7 +169,6 @@
     interactive = false,
     shotMode = false,
     sinkingShipIds = [],
-    sinkingShipCells = [],
   } = {}) {
     const shipByCell = new Map();
     for (const ship of ships) {
@@ -178,7 +176,6 @@
     }
     const shotByCell = new Map(shots.map((shot) => [shot.coordinate, shot]));
     const sinkingIds = new Set(sinkingShipIds);
-    const sinkingCells = new Set(sinkingShipCells);
     const grid = document.createElement('div');
     grid.className = 'naval-grid';
     grid.setAttribute('role', 'grid');
@@ -186,13 +183,17 @@
     corner.className = 'naval-axis';
     corner.setAttribute('aria-hidden', 'true');
     grid.append(corner);
+    const axes = [];
     for (let column = 0; column < 10; column += 1) {
       const heading = document.createElement('span');
       heading.className = 'naval-axis';
       heading.textContent = String(column + 1);
       heading.setAttribute('role', 'columnheader');
-      grid.append(heading);
+      axes.push(heading);
     }
+    grid.append(...axes);
+    const shipArt = [];
+    const smokeOverlays = [];
 
     for (let row = 0; row < 10; row += 1) {
       const rowHeading = document.createElement('span');
@@ -214,14 +215,6 @@
           button.classList.add('naval-ship', `naval-${ship.ship_id}`);
           button.setAttribute('aria-label', `${cell}, ${ship.name}${ship.sunk ? ', coulé' : ''}`);
           if (ship.sunk) button.classList.add('naval-sunk');
-          if (sinkingIds.has(ship.ship_id)) button.classList.add('naval-sinking');
-          if (ship.cells[Math.floor(ship.cells.length / 2)] === cell) {
-            button.textContent = shipIcons[ship.ship_id] || '🚢';
-            button.classList.add('naval-ship-icon');
-          }
-        }
-        if (sinkingCells.has(cell)) {
-          button.classList.add('naval-sunk', 'naval-sinking');
         }
         if (shot) {
           button.classList.add(shot.hit ? 'naval-hit' : 'naval-miss');
@@ -244,6 +237,32 @@
         grid.append(button);
       }
     }
+    for (const ship of ships) {
+      const firstCell = coordinateParts(ship.cells[0]);
+      const lastCell = coordinateParts(ship.cells[ship.cells.length - 1]);
+      if (!firstCell || !lastCell) continue;
+      const isVertical = firstCell[0] !== lastCell[0];
+      const art = document.createElement('img');
+      art.className = `naval-ship-art${isVertical ? ' naval-ship-art-vertical' : ''}`;
+      art.src = `/static/games/battleship/ships/${shipImages[ship.ship_id] || 'cruiser.svg'}`;
+      art.alt = '';
+      art.setAttribute('aria-hidden', 'true');
+      art.style.gridRow = `${firstCell[0] + 2} / span ${isVertical ? ship.cells.length : 1}`;
+      art.style.gridColumn = `${firstCell[1] + 2} / span ${isVertical ? 1 : ship.cells.length}`;
+      art.style.setProperty('--ship-length', String(ship.cells.length));
+      if (sinkingIds.has(ship.ship_id)) art.classList.add('naval-ship-art-sinking');
+      shipArt.push(art);
+
+      if (sinkingIds.has(ship.ship_id)) {
+        const smoke = document.createElement('span');
+        smoke.className = 'naval-smoke';
+        smoke.setAttribute('aria-hidden', 'true');
+        smoke.style.gridRow = art.style.gridRow;
+        smoke.style.gridColumn = art.style.gridColumn;
+        smokeOverlays.push(smoke);
+      }
+    }
+    grid.append(...shipArt, ...smokeOverlays);
     container.replaceChildren(grid);
   }
 
@@ -370,12 +389,18 @@
     } else {
       shotMessage.textContent = '';
     }
-    if (sinkingAnnouncementPending && lastShotResult?.sunk_ship) {
-      const sinkingIcon = document.createElement('span');
-      sinkingIcon.className = 'naval-sinking-announcement';
-      sinkingIcon.setAttribute('aria-hidden', 'true');
-      sinkingIcon.textContent = shipIcons[lastShotResult.sunk_ship] || '🚢';
-      shotMessage.append(' ', sinkingIcon);
+    if (lastShotResult?.sunk_ship && Date.now() < sinkingAnnouncementExpiresAt) {
+      const sinkingScene = document.createElement('span');
+      sinkingScene.className = 'naval-sink-scene';
+      sinkingScene.setAttribute('aria-hidden', 'true');
+      const sinkingShip = document.createElement('img');
+      sinkingShip.src = `/static/games/battleship/ships/${shipImages[lastShotResult.sunk_ship] || 'cruiser.svg'}`;
+      sinkingShip.alt = '';
+      sinkingScene.append(sinkingShip);
+      const smoke = document.createElement('span');
+      smoke.className = 'naval-smoke';
+      sinkingScene.append(smoke);
+      shotMessage.append(' ', sinkingScene);
     }
     if (ownPlayer?.is_spectator) {
       turnMessage.textContent = state.status === 'finished'
@@ -423,12 +448,7 @@
     renderGrid(document.getElementById('naval-target-grid'), {
       shots: state.target_shots,
       shotMode: state.status === 'playing',
-      sinkingShipCells: sinkingShipAnimation?.targetId === state.target_player_id
-        ? sinkingShipAnimation.cells
-        : [],
     });
-    sinkingShipAnimation = null;
-    sinkingAnnouncementPending = false;
     const battleList = document.getElementById('naval-battle-player-list');
     battleList.replaceChildren(...state.players.map((player) => {
       const item = document.createElement('li');
@@ -606,7 +626,7 @@
       state = await post('/api/battleship/room/restart', roomPayload());
       lastShotResult = null;
       knownSunkShips.clear();
-      sinkingShipAnimation = null;
+      sinkingAnnouncementExpiresAt = 0;
       draftFleet = {};
       updateView();
     } catch (error) {
@@ -628,13 +648,7 @@
         coordinate: coordinateValue,
       });
       lastShotResult = response.result;
-      sinkingShipAnimation = response.result.sunk_ship
-        ? {
-          targetId: response.result.target_id,
-          cells: response.result.sunk_ship_cells,
-        }
-        : null;
-      sinkingAnnouncementPending = !!response.result.sunk_ship;
+      sinkingAnnouncementExpiresAt = response.result.sunk_ship ? Date.now() + 2200 : 0;
       state = response;
       updateView();
     } catch (error) {

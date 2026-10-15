@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 150" preserveAspectRatio="none" role="img">
+  <defs>
+    <linearGradient id="hull" x2="0" y2="1">
+      <stop stop-color="#bdc9cf"/>
+      <stop offset=".45" stop-color="#71838e"/>
+      <stop offset="1" stop-color="#354754"/>
+    </linearGradient>
+  </defs>
+  <path d="M29 82h444l-34 38q-11 12-31 12H85q-28 0-39-17z" fill="url(#hull)" stroke="#e0e7e9" stroke-width="4"/>
+  <path d="M57 76h367l27 14H43z" fill="#d0dadd" stroke="#edf1f2" stroke-width="3"/>
+  <path d="M155 72V47h38V32h23v40h45V49h22V37h20v35h52" fill="#8da0a8" stroke="#e1e8ea" stroke-width="3"/>
+  <path d="M168 48h15m90 1h14m-90 8v13m73-12v12" stroke="#354754" stroke-width="4"/>
+  <path d="M68 93h88v17H68zm182 0h76v17h-76z" fill="#384e5a" stroke="#d1dcdf" stroke-width="3"/>
+  <path d="M109 86v-9m181 9v-9" stroke="#354754" stroke-width="4"/>
+  <path d="M73 119h37m30 0h37m30 0h37m30 0h37m30 0h37m30 0h37" stroke="#e1e8ea" stroke-width="3" opacity=".65"/>
+  <path d="M453 88h20" stroke="#ef5350" stroke-width="5"/>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 150" preserveAspectRatio="none" role="img">
+  <defs>
+    <linearGradient id="hull" x2="0" y2="1">
+      <stop stop-color="#b8c6cf"/>
+      <stop offset=".45" stop-color="#627887"/>
+      <stop offset="1" stop-color="#263a4b"/>
+    </linearGradient>
+    <linearGradient id="deck" x2="0" y2="1">
+      <stop stop-color="#c7d3d8"/>
+      <stop offset="1" stop-color="#788d98"/>
+    </linearGradient>
+  </defs>
+  <path d="M20 84h455l-24 35q-9 12-31 12H68q-18 0-27-13z" fill="url(#hull)" stroke="#d5e0e4" stroke-width="4"/>
+  <path d="M31 78 57 64h402l17 20H20z" fill="url(#deck)" stroke="#e2e8eb" stroke-width="3"/>
+  <path d="M102 67h305M126 61h266" fill="none" stroke="#eaf1f2" stroke-width="3" opacity=".8"/>
+  <path d="M82 53h37V38h24V27h20v26h40V41h21V31h19v22h165" fill="#9aabb4" stroke="#d5dfe2" stroke-width="3"/>
+  <path d="M99 38h13m54-11h16m51 14h14m-98 18v11m81-11v11m107-15v15" stroke="#263a4b" stroke-width="4"/>
+  <path d="m183 80 25-12h32l14 12zm124 0 20-11h31l12 11z" fill="#263a4b" stroke="#e5ecee" stroke-width="2"/>
+  <path d="M62 108h37m29 0h37m29 0h37m29 0h37m29 0h37m29 0h37" stroke="#d7e2e5" stroke-width="3" opacity=".65"/>
+  <path d="M454 83h22" stroke="#ef5350" stroke-width="5"/>
+</svg>
