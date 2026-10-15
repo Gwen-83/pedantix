@@ -176,9 +176,16 @@ h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em;
 .naval-cell.naval-submarine { background: #315e67; }
 .naval-cell.naval-destroyer { background: #426d68; }
 .naval-cell.naval-frigate { background: #586a86; }
+.naval-cell.naval-ship-icon { font-size: clamp(0.85rem, 3vw, 1.35rem); }
 .naval-cell.naval-hit { border-color: #fb7185; background: #a32b43; color: #fff; }
 .naval-cell.naval-miss { border-color: rgba(203, 213, 225, 0.22); background: #303747; color: #cbd5e1; }
 .naval-cell.naval-sunk { border-color: #f43f5e; background: #761f33; }
+.naval-cell.naval-sinking { animation: naval-sink 1.4s ease-in forwards; }
+@keyframes naval-sink {
+  0% { transform: translateY(0) rotate(0); opacity: 1; }
+  35% { transform: translateY(3px) rotate(2deg); opacity: 1; }
+  100% { transform: translateY(18px) rotate(8deg); opacity: 0.2; }
+}
 .naval-cell.naval-shot-cell:not(:disabled) { cursor: crosshair; }
 .naval-cell.naval-shot-cell:hover:not(:disabled) { border-color: #fbbf24; background: rgba(217, 119, 6, 0.35); }
 .naval-cell:disabled { opacity: 1; cursor: default; }
@@ -191,6 +198,7 @@ h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em;
 .naval-shot-result:not(:empty) { padding: 10px 12px; border: 1px solid rgba(251,191,36,.2); border-radius: 10px; background: rgba(251,191,36,.07); }
 .naval-shot-result.naval-shot-hit { color: #bbf7d0; border-color: rgba(34,197,94,.28); background: rgba(34,197,94,.1); }
 .naval-shot-result.naval-shot-miss { color: #cbd5e1; border-color: rgba(203,213,225,.18); background: rgba(203,213,225,.05); }
+.naval-sinking-announcement { display: inline-block; margin-left: 4px; font-size: 1.3rem; vertical-align: middle; animation: naval-sink 1.4s ease-in forwards; }
 .naval-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; margin: 0 0 16px; color: #aab3c5; font-size: 0.74rem; }
 .naval-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .naval-legend i { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px; font-size: 0.9rem; font-style: normal; font-weight: 900; }
@@ -230,5 +238,5 @@ footer { padding-top: 18px; color: #707b8e; font-size: 0.72rem; text-align: cent
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

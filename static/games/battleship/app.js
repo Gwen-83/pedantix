@@ -14,6 +14,14 @@
     destroyer: 'Torpilleur',
     frigate: 'Frégate',
   };
+  const shipIcons = {
+    carrier: '🛳️',
+    battleship: '🚢',
+    cruiser: '⛴️',
+    submarine: '🐟',
+    destroyer: '🛥️',
+    frigate: '⚓',
+  };
   const difficultySelect = document.getElementById('naval-difficulty');
   const roomDirectory = document.getElementById('naval-room-directory');
   const rows = 'ABCDEFGHIJ';
@@ -34,6 +42,9 @@
   let vertical = false;
   let draftFleet = {};
   let lastShotResult = null;
+  let knownSunkShips = new Set();
+  let sinkingShipAnimation = null;
+  let sinkingAnnouncementPending = false;
 
   document.getElementById('naval-player-name').textContent = playerName;
 
@@ -153,12 +164,21 @@
     return match ? [rows.indexOf(match[1]), Number(match[2]) - 1] : null;
   }
 
-  function renderGrid(container, { ships = [], shots = [], interactive = false, shotMode = false } = {}) {
+  function renderGrid(container, {
+    ships = [],
+    shots = [],
+    interactive = false,
+    shotMode = false,
+    sinkingShipIds = [],
+    sinkingShipCells = [],
+  } = {}) {
     const shipByCell = new Map();
     for (const ship of ships) {
       for (const cell of ship.cells) shipByCell.set(cell, ship);
     }
     const shotByCell = new Map(shots.map((shot) => [shot.coordinate, shot]));
+    const sinkingIds = new Set(sinkingShipIds);
+    const sinkingCells = new Set(sinkingShipCells);
     const grid = document.createElement('div');
     grid.className = 'naval-grid';
     grid.setAttribute('role', 'grid');
@@ -194,13 +214,22 @@
           button.classList.add('naval-ship', `naval-${ship.ship_id}`);
           button.setAttribute('aria-label', `${cell}, ${ship.name}${ship.sunk ? ', coulé' : ''}`);
           if (ship.sunk) button.classList.add('naval-sunk');
+          if (sinkingIds.has(ship.ship_id)) button.classList.add('naval-sinking');
+          if (ship.cells[Math.floor(ship.cells.length / 2)] === cell) {
+            button.textContent = shipIcons[ship.ship_id] || '🚢';
+            button.classList.add('naval-ship-icon');
+          }
+        }
+        if (sinkingCells.has(cell)) {
+          button.classList.add('naval-sunk', 'naval-sinking');
         }
         if (shot) {
           button.classList.add(shot.hit ? 'naval-hit' : 'naval-miss');
           button.textContent = shot.hit ? '×' : '•';
-          button.setAttribute('aria-label', `${cell}, ${shot.hit ? 'touché' : 'dans l’eau'}`);
-        } else if (ship && !shotMode) {
-          button.textContent = '■';
+          button.setAttribute(
+            'aria-label',
+            `${cell}, ${shot.hit ? 'touché' : 'dans l’eau'}${shot.sunk_ship ? ', navire coulé' : ''}`,
+          );
         }
         if (interactive) {
           button.classList.add('naval-setup-cell');
@@ -341,6 +370,13 @@
     } else {
       shotMessage.textContent = '';
     }
+    if (sinkingAnnouncementPending && lastShotResult?.sunk_ship) {
+      const sinkingIcon = document.createElement('span');
+      sinkingIcon.className = 'naval-sinking-announcement';
+      sinkingIcon.setAttribute('aria-hidden', 'true');
+      sinkingIcon.textContent = shipIcons[lastShotResult.sunk_ship] || '🚢';
+      shotMessage.append(' ', sinkingIcon);
+    }
     if (ownPlayer?.is_spectator) {
       turnMessage.textContent = state.status === 'finished'
         ? 'Vous observez la partie terminée. Vous rejoindrez la prochaine partie au redémarrage.'
@@ -373,11 +409,26 @@
       state.status === 'finished' ? 'Terminé' : isMyTurn() ? 'À vous' : 'En attente';
     const ownShips = state.own_fleet.map((ship) => ({ ...ship }));
     const incoming = state.incoming_shots.map((shot) => ({ ...shot }));
-    renderGrid(document.getElementById('naval-own-grid'), { ships: ownShips, shots: incoming });
+    const newlySunkShips = ownShips
+      .filter((ship) => ship.sunk && !knownSunkShips.has(ship.ship_id))
+      .map((ship) => ship.ship_id);
+    for (const ship of ownShips) {
+      if (ship.sunk) knownSunkShips.add(ship.ship_id);
+    }
+    renderGrid(document.getElementById('naval-own-grid'), {
+      ships: ownShips,
+      shots: incoming,
+      sinkingShipIds: newlySunkShips,
+    });
     renderGrid(document.getElementById('naval-target-grid'), {
       shots: state.target_shots,
       shotMode: state.status === 'playing',
+      sinkingShipCells: sinkingShipAnimation?.targetId === state.target_player_id
+        ? sinkingShipAnimation.cells
+        : [],
     });
+    sinkingShipAnimation = null;
+    sinkingAnnouncementPending = false;
     const battleList = document.getElementById('naval-battle-player-list');
     battleList.replaceChildren(...state.players.map((player) => {
       const item = document.createElement('li');
@@ -455,6 +506,11 @@
     localStorage.setItem('battleship_active_room_id', state.room_id);
     history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
     draftFleet = {};
+    knownSunkShips = new Set(
+      (state.incoming_shots || [])
+        .filter((shot) => shot.sunk_ship)
+        .map((shot) => shot.sunk_ship),
+    );
     updateView();
     startPolling();
   }
@@ -549,6 +605,8 @@
     try {
       state = await post('/api/battleship/room/restart', roomPayload());
       lastShotResult = null;
+      knownSunkShips.clear();
+      sinkingShipAnimation = null;
       draftFleet = {};
       updateView();
     } catch (error) {
@@ -570,6 +628,13 @@
         coordinate: coordinateValue,
       });
       lastShotResult = response.result;
+      sinkingShipAnimation = response.result.sunk_ship
+        ? {
+          targetId: response.result.target_id,
+          cells: response.result.sunk_ship_cells,
+        }
+        : null;
+      sinkingAnnouncementPending = !!response.result.sunk_ship;
       state = response;
       updateView();
     } catch (error) {

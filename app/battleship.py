@@ -480,6 +480,7 @@ class BattleshipManager:
                 "coordinate": shot,
                 "hit": hit,
                 "sunk_ship": sunk_ship,
+                "sunk_ship_cells": list(target.fleet[sunk_ship]) if sunk_ship else [],
                 "eliminated": eliminated,
                 "winner_player_id": room.winner_player_id,
                 "next_player_id": room.current_player_id,
