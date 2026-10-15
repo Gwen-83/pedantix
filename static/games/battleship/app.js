@@ -179,6 +179,10 @@
     const grid = document.createElement('div');
     grid.className = 'naval-grid';
     grid.setAttribute('role', 'grid');
+    const shipLayer = document.createElement('div');
+    shipLayer.className = 'naval-ship-layer';
+    shipLayer.setAttribute('aria-hidden', 'true');
+    const cells = new Map();
     const corner = document.createElement('span');
     corner.className = 'naval-axis';
     corner.setAttribute('aria-hidden', 'true');
@@ -192,8 +196,6 @@
       axes.push(heading);
     }
     grid.append(...axes);
-    const shipArt = [];
-    const smokeOverlays = [];
 
     for (let row = 0; row < 10; row += 1) {
       const rowHeading = document.createElement('span');
@@ -209,6 +211,7 @@
         button.setAttribute('role', 'gridcell');
         button.setAttribute('aria-label', cell);
         button.title = cell;
+        button.dataset.row = String(row);
         const ship = shipByCell.get(cell);
         const shot = shotByCell.get(cell);
         if (ship) {
@@ -235,35 +238,45 @@
           button.disabled = true;
         }
         grid.append(button);
+        cells.set(cell, button);
       }
     }
+    grid.append(shipLayer);
+    container.replaceChildren(grid);
+
+    const gridRect = grid.getBoundingClientRect();
     for (const ship of ships) {
-      const firstCell = coordinateParts(ship.cells[0]);
-      const lastCell = coordinateParts(ship.cells[ship.cells.length - 1]);
-      if (!firstCell || !lastCell) continue;
-      const isVertical = firstCell[0] !== lastCell[0];
+      const shipButtons = ship.cells.map((cell) => cells.get(cell)).filter(Boolean);
+      if (!shipButtons.length) continue;
+      const cellRects = shipButtons.map((button) => button.getBoundingClientRect());
+      const left = Math.min(...cellRects.map((rect) => rect.left)) - gridRect.left;
+      const top = Math.min(...cellRects.map((rect) => rect.top)) - gridRect.top;
+      const right = Math.max(...cellRects.map((rect) => rect.right)) - gridRect.left;
+      const bottom = Math.max(...cellRects.map((rect) => rect.bottom)) - gridRect.top;
+      const isVertical = shipButtons[0].dataset.row !== shipButtons[shipButtons.length - 1].dataset.row;
       const art = document.createElement('img');
       art.className = `naval-ship-art${isVertical ? '' : ' naval-ship-art-horizontal'}`;
       art.src = `/static/games/battleship/ships/${shipImages[ship.ship_id] || 'cruiser.svg'}`;
       art.alt = '';
       art.setAttribute('aria-hidden', 'true');
-      art.style.gridRow = `${firstCell[0] + 2} / span ${isVertical ? ship.cells.length : 1}`;
-      art.style.gridColumn = `${firstCell[1] + 2} / span ${isVertical ? 1 : ship.cells.length}`;
-      art.style.setProperty('--ship-length', String(ship.cells.length));
+      art.style.left = `${isVertical ? left : (left + right) / 2}px`;
+      art.style.top = `${isVertical ? top : (top + bottom) / 2}px`;
+      art.style.width = `${isVertical ? right - left : bottom - top}px`;
+      art.style.height = `${isVertical ? bottom - top : right - left}px`;
       if (sinkingIds.has(ship.ship_id)) art.classList.add('naval-ship-art-sinking');
-      shipArt.push(art);
+      shipLayer.append(art);
 
       if (sinkingIds.has(ship.ship_id)) {
         const smoke = document.createElement('span');
         smoke.className = 'naval-smoke';
         smoke.setAttribute('aria-hidden', 'true');
-        smoke.style.gridRow = art.style.gridRow;
-        smoke.style.gridColumn = art.style.gridColumn;
-        smokeOverlays.push(smoke);
+        smoke.style.left = `${left}px`;
+        smoke.style.top = `${top}px`;
+        smoke.style.width = `${right - left}px`;
+        smoke.style.height = `${bottom - top}px`;
+        shipLayer.append(smoke);
       }
     }
-    grid.append(...shipArt, ...smokeOverlays);
-    container.replaceChildren(grid);
   }
 
   function fleetForRender() {

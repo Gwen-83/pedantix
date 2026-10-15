@@ -152,7 +152,7 @@ h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em;
 .naval-help { min-height: 1.3em; margin: 0; color: #aab3c5; font-size: 0.76rem; text-align: center; }
 
 .naval-grid-wrap { width: min(100%, 420px); }
-.naval-grid { display: grid; grid-template-columns: 22px repeat(10, minmax(0, 1fr)); gap: 3px; width: 100%; }
+.naval-grid { position: relative; display: grid; grid-template-columns: 22px repeat(10, minmax(0, 1fr)); gap: 3px; width: 100%; }
 .naval-axis { display: grid; place-items: center; color: #8e9ab0; font-size: clamp(0.55rem, 2vw, 0.68rem); font-weight: 700; }
 .naval-cell {
   display: grid;
@@ -169,36 +169,26 @@ h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em;
 }
 .naval-cell.naval-setup-cell { cursor: crosshair; }
 .naval-cell.naval-setup-cell:hover { border-color: #7dd3fc; background: rgba(56, 189, 248, 0.22); }
-.naval-cell.naval-ship { position: relative; z-index: 2; border-color: transparent; background: transparent; }
+.naval-cell.naval-ship { position: relative; z-index: 1; border-color: transparent; background: transparent; }
 .naval-cell.naval-ship:hover { background: rgba(56, 189, 248, 0.16); }
+.naval-ship-layer { position: absolute; z-index: 2; inset: 0; overflow: visible; pointer-events: none; }
 .naval-ship-art {
+  position: absolute;
   z-index: 1;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  align-self: center;
-  justify-self: center;
   object-fit: fill;
   pointer-events: none;
 }
 .naval-ship-art-horizontal {
-  width: calc(100% / var(--ship-length));
-  height: calc(100% * var(--ship-length));
-  transform: rotate(90deg);
+  transform: translate(-50%, -50%) rotate(90deg);
 }
 .naval-ship-art-sinking { animation: naval-ship-sink 1.8s ease-in forwards; }
-.naval-cell.naval-hit { border-color: #fb7185; background: #a32b43; color: #fff; }
+.naval-cell.naval-hit { z-index: 3; border-color: #fb7185; background: #a32b43; color: #fff; }
 .naval-cell.naval-miss { border-color: rgba(203, 213, 225, 0.22); background: #303747; color: #cbd5e1; }
 .naval-cell.naval-ship.naval-hit { background: rgba(163, 43, 67, 0.68); }
 .naval-cell.naval-sunk { border-color: #f43f5e; }
 .naval-smoke {
-  position: relative;
-  z-index: 3;
-  min-width: 0;
-  min-height: 0;
-  align-self: stretch;
-  justify-self: stretch;
+  position: absolute;
+  z-index: 2;
   overflow: visible;
   pointer-events: none;
 }
