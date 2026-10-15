@@ -17,35 +17,73 @@ SUDOKU_GENERATION_ATTEMPTS = 64
 SUDOKU_MAX_LIVES = 3
 
 
-def _pattern(row: int, column: int) -> int:
-    return (row * 3 + row // 3 + column) % SUDOKU_SIZE
-
-
-def _shuffle_groups(rng: random.Random) -> List[int]:
-    groups = list(range(3))
-    rng.shuffle(groups)
-    return [group * 3 + offset for group in groups for offset in rng.sample(range(3), 3)]
-
-
 def _generate_solution(rng: random.Random) -> List[List[int]]:
-    rows = _shuffle_groups(rng)
-    columns = _shuffle_groups(rng)
-    digits = rng.sample(range(1, SUDOKU_SIZE + 1), SUDOKU_SIZE)
-    return [[digits[_pattern(row, column)] for column in columns] for row in rows]
-
-
-def _count_solutions(board: List[List[int]], limit: int = 2) -> int:
+    board = [[0] * SUDOKU_SIZE for _ in range(SUDOKU_SIZE)]
     row_used = [set() for _ in range(SUDOKU_SIZE)]
     column_used = [set() for _ in range(SUDOKU_SIZE)]
     box_used = [set() for _ in range(SUDOKU_SIZE)]
-    empty = []
+
+    def fill() -> bool:
+        best_cell = None
+        candidates = None
+        for row in range(SUDOKU_SIZE):
+            for column in range(SUDOKU_SIZE):
+                if board[row][column]:
+                    continue
+                box = row // 3 * 3 + column // 3
+                available = (
+                    set(range(1, SUDOKU_SIZE + 1))
+                    - row_used[row]
+                    - column_used[column]
+                    - box_used[box]
+                )
+                if not available:
+                    return False
+                if candidates is None or len(available) < len(candidates):
+                    best_cell = (row, column, box)
+                    candidates = list(available)
+                    if len(candidates) == 1:
+                        break
+            if candidates is not None and len(candidates) == 1:
+                break
+
+        if best_cell is None:
+            return True
+
+        row, column, box = best_cell
+        rng.shuffle(candidates)
+        for value in candidates:
+            board[row][column] = value
+            row_used[row].add(value)
+            column_used[column].add(value)
+            box_used[box].add(value)
+            if fill():
+                return True
+            row_used[row].remove(value)
+            column_used[column].remove(value)
+            box_used[box].remove(value)
+            board[row][column] = 0
+        return False
+
+    if not fill():
+        raise RuntimeError("Impossible de générer une solution Sudoku valide.")
+    return board
+
+
+def _count_solutions(board: List[List[int]], limit: int = 2) -> int:
+    if len(board) != SUDOKU_SIZE or any(len(row) != SUDOKU_SIZE for row in board):
+        return 0
+    row_used = [set() for _ in range(SUDOKU_SIZE)]
+    column_used = [set() for _ in range(SUDOKU_SIZE)]
+    box_used = [set() for _ in range(SUDOKU_SIZE)]
 
     for row in range(SUDOKU_SIZE):
         for column in range(SUDOKU_SIZE):
             value = board[row][column]
             if not value:
-                empty.append((row, column))
                 continue
+            if not isinstance(value, int) or not 1 <= value <= SUDOKU_SIZE:
+                return 0
             box = row // 3 * 3 + column // 3
             if value in row_used[row] or value in column_used[column] or value in box_used[box]:
                 return 0
@@ -59,27 +97,32 @@ def _count_solutions(board: List[List[int]], limit: int = 2) -> int:
         nonlocal solutions
         if solutions >= limit:
             return
-        best_index = -1
+        best_cell = None
         candidates = None
-        for index, (row, column) in enumerate(empty):
-            if board[row][column]:
-                continue
-            box = row // 3 * 3 + column // 3
-            available = set(range(1, SUDOKU_SIZE + 1)) - row_used[row] - column_used[column] - box_used[box]
-            if candidates is None or len(available) < len(candidates):
-                best_index = index
-                candidates = available
-                if len(available) <= 1:
-                    break
-        if best_index == -1:
+        for row in range(SUDOKU_SIZE):
+            for column in range(SUDOKU_SIZE):
+                if board[row][column]:
+                    continue
+                box = row // 3 * 3 + column // 3
+                available = (
+                    set(range(1, SUDOKU_SIZE + 1))
+                    - row_used[row]
+                    - column_used[column]
+                    - box_used[box]
+                )
+                if not available:
+                    return
+                if candidates is None or len(available) < len(candidates):
+                    best_cell = (row, column, box)
+                    candidates = available
+                    if len(candidates) == 1:
+                        break
+            if candidates is not None and len(candidates) == 1:
+                break
+        if best_cell is None:
             solutions += 1
             return
-        if not candidates:
-            return
-        row, column = empty[best_index]
-        box = row // 3 * 3 + column // 3
-        empty[best_index], empty[-1] = empty[-1], empty[best_index]
-        empty.pop()
+        row, column, box = best_cell
         for value in candidates:
             board[row][column] = value
             row_used[row].add(value)
@@ -92,8 +135,6 @@ def _count_solutions(board: List[List[int]], limit: int = 2) -> int:
             board[row][column] = 0
             if solutions >= limit:
                 break
-        empty.append((row, column))
-        empty[best_index], empty[-1] = empty[-1], empty[best_index]
 
     solve()
     return solutions

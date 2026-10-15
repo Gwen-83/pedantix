@@ -1,9 +1,11 @@
+import random
 import unittest
 
 from app.sudoku import (
     SUDOKU_AFTER_FIRST_SECONDS,
     SUDOKU_DIFFICULTIES,
     SudokuManager,
+    _generate_solution,
     _count_solutions,
     generate_puzzle,
 )
@@ -57,6 +59,23 @@ class SudokuTests(unittest.TestCase):
                     for column, value in enumerate(line)
                 )
             )
+
+    def test_randomized_solution_generation_produces_distinct_grids(self):
+        solutions = {
+            tuple(value for row in _generate_solution(random.Random(seed)) for value in row)
+            for seed in range(20)
+        }
+        self.assertEqual(len(solutions), 20)
+
+    def test_solution_counter_rejects_invalid_boards_without_mutating_input(self):
+        board = [[0] * 9 for _ in range(9)]
+        board[0][0] = 1
+        board[0][1] = 1
+        original = [row[:] for row in board]
+
+        self.assertEqual(_count_solutions(board), 0)
+        self.assertEqual(board, original)
+        self.assertEqual(_count_solutions([[0] * 8 for _ in range(9)]), 0)
 
     def test_hard_generation_always_reaches_its_exact_clue_count(self):
         for _ in range(30):
