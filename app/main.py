@@ -107,6 +107,7 @@ async def security_headers_middleware(request: Request, call_next):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org "
+        "https://*.basemaps.cartocdn.com "
         "https://*.mapillary.com https://*.fbcdn.net https://upload.wikimedia.org "
         "https://*.wikimedia.org https://*.wikipedia.org https://*.googleapis.com "
         "https://*.gstatic.com https://*.google.com https://*.googleusercontent.com; "

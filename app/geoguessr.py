@@ -531,6 +531,8 @@ class GeoGuessrManager:
             if game.status != "playing":
                 raise ValueError("Cette partie est déjà terminée.")
             result = _score_guess(game.target, latitude, longitude)
+            result["guess_latitude"] = latitude
+            result["guess_longitude"] = longitude
             result.update(_public_city(game.target))
             result["round_number"] = game.round_index + 1
             game.results.append(result)

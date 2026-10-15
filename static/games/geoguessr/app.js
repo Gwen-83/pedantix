@@ -42,6 +42,10 @@
   let googleMapsLoading = null;
   let panoramaViewer = null;
   let googlePanoramaViewer = null;
+  let googleLastPanoramaId = '';
+  let googlePanoramaRoundKey = '';
+  let googleNavigationPending = false;
+  let googleNavigationRollback = false;
   let activePanoramaId = '';
   let activePanoramaProvider = '';
 
@@ -86,6 +90,32 @@
 
   function variantLabel(variant) {
     return variant === 'panorama' ? 'Photo immersive' : 'Villes sur carte';
+  }
+
+  function currentRoundResult() {
+    if (gameType === 'solo') return state?.last_result || null;
+    return state?.last_round || null;
+  }
+
+  function roundResultSignature(round) {
+    const target = round?.target || round;
+    if (!round || !target?.city) return '';
+    return `${round.round_number}:${target.city}:${target.country || ''}`;
+  }
+
+  function roundResultStorageKey() {
+    const gameId = gameType === 'solo' ? state?.game_id : state?.room_id;
+    return `geoguessr_seen_result_${gameType}_${gameId}`;
+  }
+
+  function isWaitingForNextRound() {
+    const round = currentRoundResult();
+    const signature = roundResultSignature(round);
+    return state?.variant === 'cities'
+      && state.status === 'playing'
+      && !!signature
+      && round.round_number === state.round_number - 1
+      && localStorage.getItem(roundResultStorageKey()) !== signature;
   }
 
   async function loadPanoramaConfig() {
@@ -150,43 +180,52 @@
     return googleMapsLoading;
   }
 
-  function googleNavigationLabel(heading) {
-    const directions = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ouest', 'ouest', 'nord-ouest'];
-    return `Continuer vers le ${directions[Math.round(((heading % 360) + 360) % 360 / 45) % 8]}`;
+  function googleGameRoundKey() {
+    return `${gameType}:${state?.game_id || state?.room_id}:${state?.round_number}`;
   }
 
-  function renderGoogleNavigation() {
+  async function handleGooglePanoramaChange() {
     if (!googlePanoramaViewer) return;
-    const navigation = document.getElementById('geo-google-navigation');
-    const links = googlePanoramaViewer.getLinks() || [];
-    navigation.replaceChildren();
-    for (const link of links) {
-      if (!link.pano) continue;
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'geo-secondary-button';
-      button.textContent = link.description || googleNavigationLabel(link.heading || 0);
-      button.addEventListener('click', async () => {
-        button.disabled = true;
-        try {
-          const data = await post('/api/geoguessr/panorama/authorize', {
-            player_id: playerId,
-            ...(gameType === 'solo' ? { game_id: state.game_id } : { room_id: state.room_id }),
-            navigation: true,
-          });
-          if (!data.allowed) {
-            throw new Error('Le quota Google Street View est atteint. Les prochaines parties photo passeront sur Mapillary.');
-          }
-          googlePanoramaViewer?.setPano(link.pano);
-        } catch (error) {
-          showError(playError, error.message);
-        } finally {
-          button.disabled = false;
-        }
-      });
-      navigation.append(button);
+    const currentPano = googlePanoramaViewer.getPano();
+    if (!currentPano) return;
+    if (googleNavigationRollback) {
+      googleLastPanoramaId = currentPano;
+      googleNavigationRollback = false;
+      return;
     }
-    navigation.hidden = !links.length;
+    const roundKey = googleGameRoundKey();
+    if (googlePanoramaRoundKey !== roundKey || !googleLastPanoramaId) {
+      googlePanoramaRoundKey = roundKey;
+      googleLastPanoramaId = currentPano;
+      return;
+    }
+    if (currentPano === googleLastPanoramaId || googleNavigationPending) return;
+
+    const previousPano = googleLastPanoramaId;
+    googleLastPanoramaId = currentPano;
+    googleNavigationPending = true;
+    googlePanoramaViewer.setOptions({ linksControl: false, clickToGo: false });
+    try {
+      const data = await post('/api/geoguessr/panorama/authorize', {
+        player_id: playerId,
+        ...(gameType === 'solo' ? { game_id: state.game_id } : { room_id: state.room_id }),
+        navigation: true,
+      });
+      if (!data.allowed) {
+        googleLastPanoramaId = previousPano;
+        googleNavigationRollback = true;
+        googlePanoramaViewer.setPano(previousPano);
+        showError(playError, 'La limite mensuelle de navigation Google est atteinte. Cette photo ne peut plus avancer.');
+      }
+    } catch (error) {
+      googleLastPanoramaId = previousPano;
+      googleNavigationRollback = true;
+      googlePanoramaViewer.setPano(previousPano);
+      showError(playError, `Impossible de vérifier le quota de navigation : ${error.message}`);
+    } finally {
+      googleNavigationPending = false;
+      googlePanoramaViewer?.setOptions({ linksControl: true, clickToGo: true });
+    }
   }
 
   async function showPanorama(imageId) {
@@ -203,6 +242,8 @@
       document.querySelector('#geo-panorama-panel > small').textContent =
         provider === 'google' ? 'Google Street View' : 'Images © Mapillary contributors';
       if (provider === 'google') {
+        googlePanoramaRoundKey = googleGameRoundKey();
+        googleLastPanoramaId = imageId;
         await loadGoogleMaps();
         const authorization = await post('/api/geoguessr/panorama/authorize', {
           player_id: playerId,
@@ -215,22 +256,25 @@
           panoramaViewer.remove();
           panoramaViewer = null;
         }
-        document.getElementById('geo-google-navigation').hidden = false;
         if (!googlePanoramaViewer) {
           googlePanoramaViewer = new window.google.maps.StreetViewPanorama(container, {
             pano: imageId,
-            linksControl: false,
-            clickToGo: false,
+            linksControl: true,
+            clickToGo: true,
             addressControl: false,
             enableCloseButton: false,
-            fullscreenControl: false,
+            fullscreenControl: true,
+            panControl: true,
+            zoomControl: true,
             motionTracking: false,
+            keyboardShortcuts: true,
           });
-          googlePanoramaViewer.addListener('links_changed', renderGoogleNavigation);
-          googlePanoramaViewer.addListener('pano_changed', renderGoogleNavigation);
+          googlePanoramaViewer.addListener('pano_changed', handleGooglePanoramaChange);
         } else {
           googlePanoramaViewer.setPano(imageId);
         }
+        document.querySelector('#geo-panorama-panel > small').textContent =
+          'Google Street View · Cliquez sur les flèches dans la photo pour avancer.';
       } else {
         if (googlePanoramaViewer) {
           window.google?.maps?.event?.clearInstanceListeners(googlePanoramaViewer);
@@ -238,7 +282,6 @@
           googlePanoramaViewer = null;
           document.getElementById('geo-panorama-viewer').replaceChildren();
         }
-        document.getElementById('geo-google-navigation').hidden = true;
         if (!panoramaViewer) {
           panoramaViewer = new window.mapillary.Viewer({
             accessToken: mapillaryToken,
@@ -253,8 +296,8 @@
     } catch (error) {
       activePanoramaId = '';
       activePanoramaProvider = '';
-      document.getElementById('geo-google-navigation').replaceChildren();
-      document.getElementById('geo-google-navigation').hidden = true;
+      googleLastPanoramaId = '';
+      googlePanoramaRoundKey = '';
       showError(playError, `Impossible d’ouvrir cette photo : ${error.message || 'erreur du lecteur'}`);
     }
   }
@@ -273,9 +316,9 @@
     }
     map = L.map('geo-map', { worldCopyJump: true, minZoom: 2, maxZoom: 18 })
       .setView([20, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
     }).addTo(map);
     map.on('click', (event) => {
       if (!state || state.status !== 'playing' || guessLocked()) return;
@@ -330,6 +373,13 @@
     }
   }
 
+  function soloGuessMarker(result) {
+    return {
+      latitude: result.guess_latitude,
+      longitude: result.guess_longitude,
+    };
+  }
+
   function guessLocked() {
     if (!state || state.status !== 'playing') return true;
     return gameType === 'room' && !!state.player?.submitted;
@@ -361,6 +411,11 @@
     }
     activePanoramaId = '';
     activePanoramaProvider = '';
+    googleLastPanoramaId = '';
+    googlePanoramaRoundKey = '';
+    googleNavigationPending = false;
+    googleNavigationRollback = false;
+    lastResultSignature = '';
     state = null;
     gameType = null;
     home.hidden = false;
@@ -455,8 +510,16 @@
 
   function renderRoundResult(round, ownResult) {
     if (!round?.target) return;
-    const signature = `${round.round_number}:${round.target.city}`;
-    if (signature === lastResultSignature) return;
+    const signature = roundResultSignature(round);
+    const waitingForNextRound = isWaitingForNextRound();
+    if (signature === lastResultSignature && waitingForNextRound) return;
+    if (!waitingForNextRound && state?.status !== 'finished') {
+      roundResult.hidden = true;
+      roundResult.replaceChildren();
+      lastResultSignature = signature;
+      return;
+    }
+    if (signature === lastResultSignature && state?.status === 'finished') return;
     lastResultSignature = signature;
     roundResult.replaceChildren();
     roundResult.hidden = false;
@@ -479,6 +542,20 @@
         ranking.append(item);
       });
       roundResult.append(ranking);
+    }
+    if (waitingForNextRound) {
+      const continueButton = document.createElement('button');
+      continueButton.type = 'button';
+      continueButton.className = 'geo-primary-button';
+      continueButton.textContent = 'Ville suivante';
+      continueButton.addEventListener('click', () => {
+        localStorage.setItem(roundResultStorageKey(), signature);
+        clearMapMarkers();
+        const view = mapView(state.region);
+        map.setView(view.center, view.zoom);
+        renderView();
+      });
+      roundResult.append(continueButton);
     }
   }
 
@@ -509,6 +586,7 @@
     const region = state.region || regionSelect.value;
     const isRoom = gameType === 'room';
     const isPanorama = state.variant === 'panorama';
+    const waitingForNextRound = isWaitingForNextRound();
     if (!isPanorama) {
       if (panoramaViewer) {
         panoramaViewer.remove();
@@ -521,12 +599,19 @@
       }
       activePanoramaId = '';
       activePanoramaProvider = '';
-      document.getElementById('geo-google-navigation').hidden = true;
+      googleLastPanoramaId = '';
+      googlePanoramaRoundKey = '';
+      googleNavigationPending = false;
+      googleNavigationRollback = false;
     }
     document.getElementById('geo-game-mode').textContent =
       `${isRoom ? 'Multijoueur' : 'Solo'} · ${variantLabel(state.variant)} · ${regionLabel(region)}`;
-    document.getElementById('geo-round-heading').textContent =
-      state.status === 'finished' ? 'Partie terminée' : `Manche ${state.round_number} sur ${state.round_count}`;
+    const completedRound = currentRoundResult();
+    document.getElementById('geo-round-heading').textContent = state.status === 'finished'
+      ? 'Partie terminée'
+      : waitingForNextRound
+        ? `Résultat de la manche ${completedRound.round_number}`
+        : `Manche ${state.round_number} sur ${state.round_count}`;
     document.getElementById('geo-game-hint').textContent = isPanorama
       ? 'Explorez la photo avec la souris ou le tactile, puis situez-la sur la carte.'
       : isRoom
@@ -535,7 +620,9 @@
     document.getElementById('geo-total-score').textContent =
       (state.total_score ?? state.player?.total_score ?? 0).toLocaleString('fr-FR');
     document.getElementById('geo-target-label').textContent = isPanorama ? 'Lieu à retrouver' : 'Ville à placer';
-    document.getElementById('geo-target-name').textContent = isPanorama
+    document.getElementById('geo-target-name').textContent = waitingForNextRound
+      ? 'Consultez la distance avant de continuer'
+      : isPanorama
       ? 'Explorez la photo, puis faites votre estimation'
       : state.prompt
       ? `${state.prompt.city}, ${state.prompt.country}`
@@ -572,8 +659,13 @@
 
     if (isRoom) {
       renderPlayers();
-      if (state.last_round) renderRoundResult(state.last_round,
-        state.last_round.guesses.find((guess) => guess.player_id === playerId));
+      if (state.last_round) {
+        const ownResult = state.last_round.guesses.find((guess) => guess.player_id === playerId);
+        renderRoundResult(state.last_round, ownResult);
+        if (waitingForNextRound && ownResult) {
+          showAnswerOnMap(state.last_round.target, ownResult);
+        }
+      }
       if (state.player?.guess && locked) {
         selectedPosition = state.player.guess;
         setGuessMarker(selectedPosition.latitude, selectedPosition.longitude);
@@ -583,13 +675,16 @@
         round_number: state.last_result.round_number,
         target: state.last_result,
       }, state.last_result);
+      if (waitingForNextRound) {
+        showAnswerOnMap(state.last_result, soloGuessMarker(state.last_result));
+      }
     }
 
     if (state.status === 'finished') {
       const finalTarget = isRoom ? state.last_round?.target : state.last_result;
       const finalGuess = isRoom
         ? state.last_round?.guesses.find((guess) => guess.player_id === playerId)
-        : state.last_result;
+        : state.last_result ? soloGuessMarker(state.last_result) : null;
       if (finalTarget && finalGuess) showAnswerOnMap(finalTarget, finalGuess);
       renderFinalScoreboard();
       stopPolling();

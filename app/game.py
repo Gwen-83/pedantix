@@ -188,6 +188,8 @@ class GameSession:
                 score_int = round(prox)
                 if score_int > max_score:
                     max_score = score_int
+                if prox < 80.0:
+                    continue
                 for tid in self.word_to_token_ids.get(target_norm, []):
                     t = self.tokens_by_id[tid]
                     if not t["revealed"]:

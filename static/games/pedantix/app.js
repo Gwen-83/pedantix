@@ -3761,6 +3761,7 @@ class PedantixApp {
     if (!closeTokens || closeTokens.length === 0) return;
     closeTokens.forEach(item => {
       const score = Number(item.score || 50);
+      if (score < 80) return;
       const closeWord = item.word || fallbackWord;
       const token = this.tokensById[item.id];
       if (token && token.hint_revealed) return;
@@ -4139,7 +4140,7 @@ class PedantixApp {
       span.title = 'Mot dévoilé automatiquement comme indice';
       delete span.dataset.heat;
       delete span.dataset.word;
-    } else if (token.close_word && token.heat) {
+    } else if (token.close_word && token.heat >= 80) {
       span.dataset.heat = token.heat;
       span.dataset.word = token.close_word;
       span.classList.add('close-heat-grey');

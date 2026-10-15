@@ -95,5 +95,45 @@ class WordHintTests(unittest.TestCase):
         self.assertEqual(self.room.word_hint_interval, 90.0)
 
 
+class GameProximityDisplayTests(unittest.TestCase):
+    def _submit_proximity_guess(self, proximity):
+        with (
+            patch("app.game.record_game_start"),
+            patch("app.game.record_guess"),
+            patch("app.game.is_valid_french_word", return_value=True),
+            patch("app.game.calculate_proximity", return_value=proximity),
+        ):
+            session = GameSession(
+                session_id="proximity-test",
+                seed="P-1234",
+                title="Cible",
+                url="",
+                image="",
+                paragraphs=["Un texte de test."],
+                mode="solo",
+                category="general",
+            )
+            token = next(token for token in session.tokens if token["is_word"])
+            session.unrevealed_unique_words = {"cible"}
+            session.word_to_token_ids = {"cible": [token["id"]]}
+            result = session.submit_guess("autre")
+        return result, session
+
+    def test_proximity_under_eighty_stays_close_without_greying_a_token(self):
+        result, session = self._submit_proximity_guess(79.9)
+
+        self.assertEqual(result["status"], "close")
+        self.assertEqual(result["score"], 80)
+        self.assertEqual(result["close_tokens"], [])
+        self.assertEqual(session.token_heat, {})
+
+    def test_proximity_at_eighty_greys_the_matching_token(self):
+        result, session = self._submit_proximity_guess(80.0)
+
+        self.assertEqual(result["status"], "close")
+        self.assertEqual(result["close_tokens"][0]["score"], 80)
+        self.assertEqual(session.token_heat[next(iter(session.token_heat))], 80)
+
+
 if __name__ == "__main__":
     unittest.main()

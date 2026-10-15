@@ -37,10 +37,14 @@ class GeoGuessrTests(unittest.TestCase):
 
         for round_number in range(ROUND_COUNT):
             target = game.target
+            guess_latitude = target[3] + 0.01
+            guess_longitude = target[4] + 0.01
             game, result = self.manager.guess_solo(
-                game.game_id, "alice", target[3], target[4]
+                game.game_id, "alice", guess_latitude, guess_longitude
             )
-            self.assertEqual(result["score"], MAX_SCORE_PER_ROUND)
+            self.assertLess(result["score"], MAX_SCORE_PER_ROUND)
+            self.assertEqual(result["guess_latitude"], guess_latitude)
+            self.assertEqual(result["guess_longitude"], guess_longitude)
             self.assertEqual(result["round_number"], round_number + 1)
             if round_number < ROUND_COUNT - 1:
                 self.assertEqual(game.status, "playing")
@@ -49,7 +53,8 @@ class GeoGuessrTests(unittest.TestCase):
                 self.assertEqual(game.status, "finished")
                 self.assertEqual(game.to_dict()["target"]["city"], target[0])
 
-        self.assertEqual(game.total_score, ROUND_COUNT * MAX_SCORE_PER_ROUND)
+        self.assertGreater(game.total_score, 0)
+        self.assertLess(game.total_score, ROUND_COUNT * MAX_SCORE_PER_ROUND)
         self.assertEqual(game.results[0]["city"], first_target[0])
         with self.assertRaisesRegex(ValueError, "terminée"):
             self.manager.guess_solo(game.game_id, "alice", 0, 0)
