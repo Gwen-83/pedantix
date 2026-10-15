@@ -97,13 +97,19 @@
     const scheme = backendUrl.protocol === 'https:' ? 'wss:' : 'ws:';
     const query = new URLSearchParams({ name: playerName, token: authToken });
     socket = new WebSocket(`${scheme}//${backendUrl.host}/ws/voxelstrike?${query}`);
-    socket.addEventListener('open', () => {
-      statusLabel.textContent = 'Serveur connecté';
-      active = true;
-    });
+    let welcomed = false;
+    const welcomeTimeout = window.setTimeout(() => {
+      if (welcomed || socket?.readyState === WebSocket.CLOSED) return;
+      message.textContent = 'Le salon ne répond pas. Vérifiez votre connexion puis réessayez.';
+      statusLabel.textContent = 'Délai dépassé';
+      socket?.close();
+    }, 15000);
     socket.addEventListener('message', (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'welcome') {
+        welcomed = true;
+        window.clearTimeout(welcomeTimeout);
+        active = true;
         selfId = data.id;
         team = data.team;
         isSpectator = Boolean(data.spectator);
@@ -115,6 +121,8 @@
         $('match-label').textContent = 'SALON D’ATTENTE';
         $('lobby-panel').hidden = false;
         $('feature-row')?.setAttribute('hidden', '');
+        message.textContent = `Connecté au salon ${data.room}.`;
+        statusLabel.textContent = 'Serveur connecté';
         updateSpectatorUI();
         if (isSpectator) overlay.hidden = true;
         updateLobby();
@@ -133,6 +141,9 @@
         roomStatus = data.status;
         hostId = data.host_id;
         canStart = data.can_start;
+        message.textContent = roomStatus === 'lobby'
+          ? 'Salon connecté · en attente du lancement.'
+          : 'Partie connectée.';
         if (roomStatus === 'lobby') {
           overlay.hidden = false;
           updateLobby();
@@ -149,12 +160,22 @@
       }
     });
     socket.addEventListener('close', () => {
+      window.clearTimeout(welcomeTimeout);
       active = false;
       Object.keys(keys).forEach((key) => { keys[key] = false; });
       if (statusLabel.textContent === 'Serveur complet') return;
-      showOverlay('CONNEXION<br><span>PERDUE</span>', 'La partie a été interrompue. Reconnectez-vous pour rejouer.', 'RECONNECTER');
+      if (!welcomed && statusLabel.textContent !== 'Délai dépassé') {
+        message.textContent = 'Connexion refusée ou interrompue. Vérifiez votre compte puis réessayez.';
+      }
+      showOverlay(
+        welcomed ? 'CONNEXION<br><span>PERDUE</span>' : 'CONNEXION<br><span>IMPOSSIBLE</span>',
+        welcomed
+          ? 'La partie a été interrompue. Reconnectez-vous pour rejouer.'
+          : 'Le serveur n’a pas pu rejoindre le salon. Vous pouvez réessayer.',
+        'RECONNECTER',
+      );
       $('lobby-panel').hidden = true;
-      statusLabel.textContent = 'Déconnecté';
+      if (statusLabel.textContent !== 'Délai dépassé') statusLabel.textContent = 'Déconnecté';
     });
     socket.addEventListener('error', () => {
       message.textContent = 'Impossible de joindre le serveur. Réessayez dans un instant.';
