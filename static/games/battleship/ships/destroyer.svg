@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 150" preserveAspectRatio="none" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 300" role="img">
   <defs>
-    <linearGradient id="hull" x2="0" y2="1">
-      <stop stop-color="#bdc9cf"/>
-      <stop offset=".45" stop-color="#71838e"/>
-      <stop offset="1" stop-color="#354754"/>
+    <linearGradient id="deck" x2="1">
+      <stop stop-color="#4a606d"/>
+      <stop offset=".5" stop-color="#aebdc1"/>
+      <stop offset="1" stop-color="#4a606d"/>
     </linearGradient>
   </defs>
-  <path d="M29 82h444l-34 38q-11 12-31 12H85q-28 0-39-17z" fill="url(#hull)" stroke="#e0e7e9" stroke-width="4"/>
-  <path d="M57 76h367l27 14H43z" fill="#d0dadd" stroke="#edf1f2" stroke-width="3"/>
-  <path d="M155 72V47h38V32h23v40h45V49h22V37h20v35h52" fill="#8da0a8" stroke="#e1e8ea" stroke-width="3"/>
-  <path d="M168 48h15m90 1h14m-90 8v13m73-12v12" stroke="#354754" stroke-width="4"/>
-  <path d="M68 93h88v17H68zm182 0h76v17h-76z" fill="#384e5a" stroke="#d1dcdf" stroke-width="3"/>
-  <path d="M109 86v-9m181 9v-9" stroke="#354754" stroke-width="4"/>
-  <path d="M73 119h37m30 0h37m30 0h37m30 0h37m30 0h37m30 0h37" stroke="#e1e8ea" stroke-width="3" opacity=".65"/>
-  <path d="M453 88h20" stroke="#ef5350" stroke-width="5"/>
+  <path d="M50 5 68 28l11 42 3 146-10 43-22 31-22-31-10-43 3-146 11-42z" fill="#293f4c" stroke="#d5e0e3" stroke-width="3"/>
+  <path d="M50 13 64 34l9 39 2 139-9 40-16 23-16-23-9-40 2-139 9-39z" fill="url(#deck)"/>
+  <path d="M50 35v215" stroke="#e5edef" stroke-width="2" stroke-dasharray="8 5"/>
+  <path d="M37 80h26v24H37zm-3 118h32v22H34z" fill="#536b77" stroke="#dce5e7" stroke-width="2"/>
+  <path d="M40 111h20v19H40zm-3 24h26v12H37zm4 55h18v-12H41z" fill="#80939b" stroke="#2b414d" stroke-width="2"/>
+  <path d="M50 65V43m0 197v18" stroke="#283d49" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="50" cy="64" r="8" fill="#83979f" stroke="#293f4c" stroke-width="2"/>
+  <path d="M41 270h18m-9-8v16" stroke="#e5edef" stroke-width="2"/>
 </svg>

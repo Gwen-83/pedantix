@@ -1,17 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 150" preserveAspectRatio="none" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 300" role="img">
   <defs>
-    <linearGradient id="hull" x2="0" y2="1">
-      <stop stop-color="#b7c7cd"/>
-      <stop offset=".5" stop-color="#627b87"/>
-      <stop offset="1" stop-color="#304753"/>
+    <linearGradient id="deck" x2="1">
+      <stop stop-color="#506773"/>
+      <stop offset=".5" stop-color="#aab9bd"/>
+      <stop offset="1" stop-color="#506773"/>
     </linearGradient>
   </defs>
-  <path d="M35 81h430l-28 37q-11 14-33 14H84q-22 0-34-16z" fill="url(#hull)" stroke="#dbe5e7" stroke-width="4"/>
-  <path d="M55 75h365l24 14H41z" fill="#c7d3d7" stroke="#e3eaec" stroke-width="3"/>
-  <path d="M125 71V46h39V31h23v40h57V52h25V37h24v34h64" fill="#899da5" stroke="#dbe4e6" stroke-width="3"/>
-  <path d="M136 47h17m95 5h17m19-15h14m-116 19v14m109-10v10" stroke="#304753" stroke-width="4"/>
-  <path d="M65 91h76v16H65zm155 0h65v16h-65zm130 0h63v16h-63z" fill="#344d5b" stroke="#d2dfe2" stroke-width="3"/>
-  <path d="M105 84v-9m143 9v-9m136 9v-9" stroke="#304753" stroke-width="4"/>
-  <path d="M65 117h38m28 0h38m28 0h38m28 0h38m28 0h38m28 0h38" stroke="#e0e8ea" stroke-width="3" opacity=".65"/>
-  <path d="M441 86h28" stroke="#ef5350" stroke-width="5"/>
+  <path d="M50 5 69 27l12 44 3 144-11 47-23 31-23-31-11-47 3-144 12-44z" fill="#273e4b" stroke="#d5e0e2" stroke-width="3"/>
+  <path d="M50 13 65 33l10 41 2 138-10 43-17 23-17-23-10-43 2-138 10-41z" fill="url(#deck)"/>
+  <path d="M50 36v211" stroke="#e7edef" stroke-width="2" stroke-dasharray="8 5"/>
+  <path d="M36 77h28v28H36zm-3 117h34v23H33z" fill="#526a76" stroke="#dce5e7" stroke-width="2"/>
+  <path d="M40 113h20v15H40zm-4 20h28v13H36zm3 55h22v-14H39z" fill="#728993" stroke="#2c424f" stroke-width="2"/>
+  <g fill="#8599a1" stroke="#293f4c" stroke-width="2">
+    <circle cx="50" cy="65" r="11"/><circle cx="50" cy="232" r="10"/>
+  </g>
+  <path d="M50 56V39M46 228l-8-13m12 13v-17m4 17 8-13" stroke="#293f4c" stroke-width="3" stroke-linecap="round"/>
+  <path d="M41 269h18m-9-8v16" stroke="#e5ecee" stroke-width="2"/>
 </svg>

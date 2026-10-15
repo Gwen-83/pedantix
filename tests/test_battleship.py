@@ -133,6 +133,9 @@ class BattleshipTests(unittest.TestCase):
             room, result = self.manager.fire(room.room_id, "p1", coordinate)
             self.assertTrue(result["hit"])
             self.assertIsNone(result["sunk_ship"])
+            target_shots = room.to_dict("p1")["target_shots"]
+            self.assertTrue(all(shot["sunk_ship"] is None for shot in target_shots))
+            self.assertTrue(all(not shot["sunk_ship_cells"] for shot in target_shots))
 
         room, result = self.manager.fire(room.room_id, "p1", "A5")
 
@@ -140,6 +143,9 @@ class BattleshipTests(unittest.TestCase):
         self.assertTrue(result["hit"])
         self.assertEqual(room.current_player_id, "p1")
         self.assertEqual(room.to_dict("p1")["players"][1]["ships_remaining"], 4)
+        final_shot = room.to_dict("p1")["target_shots"][-1]
+        self.assertEqual(final_shot["sunk_ship"], "carrier")
+        self.assertEqual(final_shot["sunk_ship_cells"], ["A1", "A2", "A3", "A4", "A5"])
 
     def test_n_player_turn_order_skips_eliminated_players(self):
         room = self.create_room(4)

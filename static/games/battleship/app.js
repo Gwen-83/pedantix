@@ -243,7 +243,7 @@
       if (!firstCell || !lastCell) continue;
       const isVertical = firstCell[0] !== lastCell[0];
       const art = document.createElement('img');
-      art.className = `naval-ship-art${isVertical ? ' naval-ship-art-vertical' : ''}`;
+      art.className = `naval-ship-art${isVertical ? '' : ' naval-ship-art-horizontal'}`;
       art.src = `/static/games/battleship/ships/${shipImages[ship.ship_id] || 'cruiser.svg'}`;
       art.alt = '';
       art.setAttribute('aria-hidden', 'true');
@@ -446,6 +446,7 @@
       sinkingShipIds: newlySunkShips,
     });
     renderGrid(document.getElementById('naval-target-grid'), {
+      ships: revealedTargetShips(),
       shots: state.target_shots,
       shotMode: state.status === 'playing',
     });
@@ -475,6 +476,21 @@
     const restartButton = document.getElementById('naval-restart-button');
     restartButton.hidden = state.status !== 'finished' || playerId !== state.host_player_id;
     restartButton.disabled = roomBusy;
+  }
+
+  function revealedTargetShips() {
+    const shipsById = new Map();
+    for (const shot of state.target_shots) {
+      if (!shot.sunk_ship || !shot.sunk_ship_cells?.length) continue;
+      shipsById.set(shot.sunk_ship, {
+        ship_id: shot.sunk_ship,
+        name: shipNames[shot.sunk_ship] || 'Navire',
+        length: state.ship_lengths[shot.sunk_ship] || shot.sunk_ship_cells.length,
+        cells: shot.sunk_ship_cells,
+        sunk: true,
+      });
+    }
+    return [...shipsById.values()];
   }
 
   function updateView() {

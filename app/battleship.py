@@ -241,6 +241,15 @@ class BattleshipRoom:
                     "coordinate": attack["coordinate"],
                     "hit": attack["hit"],
                     "sunk_ship": attack["sunk_ship"],
+                    "sunk_ship_cells": (
+                        list(
+                            self.players[attack["target_id"]].fleet[
+                                attack["sunk_ship"]
+                            ]
+                        )
+                        if attack["sunk_ship"]
+                        else []
+                    ),
                     "eliminated": attack["eliminated"],
                 }
                 for attack in view_player.attacks

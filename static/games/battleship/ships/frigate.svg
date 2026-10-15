@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 150" preserveAspectRatio="none" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 300" role="img">
   <defs>
-    <linearGradient id="hull" x2="0" y2="1">
-      <stop stop-color="#c0ccd1"/>
-      <stop offset=".48" stop-color="#718792"/>
-      <stop offset="1" stop-color="#354a58"/>
+    <linearGradient id="deck" x2="1">
+      <stop stop-color="#526974"/>
+      <stop offset=".5" stop-color="#b0bfc2"/>
+      <stop offset="1" stop-color="#526974"/>
     </linearGradient>
   </defs>
-  <path d="M42 82h416l-35 37q-13 13-35 13H99q-28 0-41-17z" fill="url(#hull)" stroke="#e0e8ea" stroke-width="4"/>
-  <path d="M66 76h344l35 15H52z" fill="#ced9dd" stroke="#edf1f2" stroke-width="3"/>
-  <path d="M175 72V48h39V33h22v39h53V53h24V39h20v33h47" fill="#91a2aa" stroke="#e1e8ea" stroke-width="3"/>
-  <path d="M187 49h15m97 4h14m-99 8v11m86-12v12" stroke="#354a58" stroke-width="4"/>
-  <path d="M72 95h75v16H72zm180 0h69v16h-69z" fill="#3b5360" stroke="#d2dfe2" stroke-width="3"/>
-  <path d="M108 88v-9m173 9v-9" stroke="#354a58" stroke-width="4"/>
-  <path d="M90 120h42m31 0h42m31 0h42m31 0h42m31 0h42" stroke="#e3eaec" stroke-width="3" opacity=".65"/>
-  <path d="M438 87h23" stroke="#ef5350" stroke-width="5"/>
+  <path d="M50 5 66 28l10 44 3 143-9 44-20 31-20-31-9-44 3-143 10-44z" fill="#2c424e" stroke="#dce5e7" stroke-width="3"/>
+  <path d="M50 13 62 34l9 41 2 136-8 41-15 23-15-23-8-41 2-136 9-41z" fill="url(#deck)"/>
+  <path d="M50 37v210" stroke="#edf1f2" stroke-width="2" stroke-dasharray="8 5"/>
+  <path d="M39 82h22v24H39zm-3 111h28v21H36z" fill="#536b76" stroke="#dce5e7" stroke-width="2"/>
+  <path d="M42 113h16v17H42zm-3 22h22v11H39zm5 51h14v-11H44z" fill="#82959c" stroke="#2d424d" stroke-width="2"/>
+  <path d="M50 66V45m0 176v18" stroke="#293f4a" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="50" cy="65" r="7" fill="#8da0a6" stroke="#2d424d" stroke-width="2"/>
+  <path d="M42 270h16m-8-8v16" stroke="#edf1f2" stroke-width="2"/>
 </svg>

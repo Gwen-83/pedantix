@@ -182,9 +182,9 @@ h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em;
   object-fit: fill;
   pointer-events: none;
 }
-.naval-ship-art-vertical {
-  width: calc(100% * var(--ship-length));
-  height: calc(100% / var(--ship-length));
+.naval-ship-art-horizontal {
+  width: calc(100% / var(--ship-length));
+  height: calc(100% * var(--ship-length));
   transform: rotate(90deg);
 }
 .naval-ship-art-sinking { animation: naval-ship-sink 1.8s ease-in forwards; }
