@@ -5,3 +5,4 @@ pedantix.db*
 app/data/api_synonyms_cache.json
 .env.example
 .venv/
+SECRET_GATE_SOLUTIONS.md
