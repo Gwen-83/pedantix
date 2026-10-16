@@ -30,10 +30,15 @@
   document.getElementById('bito-player-name').textContent = playerName;
 
   async function request(path, options = {}) {
+    const gateToken = localStorage.getItem('bitoguessr_gate_token') || '';
+    const authUser = (localStorage.getItem('pedantix_auth_user') || '').trim();
     const response = await fetch(`${apiBase}${path}`, {
       ...options,
       headers: {
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        'x-player-id': playerId,
+        ...(gateToken ? { 'x-gate-token': gateToken } : {}),
+        ...(authUser ? { 'x-auth-user': authUser } : {}),
         ...options.headers,
       },
     });

@@ -277,6 +277,14 @@ _SCHEMA_PG = [
         played_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
     """CREATE TABLE IF NOT EXISTS geoguessr_google_usage (
         month TEXT PRIMARY KEY, event_count INTEGER NOT NULL DEFAULT 0)""",
+    """CREATE TABLE IF NOT EXISTS secret_gate_progress (
+        player_id TEXT PRIMARY KEY,
+        current_step INTEGER NOT NULL DEFAULT 1,
+        completed INTEGER NOT NULL DEFAULT 0,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_attempt_at DOUBLE PRECISION NOT NULL DEFAULT 0,
+        unlocked_at DOUBLE PRECISION NOT NULL DEFAULT 0,
+        username TEXT)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_games_finished ON games(finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_article_category ON article_cache(category)",
@@ -340,6 +348,14 @@ _SCHEMA_SQLITE = [
         played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
     """CREATE TABLE IF NOT EXISTS geoguessr_google_usage (
         month TEXT PRIMARY KEY, event_count INTEGER NOT NULL DEFAULT 0)""",
+    """CREATE TABLE IF NOT EXISTS secret_gate_progress (
+        player_id TEXT PRIMARY KEY,
+        current_step INTEGER NOT NULL DEFAULT 1,
+        completed INTEGER NOT NULL DEFAULT 0,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_attempt_at REAL NOT NULL DEFAULT 0,
+        unlocked_at REAL NOT NULL DEFAULT 0,
+        username TEXT)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
     "CREATE INDEX IF NOT EXISTS idx_user_game_stats_user_finished ON user_game_stats(username, finished_at DESC)",
@@ -1180,6 +1196,94 @@ def reset_user_password(username: str, password: str) -> bool:
     except Exception as e:
         logger.error(f"reset_user_password: {e}")
         raise RuntimeError("Impossible de réinitialiser le mot de passe.") from e
+
+
+def get_gate_progress(player_id: str) -> Dict[str, Any]:
+    if not player_id:
+        return {"step": 1, "completed": False, "attempts": 0, "last_attempt": 0}
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                "SELECT current_step, completed, attempts, last_attempt_at FROM secret_gate_progress WHERE player_id = ?",
+                (player_id,),
+            )
+            row = db.fetchone()
+            if row:
+                return {
+                    "step": row["current_step"],
+                    "completed": bool(row["completed"]),
+                    "attempts": row["attempts"],
+                    "last_attempt": row["last_attempt_at"],
+                }
+    except Exception as e:
+        logger.warning(f"get_gate_progress: {e}")
+    return {"step": 1, "completed": False, "attempts": 0, "last_attempt": 0}
+
+
+def save_gate_progress(
+    player_id: str,
+    step: int,
+    completed: bool,
+    attempts: int,
+    last_attempt: float,
+    username: Optional[str] = None,
+):
+    if not player_id:
+        return
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                """INSERT INTO secret_gate_progress (player_id, current_step, completed, attempts, last_attempt_at, unlocked_at, username)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(player_id) DO UPDATE SET
+                       current_step = excluded.current_step,
+                       completed = excluded.completed,
+                       attempts = excluded.attempts,
+                       last_attempt_at = excluded.last_attempt_at,
+                       unlocked_at = CASE WHEN excluded.completed = 1 AND secret_gate_progress.completed = 0 THEN excluded.unlocked_at ELSE secret_gate_progress.unlocked_at END,
+                       username = COALESCE(excluded.username, secret_gate_progress.username)""",
+                (
+                    player_id,
+                    step,
+                    1 if completed else 0,
+                    attempts,
+                    last_attempt,
+                    time.time() if completed else 0,
+                    username,
+                ),
+            )
+    except Exception as e:
+        logger.warning(f"save_gate_progress: {e}")
+
+
+def is_gate_unlocked(player_id: Optional[str] = None, username: Optional[str] = None) -> bool:
+    try:
+        with DatabaseContext() as db:
+            if player_id:
+                db.execute("SELECT completed FROM secret_gate_progress WHERE player_id = ? AND completed = 1", (player_id,))
+                row = db.fetchone()
+                if row:
+                    return True
+            if username:
+                db.execute("SELECT completed FROM secret_gate_progress WHERE LOWER(username) = LOWER(?) AND completed = 1", (username,))
+                row = db.fetchone()
+                if row:
+                    return True
+    except Exception as e:
+        logger.warning(f"is_gate_unlocked: {e}")
+    return False
+
+
+def reset_gate_progress(player_id: Optional[str] = None, username: Optional[str] = None) -> None:
+    try:
+        with DatabaseContext() as db:
+            if player_id:
+                db.execute("DELETE FROM secret_gate_progress WHERE player_id = ?", (player_id,))
+            if username:
+                db.execute("DELETE FROM secret_gate_progress WHERE LOWER(username) = LOWER(?)", (username,))
+    except Exception as e:
+        logger.warning(f"reset_gate_progress: {e}")
+
 
 
 def _record_user_guess_word_sync(username: str, word: str):

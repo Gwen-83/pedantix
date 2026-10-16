@@ -1,0 +1,317 @@
+.gate-hero {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.gate-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(226, 177, 85, 0.12);
+  border: 1px solid rgba(226, 177, 85, 0.35);
+  color: #f3c76d;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.gate-title {
+  font-size: clamp(1.8rem, 5vw, 2.7rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: var(--game-text);
+  margin: 0 0 10px;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.gate-subtitle {
+  color: var(--game-muted);
+  font-size: 0.98rem;
+  max-width: 620px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* Timeline des 10 sceaux */
+.gate-stepper {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 8px;
+  margin: 24px 0 32px;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--game-border);
+  border-radius: 16px;
+}
+
+.gate-step-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--game-muted);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.gate-step-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.82rem;
+  transition: all 0.3s;
+}
+
+/* Sceau résolu */
+.gate-step-node.completed {
+  color: #62d3a0;
+  border-color: rgba(98, 211, 160, 0.3);
+  background: rgba(98, 211, 160, 0.08);
+}
+.gate-step-node.completed .gate-step-icon {
+  background: #16845a;
+  border-color: #62d3a0;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(98, 211, 160, 0.4);
+}
+
+/* Sceau actif */
+.gate-step-node.active {
+  color: #f3c76d;
+  border-color: rgba(243, 199, 109, 0.5);
+  background: rgba(243, 199, 109, 0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(243, 199, 109, 0.15);
+}
+.gate-step-node.active .gate-step-icon {
+  background: #8e6819;
+  border-color: #f3c76d;
+  color: #fff;
+  animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 6px rgba(243, 199, 109, 0.4); }
+  50% { box-shadow: 0 0 18px rgba(243, 199, 109, 0.85); }
+}
+
+/* Carte principale de l'énigme */
+.gate-card {
+  position: relative;
+  background: var(--game-panel);
+  border: 1px solid var(--game-border);
+  border-radius: 20px;
+  padding: clamp(24px, 4.5vw, 42px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.gate-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 1px solid var(--game-border);
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+}
+
+.gate-riddle-step {
+  color: #f3c76d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.gate-riddle-category {
+  color: var(--game-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.gate-riddle-title {
+  font-size: clamp(1.4rem, 3.5vw, 1.95rem);
+  font-weight: 800;
+  margin: 0 0 14px;
+  letter-spacing: -0.03em;
+  color: var(--game-text);
+}
+
+.gate-riddle-epigraph {
+  font-style: italic;
+  color: #f3c76d;
+  opacity: 0.88;
+  margin-bottom: 18px;
+  padding-left: 14px;
+  border-left: 2px solid #f3c76d;
+  font-size: 0.95rem;
+}
+
+.gate-riddle-prompt {
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: var(--game-text);
+  white-space: pre-line;
+  margin-bottom: 24px;
+}
+
+.gate-riddle-detail {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px dashed rgba(243, 199, 109, 0.4);
+  border-radius: 12px;
+  padding: 18px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 1.1rem;
+  letter-spacing: 0.2em;
+  text-align: center;
+  color: #f3c76d;
+  margin: 18px 0 24px;
+  user-select: all;
+}
+
+/* Formulaire de réponse */
+.gate-form {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.gate-input-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.gate-input {
+  width: 100%;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--game-border);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--game-text);
+  font-size: 1.05rem;
+  font-weight: 600;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.gate-input:focus {
+  border-color: #f3c76d;
+  box-shadow: 0 0 0 3px rgba(243, 199, 109, 0.18);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.gate-submit {
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #d8a038, #b67d1d);
+  color: #12100a;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(216, 160, 56, 0.25);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.gate-submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(216, 160, 56, 0.4);
+}
+
+.gate-submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Messages de statut */
+.gate-feedback {
+  margin-top: 16px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: fade-in 0.3s ease;
+}
+
+.gate-feedback.error {
+  background: rgba(255, 115, 115, 0.12);
+  border: 1px solid rgba(255, 115, 115, 0.35);
+  color: #ff9191;
+}
+
+.gate-feedback.success {
+  background: rgba(98, 211, 160, 0.14);
+  border: 1px solid rgba(98, 211, 160, 0.4);
+  color: #62d3a0;
+}
+
+/* Animation secousse en cas d'erreur */
+.shake {
+  animation: shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(3px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-5px, 0, 0); }
+  40%, 60% { transform: translate3d(5px, 0, 0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pulse {
+  animation: card-pulse 0.65s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes card-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); border-color: rgba(98, 211, 160, 0.6); box-shadow: 0 0 35px rgba(98, 211, 160, 0.35); }
+  100% { transform: scale(1); }
+}
+
+
+/* Modal de victoire */
+.gate-unlocked-card {
+  text-align: center;
+  padding: 40px 20px;
+}
+.gate-unlocked-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  animation: pulse-glow 2s infinite;
+}
+
+@media (max-width: 640px) {
+  .gate-stepper {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  .gate-form {
+    flex-direction: column;
+  }
+}

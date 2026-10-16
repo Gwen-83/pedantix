@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fr" data-presence-game="bitoguessr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1a1815" />
+    <title>Le Gardien du Seuil — L’Épreuve des 10 Sceaux</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/shared/game-ui.css" />
+    <link rel="stylesheet" href="/static/games/bitoguessr/style.css" />
+    <link rel="stylesheet" href="/static/games/bitoguessr/gate.css" />
+  </head>
+  <body>
+    <main class="bito-shell">
+      <header class="bito-header">
+        <a href="/" class="bito-back">← <span>Ludothèque</span></a>
+        <p class="bito-brand">🏛️ LE GARDIEN DU SEUIL</p>
+        <div class="bito-account">
+          <label class="shared-theme-control" for="shared-theme-select">
+            <span aria-hidden="true">🎨</span><span>Thème</span>
+            <select id="shared-theme-select" aria-label="Thème de l’interface">
+              <option value="dark-colorful">Coloré sombre</option>
+              <option value="midnight">Nuit étoilée</option>
+              <option value="light-colorful">Coloré clair</option>
+              <option value="light-grey">Gris clair</option>
+              <option value="dark-grey">Charbon sombre</option>
+              <option value="parchment">Parchemin</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <section class="gate-hero">
+        <div class="gate-badge">Épreuve initiatique</div>
+        <h1 class="gate-title">Le Défi des Dix Sceaux</h1>
+        <p class="gate-subtitle">
+          Le passage vers le jeu secret est scellé par dix énigmes d'une exigence absolue.
+          Aucun contournement, aucun raccourci, aucune ruse de console ne trompera le Gardien.
+          Seule votre sagacité déverrouillera le sanctuaire.
+        </p>
+      </section>
+
+      <!-- Barre de progression des 10 sceaux -->
+      <nav id="gate-stepper" class="gate-stepper" aria-label="Progression des dix sceaux"></nav>
+
+      <!-- Carte de l'énigme active -->
+      <article id="gate-card" class="gate-card">
+        <div class="gate-card-header">
+          <span id="gate-riddle-step" class="gate-riddle-step">Sceau I / X</span>
+          <span id="gate-riddle-category" class="gate-riddle-category">Arcane antique</span>
+        </div>
+
+        <h2 id="gate-riddle-title" class="gate-riddle-title">Chargement de l’énigme…</h2>
+        <div id="gate-riddle-epigraph" class="gate-riddle-epigraph" hidden></div>
+        <div id="gate-riddle-prompt" class="gate-riddle-prompt">Invocation du Gardien en cours...</div>
+        <div id="gate-riddle-detail" class="gate-riddle-detail" hidden></div>
+
+        <form id="gate-form" class="gate-form" autocomplete="off">
+          <div class="gate-input-wrapper">
+            <input
+              type="text"
+              id="gate-input"
+              class="gate-input"
+              placeholder="Inscrivez votre réponse..."
+              autocomplete="off"
+              autocorrect="off"
+              spellcheck="false"
+              required
+            />
+          </div>
+          <button type="submit" id="gate-submit" class="gate-submit">
+            Desceller
+          </button>
+        </form>
+
+        <div id="gate-feedback" class="gate-feedback" hidden></div>
+      </article>
+    </main>
+
+    <script src="/static/shared/config.js"></script>
+    <script src="/static/shared/game-ui.js"></script>
+    <script src="/static/games/bitoguessr/gate.js"></script>
+  </body>
+</html>

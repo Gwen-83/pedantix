@@ -10,7 +10,7 @@ import datetime
 import asyncio
 import threading
 from typing import Optional, Dict, Any, List, Literal
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, HTTPException, Query, Header, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +38,12 @@ from app.database import (
     record_played_article,
     get_recently_played_articles,
     is_valid_user_identifier,
+    is_gate_unlocked,
+)
+from app.secret_gate import (
+    secret_gate_manager,
+    generate_gate_token,
+    verify_gate_token,
 )
 from app.nlp import normalize_wiki_title
 from app.motus import MOTUS_DIFFICULTIES, motus_manager
@@ -394,6 +400,14 @@ class BitoguessrSoloNextRequest(BitoguessrPlayerRequest):
 class BitoguessrRoomGuessRequest(BitoguessrRoomPlayerRequest):
     guess: str = Field(min_length=1, max_length=48)
 
+class GateGuessRequest(BaseModel):
+    player_id: str = Field(min_length=1, max_length=100)
+    guess: str = Field(min_length=1, max_length=120)
+
+class GateResetRequest(BaseModel):
+    player_id: str = Field(min_length=1, max_length=100)
+
+
 class RoomChatRequest(BaseModel):
     room_id: str = "default"
     player_id: str
@@ -487,12 +501,56 @@ async def undercover_page():
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page Undercover est introuvable.")
 
+def _is_bitoguessr_authorized(request: Request, player_id: Optional[str] = None) -> bool:
+    token = (
+        request.cookies.get("bitoguessr_access_token")
+        or request.headers.get("x-gate-token")
+        or request.query_params.get("gate_token")
+    )
+    if token and verify_gate_token(token):
+        return True
+
+    pid = player_id or request.headers.get("x-player-id") or request.query_params.get("player_id")
+    user = request.headers.get("x-auth-user")
+    if pid or user:
+        if is_gate_unlocked(pid, user):
+            return True
+
+    return False
+
+
+def _require_bitoguessr_access(request: Request, player_id: Optional[str] = None) -> None:
+    if not _is_bitoguessr_authorized(request, player_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Le Gardien interdit l'accès : les 10 sceaux doivent être brisés.",
+        )
+
+
+@app.get("/static/games/bitoguessr/index.html")
+async def bitoguessr_static_index(request: Request):
+    if _is_bitoguessr_authorized(request):
+        index_path = os.path.join(STATIC_DIR, "games", "bitoguessr", "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/games/bitoguessr/")
+
+
 @app.get("/games/bitoguessr/")
-async def bitoguessr_page():
+@app.get("/games/bitoguessr")
+async def bitoguessr_page(request: Request, player_id: Optional[str] = Query(None)):
+    gate_path = os.path.join(STATIC_DIR, "games", "bitoguessr", "gate.html")
     index_path = os.path.join(STATIC_DIR, "games", "bitoguessr", "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    raise HTTPException(status_code=404, detail="La page Bitoguessr est introuvable.")
+
+    if _is_bitoguessr_authorized(request, player_id):
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        raise HTTPException(status_code=404, detail="La page Bitoguessr est introuvable.")
+
+    if os.path.exists(gate_path):
+        return FileResponse(gate_path)
+    raise HTTPException(status_code=404, detail="Le Gardien du Seuil est introuvable.")
 
 
 @app.get("/health")
@@ -2284,8 +2342,61 @@ def _record_bitoguessr_room_results(room) -> None:
     room.stats_recorded = True
 
 
+# ---------------------------------------------------------------------------
+# Gardien du Seuil — Épreuve des 10 Sceaux (Secret Gate)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/secret-gate/current")
+async def get_secret_gate_current(
+    player_id: str = Query(...),
+    request: Request = None,
+    x_auth_user: Optional[str] = Header(None),
+):
+    """Renvoie l'énigme active du joueur sans jamais divulguer les solutions."""
+    return secret_gate_manager.get_current_state(player_id=player_id, username=x_auth_user)
+
+
+@app.post("/api/secret-gate/guess")
+async def post_secret_gate_guess(
+    req: GateGuessRequest,
+    response: Response,
+    x_auth_user: Optional[str] = Header(None),
+):
+    """Vérifie la réponse proposée à l'énigme active."""
+    is_correct, is_completed, payload = secret_gate_manager.verify_guess(
+        player_id=req.player_id,
+        guess=req.guess,
+        username=x_auth_user,
+    )
+    if is_completed and payload.get("token"):
+        response.set_cookie(
+            key="bitoguessr_access_token",
+            value=payload["token"],
+            max_age=31536000,
+            path="/",
+            samesite="lax",
+            httponly=False,
+        )
+    return payload
+
+
+@app.post("/api/secret-gate/reset")
+async def post_secret_gate_reset(
+    req: GateResetRequest,
+    x_auth_user: Optional[str] = Header(None),
+):
+    """Permet de réinitialiser la progression d'un joueur."""
+    secret_gate_manager.reset_progress(player_id=req.player_id, username=x_auth_user)
+    return {"status": "ok", "message": "Progression réinitialisée."}
+
+
+# ---------------------------------------------------------------------------
+# Bitoguessr
+# ---------------------------------------------------------------------------
+
 @app.get("/api/bitoguessr/config")
-async def get_bitoguessr_config():
+async def get_bitoguessr_config(request: Request):
+    _require_bitoguessr_access(request)
     return {
         "round_count": 10,
         "max_players": 8,
@@ -2298,7 +2409,8 @@ async def get_bitoguessr_config():
 
 
 @app.post("/api/bitoguessr/solo/new")
-async def create_bitoguessr_solo(req: BitoguessrSoloCreateRequest):
+async def create_bitoguessr_solo(req: BitoguessrSoloCreateRequest, request: Request):
+    _require_bitoguessr_access(request, req.player_id)
     try:
         game = bitoguessr_manager.create_solo(
             req.player_id, req.player_name, req.difficulty
@@ -2316,7 +2428,8 @@ async def create_bitoguessr_solo(req: BitoguessrSoloCreateRequest):
 
 
 @app.get("/api/bitoguessr/solo/{game_id}")
-async def get_bitoguessr_solo(game_id: str, player_id: str = Query(...)):
+async def get_bitoguessr_solo(game_id: str, request: Request, player_id: str = Query(...)):
+    _require_bitoguessr_access(request, player_id)
     try:
         game = bitoguessr_manager.get_solo(game_id, player_id)
     except KeyError as exc:
@@ -2325,7 +2438,8 @@ async def get_bitoguessr_solo(game_id: str, player_id: str = Query(...)):
 
 
 @app.post("/api/bitoguessr/solo/guess")
-async def guess_bitoguessr_solo(req: BitoguessrSoloGuessRequest):
+async def guess_bitoguessr_solo(req: BitoguessrSoloGuessRequest, request: Request):
+    _require_bitoguessr_access(request, req.player_id)
     try:
         game, result = bitoguessr_manager.guess_solo(
             req.game_id, req.player_id, req.guess
@@ -2339,7 +2453,8 @@ async def guess_bitoguessr_solo(req: BitoguessrSoloGuessRequest):
 
 
 @app.post("/api/bitoguessr/solo/next")
-async def next_bitoguessr_solo(req: BitoguessrSoloNextRequest):
+async def next_bitoguessr_solo(req: BitoguessrSoloNextRequest, request: Request):
+    _require_bitoguessr_access(request, req.player_id)
     try:
         game = bitoguessr_manager.next_solo(req.game_id, req.player_id)
     except KeyError as exc:
@@ -2350,12 +2465,14 @@ async def next_bitoguessr_solo(req: BitoguessrSoloNextRequest):
 
 
 @app.get("/api/bitoguessr/rooms")
-async def list_bitoguessr_rooms(player_id: Optional[str] = Query(None)):
+async def list_bitoguessr_rooms(request: Request, player_id: Optional[str] = Query(None)):
+    _require_bitoguessr_access(request, player_id)
     return {"rooms": bitoguessr_manager.list_rooms(player_id)}
 
 
 @app.post("/api/bitoguessr/room/create")
-async def create_bitoguessr_room(req: BitoguessrRoomCreateRequest):
+async def create_bitoguessr_room(req: BitoguessrRoomCreateRequest, request: Request):
+    _require_bitoguessr_access(request, req.player_id)
     try:
         room = bitoguessr_manager.create_room(
             req.player_id, req.player_name, req.difficulty, req.round_count
@@ -2366,7 +2483,8 @@ async def create_bitoguessr_room(req: BitoguessrRoomCreateRequest):
 
 
 @app.post("/api/bitoguessr/room/join")
-async def join_bitoguessr_room(req: BitoguessrRoomPlayerRequest):
+async def join_bitoguessr_room(req: BitoguessrRoomPlayerRequest, request: Request):
+    _require_bitoguessr_access(request, req.player_id)
     try:
         room = bitoguessr_manager.join_room(
             req.room_id, req.player_id, req.player_name
@@ -2379,7 +2497,8 @@ async def join_bitoguessr_room(req: BitoguessrRoomPlayerRequest):
 
 
 @app.post("/api/bitoguessr/room/start")
-async def start_bitoguessr_room(req: BitoguessrRoomPlayerRequest):
+async def start_bitoguessr_room(req: BitoguessrRoomPlayerRequest, request: Request):
+    _require_bitoguessr_access(request, req.player_id)
     try:
         room = bitoguessr_manager.start_room(req.room_id, req.player_id)
     except KeyError as exc:
@@ -2399,7 +2518,8 @@ async def start_bitoguessr_room(req: BitoguessrRoomPlayerRequest):
 
 
 @app.post("/api/bitoguessr/room/guess")
-async def guess_bitoguessr_room(req: BitoguessrRoomGuessRequest):
+async def guess_bitoguessr_room(req: BitoguessrRoomGuessRequest, request: Request):
+    _require_bitoguessr_access(request, req.player_id)
     try:
         room, result = bitoguessr_manager.guess_room(
             req.room_id, req.player_id, req.guess
@@ -2413,7 +2533,8 @@ async def guess_bitoguessr_room(req: BitoguessrRoomGuessRequest):
 
 
 @app.post("/api/bitoguessr/room/next")
-async def next_bitoguessr_room(req: BitoguessrRoomPlayerRequest):
+async def next_bitoguessr_room(req: BitoguessrRoomPlayerRequest, request: Request):
+    _require_bitoguessr_access(request, req.player_id)
     try:
         room = bitoguessr_manager.next_room(req.room_id, req.player_id)
     except KeyError as exc:
@@ -2426,7 +2547,8 @@ async def next_bitoguessr_room(req: BitoguessrRoomPlayerRequest):
 
 
 @app.get("/api/bitoguessr/room/{room_id}")
-async def get_bitoguessr_room(room_id: str, player_id: str = Query(...)):
+async def get_bitoguessr_room(room_id: str, request: Request, player_id: str = Query(...)):
+    _require_bitoguessr_access(request, player_id)
     try:
         room = bitoguessr_manager.get_room(room_id, player_id)
     except KeyError as exc:
