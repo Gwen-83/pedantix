@@ -111,6 +111,10 @@
     if (token) {
       localStorage.setItem('bitoguessr_gate_token', token);
       document.cookie = `bitoguessr_access_token=${encodeURIComponent(token)}; path=/; max-age=31536000; SameSite=Lax`;
+      document.cookie = `bitoguessr_player_id=${encodeURIComponent(playerId)}; path=/; max-age=31536000; SameSite=Lax`;
+      if (authUser) {
+        document.cookie = `bitoguessr_auth_user=${encodeURIComponent(authUser)}; path=/; max-age=31536000; SameSite=Lax`;
+      }
     }
 
     renderStepper(10, true);
@@ -128,14 +132,17 @@
       </div>
     `;
 
-    document.getElementById('gate-enter-game')?.addEventListener('click', () => {
-      window.location.reload();
-    });
+    function enterGame() {
+      const target = token
+        ? `/games/bitoguessr/?gate_token=${encodeURIComponent(token)}`
+        : `/games/bitoguessr/?player_id=${encodeURIComponent(playerId)}`;
+      window.location.replace(target);
+    }
+
+    document.getElementById('gate-enter-game')?.addEventListener('click', enterGame);
 
     // Redirection automatique après 3 secondes si le joueur n'a pas cliqué
-    setTimeout(() => {
-      window.location.reload();
-    }, 3500);
+    setTimeout(enterGame, 3000);
   }
 
   async function loadCurrentRiddle() {

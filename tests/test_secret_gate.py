@@ -235,23 +235,39 @@ class SecretGateApiTests(unittest.TestCase):
 
         valid_token = generate_gate_token(self.test_player_id)
 
-        # 1. Via cookie
+        # 1. Via cookie (raw and urlencoded)
         res_cookie = self.client.get("/games/bitoguessr/", cookies={"bitoguessr_access_token": valid_token})
         self.assertEqual(res_cookie.status_code, 200)
         self.assertIn("BITOGUESSR", res_cookie.text)
         self.assertIn("Une moyenne, un pays", res_cookie.text)
+
+        import urllib.parse
+        encoded_token = urllib.parse.quote(valid_token)
+        res_cookie_enc = self.client.get("/games/bitoguessr/", cookies={"bitoguessr_access_token": encoded_token})
+        self.assertEqual(res_cookie_enc.status_code, 200)
+        self.assertIn("BITOGUESSR", res_cookie_enc.text)
 
         # 2. Via header
         res_header = self.client.get("/games/bitoguessr/", headers={"x-gate-token": valid_token})
         self.assertEqual(res_header.status_code, 200)
         self.assertIn("BITOGUESSR", res_header.text)
 
-        # 3. Via query param with player_id registered in DB
+        # 3. Via query param gate_token
+        res_query = self.client.get(f"/games/bitoguessr/?gate_token={encoded_token}")
+        self.assertEqual(res_query.status_code, 200)
+        self.assertIn("BITOGUESSR", res_query.text)
+
+        # 4. Via query param with player_id registered in DB
         res_db = self.client.get(f"/games/bitoguessr/?player_id={self.test_player_id}")
         self.assertEqual(res_db.status_code, 200)
         self.assertIn("BITOGUESSR", res_db.text)
 
-        # 4. API access allowed with token
+        # 5. Via player_id in cookie with DB completed
+        res_cookie_pid = self.client.get("/games/bitoguessr/", cookies={"bitoguessr_player_id": self.test_player_id})
+        self.assertEqual(res_cookie_pid.status_code, 200)
+        self.assertIn("BITOGUESSR", res_cookie_pid.text)
+
+        # 6. API access allowed with token
         res_api = self.client.post(
             "/api/bitoguessr/solo/new",
             json={

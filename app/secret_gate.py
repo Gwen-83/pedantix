@@ -46,6 +46,8 @@ def verify_gate_token(token: str, player_id: Optional[str] = None) -> bool:
     """Vérifie la validité cryptographique d'un jeton d'accès au jeu secret."""
     if not token or not isinstance(token, str):
         return False
+    import urllib.parse
+    token = urllib.parse.unquote(token).strip()
     parts = token.split(":")
     if len(parts) != 4:
         return False

@@ -510,8 +510,16 @@ def _is_bitoguessr_authorized(request: Request, player_id: Optional[str] = None)
     if token and verify_gate_token(token):
         return True
 
-    pid = player_id or request.headers.get("x-player-id") or request.query_params.get("player_id")
-    user = request.headers.get("x-auth-user")
+    pid = (
+        player_id
+        or request.headers.get("x-player-id")
+        or request.query_params.get("player_id")
+        or request.cookies.get("bitoguessr_player_id")
+    )
+    user = (
+        request.headers.get("x-auth-user")
+        or request.cookies.get("bitoguessr_auth_user")
+    )
     if pid or user:
         if is_gate_unlocked(pid, user):
             return True

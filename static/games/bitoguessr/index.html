@@ -7,10 +7,16 @@
     <title>Bitoguessr — La ludothèque</title>
     <script>
       (() => {
-        if (
-          !localStorage.getItem("pedantix_auth_user") ||
-          !localStorage.getItem("pedantix_auth_token")
-        ) {
+        const params = new URLSearchParams(window.location.search);
+        const queryToken = params.get('gate_token');
+        if (queryToken) {
+          localStorage.setItem('bitoguessr_gate_token', queryToken);
+          document.cookie = `bitoguessr_access_token=${encodeURIComponent(queryToken)}; path=/; max-age=31536000; SameSite=Lax`;
+        }
+        const hasGateToken = !!queryToken || !!localStorage.getItem('bitoguessr_gate_token');
+        const isAuthenticated = localStorage.getItem('pedantix_auth_user')
+          && localStorage.getItem('pedantix_auth_token');
+        if (!isAuthenticated && !hasGateToken) {
           const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
           window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
         }
