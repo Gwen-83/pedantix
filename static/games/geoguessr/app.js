@@ -88,6 +88,7 @@
   }
 
   function setBusy(button, busy, busyText) {
+    if (!button) return;
     if (!button.dataset.label) button.dataset.label = button.textContent;
     button.disabled = busy;
     button.textContent = busy ? busyText : button.dataset.label;
@@ -889,10 +890,11 @@
   }
 
   async function startSolo(isReplay = false) {
+    const replayMode = isReplay === true;
     if (!ensureMap()) return;
-    const button = document.getElementById(isReplay ? 'geo-replay-game' : 'geo-solo-button');
+    const button = document.getElementById(replayMode ? 'geo-replay-game' : 'geo-solo-button');
     setBusy(button, true, 'Préparation…');
-    hideError(isReplay ? playError : homeError);
+    hideError(replayMode ? playError : homeError);
     try {
       state = await post('/api/geoguessr/solo/new', {
         player_id: playerId,
@@ -913,7 +915,7 @@
       const view = mapView(state.region);
       map.setView(view.center, view.zoom);
     } catch (error) {
-      showError(isReplay ? playError : homeError, error.message);
+      showError(replayMode ? playError : homeError, error.message);
     } finally {
       setBusy(button, false);
     }
@@ -1106,7 +1108,7 @@
     }
   }
 
-  document.getElementById('geo-solo-button').addEventListener('click', startSolo);
+  document.getElementById('geo-solo-button').addEventListener('click', () => startSolo(false));
   document.getElementById('geo-create-room').addEventListener('click', createRoom);
   document.getElementById('geo-refresh-rooms').addEventListener('click', refreshRoomDirectory);
   document.getElementById('geo-join-room').addEventListener('click', () => joinRoom(roomInput.value));
