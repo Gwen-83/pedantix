@@ -105,7 +105,7 @@ _GATE_RIDDLES: Tuple[GateRiddle, ...] = (
             "sur une machine de Turing universelle finisse par s'arrêter.\n"
             "Bien que rigoureusement défini et mathématiquement unique, je suis formellement non calculable : "
             "aucun algorithme ne pourra jamais en déterminer la suite des décimales au-delà des premières.\n\n"
-            "La dernière lettre majuscule de l'alphabet grec me sert de baptême. Quel est le nom de cette constante ?"
+            "Quel est le nom de cette constante ?"
         ),
         detail=None,
         accepted_hashes={
@@ -147,8 +147,8 @@ _GATE_RIDDLES: Tuple[GateRiddle, ...] = (
             "Au solstice d'été, à midi pile, les rayons du soleil atteignent le fond des puits de Syène sans faire d'ombre. "
             "Au même instant à Alexandrie, le gnomon projette une ombre mesurée à 1/50 de cercle. "
             "J'ai ainsi calculé pour la première fois la circonférence de la Terre avec une précision remarquable, deux siècles avant notre ère.\n\n"
-            "Pourtant, mes rivaux envieux de la Bibliothèque d'Alexandrie me donnèrent pour surnom la deuxième lettre de l'alphabet grec, "
-            "affirmant avec mépris que j'étais le second dans tous les domaines du savoir sans jamais dominer aucun.\n"
+            "Pourtant, mes rivaux envieux de la Bibliothèque d'Alexandrie me donnèrent un surnom méprisant, "
+            "affirmant que j'étais le second dans tous les domaines du savoir sans jamais dominer aucun.\n"
             "Quel était ce surnom ?"
         ),
         detail=None,
@@ -282,7 +282,7 @@ _GATE_RIDDLES: Tuple[GateRiddle, ...] = (
             "Comme l'ont démontré les érudits Grosser et Agrell en 1926, ses 25 lettres peuvent être exactement réarrangées "
             "pour former une croix grecque articulée autour de la lettre N centrale.\n"
             "Aux quatre branches de cette croix se tiennent deux A et deux O (Alpha et Oméga).\n"
-            "La croix elle-même, répétée horizontalement et verticalement en traversant le N commun, épelle deux mots en latin (11 lettres au total).\n\n"
+            "La croix elle-même, répétée horizontalement et verticalement en traversant le N commun, épelle deux mots en latin.\n\n"
             "Quelle est cette locution latine sacrée qui brise le dixième et dernier sceau ?"
         ),
         detail="S A T O R\nA R E P O\nT E N E T\nO P E R A\nR O T A S",
