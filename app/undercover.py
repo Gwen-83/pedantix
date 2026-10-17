@@ -2,6 +2,7 @@ import json
 import random
 import re
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -90,6 +91,8 @@ class UndercoverRoom:
     civilian_word: str | None = None
     undercover_word: str | None = None
     last_result: dict[str, Any] | None = None
+    started_at: float | None = None
+    stats_recorded: bool = False
 
     def to_dict(self, player_id: str) -> dict[str, Any]:
         player = self.players[player_id]
@@ -183,12 +186,12 @@ class UndercoverManager:
             room = self.rooms.get(room_id.upper())
             if room is None:
                 raise KeyError("Salon introuvable ou expiré.")
-            if room.status == "finished":
-                raise ValueError("Cette partie est terminée.")
             existing = room.players.get(player_id)
             if existing:
                 existing.name = self._clean_name(player_name)
                 return room
+            if room.status == "finished":
+                raise ValueError("Cette partie est terminée.")
             if len(room.players) >= MAX_PLAYERS:
                 raise ValueError(f"Ce salon est complet ({MAX_PLAYERS} joueurs maximum).")
             room.players[player_id] = UndercoverPlayer(
@@ -241,6 +244,8 @@ class UndercoverManager:
             room.phase = "discussion"
             room.round_number = 1
             room.last_result = None
+            room.started_at = time.time()
+            room.stats_recorded = False
             return room
 
     def _deal_roles(
@@ -363,6 +368,8 @@ class UndercoverManager:
             room.civilian_word = None
             room.undercover_word = None
             room.last_result = None
+            room.started_at = None
+            room.stats_recorded = False
             for player in room.players.values():
                 player.is_spectator = False
                 player.role = None

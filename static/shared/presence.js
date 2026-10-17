@@ -4,6 +4,7 @@
     pedantix: 'Pédantix',
     motus: 'Motus',
     cemantix: 'Cémantix',
+    chiffrantix: 'Chiffrantix',
     sudoku: 'Sudoku',
     battleship: 'Bataille navale',
     geoguessr: 'GeoGuessr',

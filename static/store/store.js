@@ -22,6 +22,7 @@
     && (launchTarget.searchParams.get('game') === 'pedantix'
       || launchTarget.searchParams.get('game') === 'motus'
       || launchTarget.searchParams.get('game') === 'cemantix'
+      || launchTarget.searchParams.get('game') === 'chiffrantix'
       || launchTarget.searchParams.get('game') === 'battleship'
       || launchTarget.searchParams.get('game') === 'sudoku'
       || launchTarget.searchParams.get('game') === 'geoguessr'
@@ -35,6 +36,7 @@
       pedantix: '/games/pedantix/',
       motus: '/games/motus/',
       cemantix: '/games/cemantix/',
+      chiffrantix: '/games/chiffrantix/',
       battleship: '/games/battleship/',
       sudoku: '/games/sudoku/',
       geoguessr: '/games/geoguessr/',
@@ -45,7 +47,7 @@
   }
   const safeLaunchTarget = launchTarget
     && launchTarget.origin === window.location.origin
-    && ['/games/pedantix/', '/games/motus/', '/games/cemantix/', '/games/battleship/', '/games/sudoku/', '/games/geoguessr/', '/games/undercover/', '/games/bitoguessr/'].includes(launchTarget.pathname)
+    && ['/games/pedantix/', '/games/motus/', '/games/cemantix/', '/games/chiffrantix/', '/games/battleship/', '/games/sudoku/', '/games/geoguessr/', '/games/undercover/', '/games/bitoguessr/'].includes(launchTarget.pathname)
     ? launchTarget
     : null;
   let pendingLaunch = params.get('login') === '1' && !!safeLaunchTarget;

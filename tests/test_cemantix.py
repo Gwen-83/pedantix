@@ -1,6 +1,6 @@
 import unittest
 
-from app.cemantix import CemantixManager, _visible_hint_count
+from app.cemantix import CemantixManager, _visible_hint_count, calculate_cemantix_proximity
 
 
 class CemantixTests(unittest.TestCase):
@@ -35,6 +35,35 @@ class CemantixTests(unittest.TestCase):
             sum(bool(manager._hint_words(target)) for target in manager.answers),
             len(manager.answers) * 0.99,
         )
+
+    def test_continuous_proximity_never_returns_zero_and_orders_semantic_closeness(self):
+        # Distant words still receive a positive graduated score instead of 0.0
+        distant_score = calculate_cemantix_proximity("voiture", "chat")
+        self.assertGreater(distant_score, 0.0)
+        self.assertLess(distant_score, 48.0)
+
+        # Related words against the same target ("chat") are ordered by semantic closeness
+        warm_score = calculate_cemantix_proximity("animal", "chat")
+        hot_score = calculate_cemantix_proximity("chien", "chat")
+        self.assertGreaterEqual(warm_score, 55.0)
+        self.assertGreater(hot_score, warm_score)
+
+    def test_solo_manual_hint_and_give_up(self):
+        game = self.manager.create_solo("player-1", "Joueur", difficulty="moyen")
+        self.assertEqual(len(game.to_dict()["hints"]), 0)
+
+        game = self.manager.request_solo_hint(game.game_id, "player-1")
+        state_with_hint = game.to_dict()
+        self.assertEqual(len(state_with_hint["hints"]), 1)
+        self.assertEqual(len(state_with_hint["hint_details"]), 1)
+        self.assertIn("word", state_with_hint["hint_details"][0])
+        self.assertIn("score", state_with_hint["hint_details"][0])
+
+        game = self.manager.give_up_solo(game.game_id, "player-1")
+        state = game.to_dict()
+        self.assertEqual(state["status"], "finished")
+        self.assertTrue(state["gave_up"])
+        self.assertEqual(state["target"], "chat")
 
     def test_difficulty_controls_hint_reveal_schedule(self):
         self.assertEqual(_visible_hint_count("facile", 0), 1)

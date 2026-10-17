@@ -251,11 +251,28 @@
         if (guess) {
           tile.textContent = guess.word[column].toUpperCase();
           tile.classList.add(`motus-${guess.feedback[column]}`);
-        } else if (rowIndex === guesses.length && currentEntry[column]) {
-          tile.textContent = currentEntry[column];
-          tile.classList.add(
-            lockedLetters[column] ? 'motus-hint-tile' : 'motus-entry-tile',
-          );
+        } else if (rowIndex === guesses.length) {
+          const typedLetter = currentEntry[column];
+          const hintLetter = lockedLetters[column];
+          if (typedLetter) {
+            tile.textContent = typedLetter;
+            tile.classList.add(
+              hintLetter && typedLetter === hintLetter ? 'motus-hint-tile' : 'motus-entry-tile',
+            );
+          } else if (hintLetter) {
+            tile.textContent = hintLetter;
+            tile.classList.add('motus-hint-tile');
+          } else if (column === 0) {
+            tile.textContent = firstLetter;
+            tile.classList.add('motus-hint-tile');
+          }
+          if (column > 0 && !guessInput.disabled) {
+            tile.style.cursor = 'pointer';
+            tile.addEventListener('click', () => {
+              guessInput.focus();
+              guessInput.setSelectionRange(column, column);
+            });
+          }
         } else if (column === 0) {
           tile.textContent = firstLetter;
           tile.classList.add('motus-hint-tile');
@@ -360,11 +377,16 @@
     return entry.length;
   }
 
+  function effectiveEntry() {
+    return entry.map((letter, idx) => letter || lockedLetters[idx] || '');
+  }
+
   function updateEntry(nextIndex) {
     guessInput.value = entry.map((letter) => letter || ' ').join('');
     renderBoard(state.player.guesses, state.first_letter, state.max_attempts, entry);
+    const full = effectiveEntry();
     guessForm.querySelector('button').disabled =
-      state.player.finished || state.player.is_spectator || entry.some((letter) => !letter);
+      state.player.finished || state.player.is_spectator || full.some((letter) => !letter);
     guessInput.focus();
     guessInput.setSelectionRange(nextIndex, nextIndex);
   }
@@ -378,8 +400,15 @@
       }
     }
     let index = Math.max(start, 1);
+    if (letters.length === state.word_length && letters[0] === state.first_letter) {
+      index = 0;
+    }
     for (const letter of letters) {
       if (index >= entry.length) break;
+      if (index === 0) {
+        index += 1;
+        continue;
+      }
       entry[index] = letter;
       index += 1;
     }
@@ -573,11 +602,12 @@
     event.preventDefault();
     if (!state || state.player.finished || state.player.is_spectator) return;
     hideError(playError);
-    if (entry.some((letter) => !letter)) {
+    const full = effectiveEntry();
+    if (full.some((letter) => !letter)) {
       showError(playError, 'Complétez les cases vides avant de valider.');
       return;
     }
-    const guess = entry.join('');
+    const guess = full.join('');
     const submit = guessForm.querySelector('button');
     setBusy(submit, true, '…');
     try {

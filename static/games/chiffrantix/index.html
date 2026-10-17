@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="fr" data-presence-game="chiffrantix">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#273238">
+  <title>Chiffrantix — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/games/chiffrantix/style.css">
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔢</text></svg>">
+</head>
+<body>
+  <main class="chiffrantix-shell">
+    <header class="chiffrantix-header">
+      <a class="chiffrantix-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
+      <p class="chiffrantix-brand"><span aria-hidden="true">🔢</span> CHIFFRANTIX</p>
+      <div class="shared-header-actions">
+        <span id="chiffrantix-player-name" class="chiffrantix-player-name"></span>
+        <label class="shared-theme-control" for="shared-theme-select">
+          <span aria-hidden="true">🎨</span><span>Thème</span>
+          <select id="shared-theme-select" aria-label="Thème de l’interface">
+            <option value="dark-colorful">Coloré sombre</option>
+            <option value="midnight">Nuit étoilée</option>
+            <option value="light-colorful">Coloré clair</option>
+            <option value="light-grey">Gris clair</option>
+            <option value="dark-grey">Charbon sombre</option>
+            <option value="parchment">Parchemin</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <section id="chiffrantix-home" class="chiffrantix-panel" aria-labelledby="chiffrantix-heading">
+      <p class="chiffrantix-eyebrow">1 000+ réponses chiffrées sourcées · Trouvez la question</p>
+      <h1 id="chiffrantix-heading">On vous donne le chiffre, retrouvez la question.</h1>
+      <p class="chiffrantix-intro">
+        Une réponse chiffrée s’affiche. La question correspondante est masquée case par case : proposez des mots pour révéler le texte ou chauffer les cases proches en sens jusqu’à découvrir l’énoncé exact !
+      </p>
+
+      <div class="chiffrantix-filters-grid">
+        <div>
+          <label class="chiffrantix-difficulty-label" for="chiffrantix-difficulty">Difficulté</label>
+          <select id="chiffrantix-difficulty" class="chiffrantix-difficulty-select">
+            <option value="toutes">Toutes les difficultés</option>
+            <option value="facile">🟢 Facile · Culture générale</option>
+            <option value="moyen" selected>🟡 Moyen · Classique</option>
+            <option value="difficile">🔴 Difficile · Pointu</option>
+          </select>
+        </div>
+        <div>
+          <label class="chiffrantix-difficulty-label" for="chiffrantix-category">Thématique</label>
+          <select id="chiffrantix-category" class="chiffrantix-difficulty-select">
+            <option value="toutes" selected>📚 Toutes les thématiques (1 000+ questions)</option>
+            <option value="histoire">🏛️ Histoire</option>
+            <option value="geographie">🌍 Géographie</option>
+            <option value="sciences">🔬 Sciences & Corps humain</option>
+            <option value="astronomie">🪐 Espace & Astronomie</option>
+            <option value="nature">🦁 Nature & Animaux</option>
+            <option value="monuments">🗼 Monuments & Patrimoine</option>
+            <option value="arts_culture">🎨 Arts, Cinéma & Littérature</option>
+            <option value="sport">🏆 Sport & Jeux olympiques</option>
+            <option value="societe">⚖️ Société & Institutions</option>
+            <option value="tech_jeux">💻 Tech & Jeux</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="chiffrantix-mode-grid">
+        <div class="shared-mode-switch" role="group" aria-label="Mode de jeu">
+          <button type="button" class="active" data-shared-game-mode="solo" aria-pressed="true">🎯 Solo</button>
+          <button type="button" data-shared-game-mode="multi" aria-pressed="false">🌐 Multijoueur</button>
+        </div>
+        <button type="button" id="chiffrantix-solo-button" class="chiffrantix-mode-card">
+          <span class="chiffrantix-mode-icon" aria-hidden="true">🎯</span>
+          <span>
+            <strong>Jouer en solo</strong>
+            <small>Retrouvez la question à votre rythme avec les scores de proximité mot par mot.</small>
+          </span>
+          <span class="chiffrantix-arrow" aria-hidden="true">→</span>
+        </button>
+      </div>
+
+      <p id="chiffrantix-home-error" class="chiffrantix-error" role="alert" hidden></p>
+      <p id="chiffrantix-previous-game" class="chiffrantix-previous-game" hidden>
+        <button type="button" id="chiffrantix-resume-solo" class="chiffrantix-text-button">Reprendre ma partie solo en cours</button>
+      </p>
+
+      <div class="chiffrantix-score-legend">
+        <span><i class="chiffrantix-cold"></i>0–47 : froid</span>
+        <span><i class="chiffrantix-warm"></i>48–79 : chaud (case orangée)</span>
+        <span><i class="chiffrantix-hot"></i>80–99 : brûlant (case rose/rouge)</span>
+        <span><i class="chiffrantix-found"></i>100 : mot révélé !</span>
+      </div>
+    </section>
+
+    <section id="chiffrantix-play" class="chiffrantix-panel chiffrantix-play-panel" hidden>
+      <div class="chiffrantix-game-heading">
+        <div>
+          <p id="chiffrantix-game-mode" class="chiffrantix-eyebrow">Partie solo</p>
+          <h1 id="chiffrantix-game-title">Quelle est la question ?</h1>
+        </div>
+        <div class="chiffrantix-heading-actions">
+          <button type="button" data-shared-lobby-open="chiffrantix-lobby" hidden>Ouvrir le salon</button>
+          <button type="button" id="chiffrantix-new-solo" class="chiffrantix-secondary-button" hidden>🎲 Autre chiffre</button>
+          <button type="button" id="chiffrantix-home-button" class="chiffrantix-secondary-button">Quitter</button>
+        </div>
+      </div>
+
+      <section id="chiffrantix-lobby" class="shared-game-lobby chiffrantix-lobby" data-shared-game-lobby data-shared-lobby-next="chiffrantix-round" hidden aria-label="Salon multijoueur">
+        <section class="shared-game-lobby-dialog" role="dialog" aria-modal="true" aria-labelledby="chiffrantix-lobby-title" tabindex="-1">
+          <button type="button" class="shared-game-lobby-close" data-shared-lobby-close aria-label="Réduire le salon">×</button>
+          <header class="shared-game-lobby-heading">
+            <p>🔢 Chiffrantix · salon multijoueur</p>
+            <h2 id="chiffrantix-lobby-title">En attente des joueurs</h2>
+            <p>Même réponse chiffrée pour tous : le premier qui découvre toute la question l’emporte !</p>
+          </header>
+          <p id="chiffrantix-lobby-status" role="status" aria-live="polite">En attente de joueurs…</p>
+          <div class="chiffrantix-invite-row">
+            <code id="chiffrantix-invite-code"></code>
+            <button type="button" id="chiffrantix-copy-invite" class="chiffrantix-secondary-button">Copier le lien</button>
+          </div>
+          <ul id="chiffrantix-player-list" class="chiffrantix-player-list" aria-live="polite"></ul>
+          <button type="button" id="chiffrantix-start-game" class="chiffrantix-primary-button" hidden>Démarrer la course</button>
+        </section>
+      </section>
+
+      <section id="chiffrantix-round" class="chiffrantix-round" hidden>
+        <!-- HERO ANSWER CARD -->
+        <div class="chiffrantix-answer-hero">
+          <div class="chiffrantix-answer-badges">
+            <span id="chiffrantix-category-badge" class="chiffrantix-badge">📚 Culture</span>
+            <span id="chiffrantix-difficulty-badge" class="chiffrantix-badge">🟡 Moyen</span>
+          </div>
+          <p class="chiffrantix-answer-label">La réponse chiffrée est :</p>
+          <div id="chiffrantix-answer-value" class="chiffrantix-answer-value" aria-live="polite">—</div>
+          <div class="chiffrantix-progress-row">
+            <span id="chiffrantix-progress-text">0 / 0 mots découverts (0%)</span>
+            <span id="chiffrantix-attempts-text">0 essai</span>
+          </div>
+          <div class="chiffrantix-progress-track">
+            <div id="chiffrantix-progress-bar" class="chiffrantix-progress-fill" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- MASKED QUESTION TOKENS BOARD -->
+        <div class="chiffrantix-question-card">
+          <div class="chiffrantix-question-header">
+            <span>Question mystère à reconstituer :</span>
+            <button type="button" id="chiffrantix-hint-button" class="chiffrantix-hint-btn" title="Révéler un mot de liaison ou d'aide">💡 Indice</button>
+          </div>
+          <div id="chiffrantix-tokens-board" class="chiffrantix-tokens-board" aria-live="polite"></div>
+        </div>
+
+        <!-- SOLUTION & SOURCE BANNER (Shown when solved/finished) -->
+        <div id="chiffrantix-solution-card" class="chiffrantix-solution-card" hidden>
+          <div class="chiffrantix-solution-header">
+            <span class="chiffrantix-trophy" aria-hidden="true">🏆</span>
+            <div>
+              <h2 id="chiffrantix-solution-heading">Bravo ! Question trouvée !</h2>
+              <p id="chiffrantix-solution-question" class="chiffrantix-solution-question"></p>
+            </div>
+          </div>
+          <p id="chiffrantix-solution-explanation" class="chiffrantix-solution-explanation"></p>
+          <div class="chiffrantix-solution-footer">
+            <a id="chiffrantix-source-link" class="chiffrantix-source-link" href="#" target="_blank" rel="noopener noreferrer">
+              📖 Source vérifiée : <strong id="chiffrantix-source-title">Wikipédia</strong> ↗
+            </a>
+            <div class="chiffrantix-solution-actions">
+              <button type="button" id="chiffrantix-next-button" class="chiffrantix-primary-button" hidden>Question suivante →</button>
+              <button type="button" id="chiffrantix-restart-room" class="chiffrantix-primary-button" hidden>Manche suivante →</button>
+            </div>
+          </div>
+        </div>
+
+        <p id="chiffrantix-round-message" class="chiffrantix-round-message" aria-live="polite"></p>
+
+        <!-- GUESS INPUT FORM -->
+        <form id="chiffrantix-guess-form" class="chiffrantix-guess-form">
+          <label class="sr-only" for="chiffrantix-guess">Proposer un mot de la question</label>
+          <input id="chiffrantix-guess" name="guess" maxlength="45" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Tapez un mot pour explorer la question…" required>
+          <button type="submit" class="chiffrantix-primary-button">Tester</button>
+        </form>
+
+        <div class="chiffrantix-columns">
+          <div id="chiffrantix-history" class="chiffrantix-history"></div>
+          <div id="chiffrantix-scoreboard" class="chiffrantix-scoreboard" hidden></div>
+        </div>
+      </section>
+
+      <p id="chiffrantix-play-error" class="chiffrantix-error" role="alert" hidden></p>
+    </section>
+    <footer>Derrière chaque nombre se cache une histoire sourcée.</footer>
+  </main>
+
+  <div class="shared-rooms-overlay" data-shared-rooms-modal data-play-target="chiffrantix-play" data-home-error-target="chiffrantix-home-error" hidden>
+    <section class="shared-rooms-dialog" role="dialog" aria-modal="true" aria-labelledby="chiffrantix-rooms-title" tabindex="-1">
+      <button type="button" class="shared-rooms-close" data-shared-modal-close aria-label="Fermer">×</button>
+      <header class="shared-rooms-heading">
+        <p>🔢 Chiffrantix · multijoueur</p>
+        <h2 id="chiffrantix-rooms-title">Jouer en multijoueur</h2>
+        <p>Affrontez vos amis en temps réel sur la même réponse chiffrée !</p>
+      </header>
+      <div class="shared-rooms-actions">
+        <section class="shared-room-action">
+          <div>
+            <h3>Créer un salon</h3>
+            <p>Le premier joueur à révéler les mots clés de la question gagne la manche.</p>
+          </div>
+          <button type="button" id="chiffrantix-create-room" class="chiffrantix-primary-button">Créer le salon</button>
+        </section>
+        <section class="shared-room-action">
+          <div><h3>Rejoindre avec un code</h3><p>Entrez le code à 6 caractères donné par l’hôte.</p></div>
+          <div class="shared-room-join-controls">
+            <label class="sr-only" for="chiffrantix-room-code">Code du salon</label>
+            <input id="chiffrantix-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+            <button type="button" id="chiffrantix-join-room" class="chiffrantix-secondary-button">Rejoindre</button>
+          </div>
+        </section>
+      </div>
+      <section class="chiffrantix-room-browser" aria-labelledby="chiffrantix-room-browser-title">
+        <div class="chiffrantix-room-browser-heading">
+          <div><h2 id="chiffrantix-room-browser-title">Salons publics</h2><p>Rejoignez une course ouverte ou reprenez la vôtre.</p></div>
+          <button type="button" id="chiffrantix-refresh-rooms" class="chiffrantix-secondary-button" data-shared-refresh-rooms>Actualiser</button>
+        </div>
+        <div id="chiffrantix-room-directory" class="chiffrantix-room-directory" aria-live="polite"></div>
+      </section>
+    </section>
+  </div>
+
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
+  <script src="/static/games/chiffrantix/app.js"></script>
+</body>
+</html>

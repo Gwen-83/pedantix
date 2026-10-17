@@ -188,34 +188,55 @@
     startButton.disabled = !state.can_start || roomBusy;
   }
 
-  function renderHints(hints) {
+  let sortMode = 'score'; // 'score' | 'chrono'
+
+  function renderHints(hints, hintDetails = []) {
     hintsContainer.replaceChildren();
     hintsContainer.hidden = !hints.length;
     if (!hints.length) return;
+    const scoreByWord = new Map(
+      (hintDetails || []).map((item) => [item.word, item.score]),
+    );
     const title = document.createElement('strong');
-    title.textContent = 'Mots reliés à explorer';
+    title.textContent = 'Mots reliés à explorer (cliquez pour tester)';
     const list = document.createElement('ul');
     for (const word of hints) {
       const item = document.createElement('li');
-      item.textContent = word;
+      const label = document.createElement('span');
+      label.textContent = word;
+      item.appendChild(label);
+      const hintScore = scoreByWord.get(word);
+      if (typeof hintScore === 'number') {
+        const badge = document.createElement('small');
+        badge.textContent = `${hintScore.toFixed(0)}°`;
+        item.appendChild(badge);
+      }
+      item.title = `Proposer « ${word} »`;
+      item.addEventListener('click', () => {
+        if (guessInput.disabled) return;
+        guessInput.value = word;
+        guessForm.requestSubmit();
+      });
       list.append(item);
     }
     hintsContainer.append(title, list);
   }
 
   function scoreLabel(score) {
-    if (score >= 100) return 'Trouvé';
-    if (score >= 80) return 'Brûlant';
-    if (score >= 60) return 'Très chaud';
-    if (score >= 48) return 'Chaud';
-    if (score > 0) return 'Tiède';
-    return 'Froid';
+    if (score >= 100) return 'Trouvé 🎯';
+    if (score >= 80) return 'Brûlant 🔥';
+    if (score >= 60) return 'Très chaud 🌶️';
+    if (score >= 48) return 'Chaud ☀️';
+    if (score >= 25) return 'Tiède 🌤️';
+    if (score >= 12) return 'Frais 💧';
+    return 'Froid ❄️';
   }
 
   function scoreClass(score, solved) {
     if (solved) return 'cemantix-score-solved';
     if (score >= 80) return 'cemantix-score-hot';
     if (score >= 48) return 'cemantix-score-warm';
+    if (score >= 25) return 'cemantix-score-lukewarm';
     return '';
   }
 
@@ -233,7 +254,13 @@
 
     const word = document.createElement('span');
     word.className = 'cemantix-guess-word';
-    word.textContent = guess.word;
+    if (guess.attempt) {
+      const num = document.createElement('span');
+      num.className = 'cemantix-guess-attempt';
+      num.textContent = `#${guess.attempt}`;
+      word.appendChild(num);
+    }
+    word.append(document.createTextNode(guess.word));
     const score = document.createElement('span');
     score.className = 'cemantix-guess-score';
     score.textContent = `${Number(guess.score).toFixed(1)} · ${scoreLabel(guess.score)}`;
@@ -241,7 +268,7 @@
     track.className = 'cemantix-score-track';
     const bar = document.createElement('span');
     bar.className = scoreClass(guess.score, guess.solved);
-    bar.style.width = `${Math.max(0, Math.min(100, guess.score))}%`;
+    bar.style.width = `${Math.max(4, Math.min(100, guess.score))}%`;
     track.appendChild(bar);
     row.append(word, score, track);
     list.appendChild(row);
@@ -250,12 +277,45 @@
   function renderSoloHistory(guesses) {
     const historyPanel = document.createElement('section');
     historyPanel.className = 'cemantix-player-history';
+
+    if (guesses.length > 0) {
+      const latest = guesses[guesses.length - 1];
+      const latestBox = document.createElement('div');
+      latestBox.className = 'cemantix-latest-guess';
+      const latestLabel = document.createElement('span');
+      latestLabel.className = 'cemantix-latest-label';
+      latestLabel.textContent = 'Dernier mot testé';
+      const latestList = document.createElement('ol');
+      latestList.className = 'cemantix-guess-list';
+      appendGuessRow(latestList, latest);
+      latestBox.append(latestLabel, latestList);
+      historyPanel.appendChild(latestBox);
+    }
+
+    const header = document.createElement('div');
+    header.className = 'cemantix-history-header';
     const title = document.createElement('h2');
-    title.textContent = 'Vos propositions';
+    title.textContent = `Vos propositions (${guesses.length})`;
+    const sortBtn = document.createElement('button');
+    sortBtn.type = 'button';
+    sortBtn.className = 'cemantix-sort-button';
+    sortBtn.textContent = sortMode === 'score' ? 'Trier : Proximité 🔥' : 'Trier : Chronologique 🕒';
+    sortBtn.addEventListener('click', () => {
+      sortMode = sortMode === 'score' ? 'chrono' : 'score';
+      updateView();
+    });
+    header.append(title, sortBtn);
+
     const list = document.createElement('ol');
     list.className = 'cemantix-guess-list';
-    guesses.forEach((guess) => appendGuessRow(list, guess));
-    historyPanel.append(title, list);
+    const ordered = [...guesses];
+    if (sortMode === 'score') {
+      ordered.sort((a, b) => (b.score - a.score) || ((b.attempt || 0) - (a.attempt || 0)));
+    } else {
+      ordered.reverse();
+    }
+    ordered.forEach((guess) => appendGuessRow(list, guess));
+    historyPanel.append(header, list);
     return historyPanel;
   }
 
@@ -301,6 +361,8 @@
     const isRoom = gameType === 'room';
     const timerPanel = document.getElementById('cemantix-timer-panel');
     timerPanel.hidden = !isRoom || state.status !== 'playing';
+    const soloActions = document.getElementById('cemantix-solo-actions');
+    if (soloActions) soloActions.hidden = isRoom;
     const message = document.getElementById('cemantix-round-message');
     const scoreboard = document.getElementById('cemantix-scoreboard');
     const input = guessInput;
@@ -323,7 +385,7 @@
         ? 'Proposition envoyée. Les scores seront révélés à la fin de la manche.'
         : 'Une seule proposition cette manche. Le mot et son score restent cachés jusqu’à la révélation.';
       renderRoomHistory(state.players);
-      renderHints(state.player.hints || []);
+      renderHints(state.player.hints || [], state.player.hint_details || []);
       scoreboard.hidden = true;
       return;
     }
@@ -331,17 +393,25 @@
     document.getElementById('cemantix-history').replaceChildren();
     if (!isRoom) {
       const player = state.player;
-      renderHints(state.hints || []);
-      input.disabled = player.solved;
-      submit.disabled = player.solved;
+      const isFinished = state.status === 'finished';
+      renderHints(state.hints || [], state.hint_details || []);
+      input.disabled = isFinished;
+      submit.disabled = isFinished;
       input.placeholder = 'Votre mot…';
+      const hintBtn = document.getElementById('cemantix-hint-button');
+      const giveupBtn = document.getElementById('cemantix-giveup-button');
+      if (hintBtn) hintBtn.disabled = isFinished || state.has_more_hints === false;
+      if (giveupBtn) giveupBtn.hidden = isFinished;
+
       message.textContent = player.solved
         ? `Bien joué ! Vous avez trouvé le mot en ${player.attempts} proposition${player.attempts > 1 ? 's' : ''}.`
+        : state.gave_up
+        ? `Partie terminée après ${player.attempts} proposition${player.attempts === 1 ? '' : 's'}.`
         : `${player.attempts} proposition${player.attempts === 1 ? '' : 's'} effectuée${player.attempts === 1 ? '' : 's'}.`;
       if (player.guesses.length) {
         document.getElementById('cemantix-history').appendChild(renderSoloHistory(player.guesses));
       }
-      if (player.solved) {
+      if (isFinished) {
         scoreboard.hidden = false;
         scoreboard.replaceChildren();
         const title = document.createElement('h2');
@@ -356,7 +426,7 @@
     }
 
     input.disabled = true;
-    renderHints(state.player.hints || []);
+    renderHints(state.player.hints || [], state.player.hint_details || []);
     submit.disabled = true;
     message.textContent = state.player.is_spectator
       ? 'Vous avez observé cette partie jusqu’à la fin.'
@@ -576,8 +646,42 @@
       .replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/[^a-z]/g, '').slice(0, 40);
   }
 
+  async function requestSoloHint() {
+    if (gameType !== 'solo' || !state || state.status === 'finished') return;
+    hideError(playError);
+    try {
+      state = await post('/api/cemantix/solo/hint', {
+        game_id: state.game_id,
+        player_id: playerId,
+        player_name: playerName,
+      });
+      updateView();
+    } catch (error) {
+      showError(playError, error.message);
+    }
+  }
+
+  async function giveUpSolo() {
+    if (gameType !== 'solo' || !state || state.status === 'finished') return;
+    hideError(playError);
+    try {
+      state = await post('/api/cemantix/solo/giveup', {
+        game_id: state.game_id,
+        player_id: playerId,
+        player_name: playerName,
+      });
+      localStorage.removeItem('cemantix_solo_game_id');
+      updateView();
+    } catch (error) {
+      showError(playError, error.message);
+    }
+  }
+
   document.getElementById('cemantix-solo-button').addEventListener('click', startSolo);
   document.getElementById('cemantix-resume-solo').addEventListener('click', resumeSolo);
+  document.getElementById('cemantix-hint-button')?.addEventListener('click', requestSoloHint);
+  document.getElementById('cemantix-giveup-button')?.addEventListener('click', giveUpSolo);
+  document.getElementById('cemantix-new-solo-button')?.addEventListener('click', startSolo);
   document.getElementById('cemantix-create-room').addEventListener('click', createRoom);
   document.getElementById('cemantix-refresh-rooms').addEventListener('click', refreshRoomDirectory);
   document.getElementById('cemantix-join-room').addEventListener('click', () =>
@@ -592,7 +696,7 @@
   document.getElementById('cemantix-scoreboard').addEventListener('click', (event) => {
     if (event.target.id === 'cemantix-restart-room') restartRoom();
   });
-  document.getElementById('cemantix-home-button').addEventListener('click', showHome);
+  document.getElementById('cemantix-home-button').addEventListener('click', () => showHome(true));
   document.getElementById('cemantix-copy-invite').addEventListener('click', async (event) => {
     const url = event.currentTarget.dataset.inviteUrl;
     try {

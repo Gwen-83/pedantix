@@ -368,6 +368,7 @@ _GAME_CATALOG = (
     ("pedantix", "Pédantix"),
     ("motus", "Motus"),
     ("cemantix", "Cémantix"),
+    ("chiffrantix", "Chiffrantix"),
     ("sudoku", "Sudoku"),
     ("battleship", "Bataille navale"),
     ("geoguessr", "GeoGuessr"),
@@ -1488,7 +1489,7 @@ def _summarize_game_metrics(game_id: str, metric_rows: List[Dict[str, Any]]) -> 
             if isinstance(value.get(key), (int, float))
         ]
 
-    if game_id == "cemantix":
+    if game_id in ("cemantix", "chiffrantix"):
         similarity = numbers("best_similarity")
         return {
             "avg_best_similarity": round(sum(similarity) / len(similarity), 1) if similarity else None,

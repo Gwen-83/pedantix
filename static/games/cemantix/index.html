@@ -66,7 +66,8 @@
         <button type="button" id="cemantix-resume-solo" class="cemantix-text-button">Reprendre ma partie solo</button>
       </p>
       <div class="cemantix-score-legend">
-        <span><i class="cemantix-cold"></i>0–47 : froid</span>
+        <span><i class="cemantix-cold"></i>1–24 : frais</span>
+        <span><i class="cemantix-lukewarm"></i>25–47 : tiède</span>
         <span><i class="cemantix-warm"></i>48–79 : chaud</span>
         <span><i class="cemantix-hot"></i>80+ : brûlant</span>
       </div>
@@ -117,6 +118,11 @@
           <input id="cemantix-guess" name="guess" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Votre mot…" required>
           <button type="submit" class="cemantix-primary-button">Proposer</button>
         </form>
+        <div id="cemantix-solo-actions" class="cemantix-solo-actions" hidden>
+          <button type="button" id="cemantix-hint-button" class="cemantix-secondary-button">💡 Indice</button>
+          <button type="button" id="cemantix-giveup-button" class="cemantix-secondary-button">🏳️ Révéler le mot</button>
+          <button type="button" id="cemantix-new-solo-button" class="cemantix-secondary-button">🔄 Nouveau mot</button>
+        </div>
         <div id="cemantix-history" class="cemantix-history"></div>
         <div id="cemantix-scoreboard" class="cemantix-scoreboard" hidden></div>
       </section>

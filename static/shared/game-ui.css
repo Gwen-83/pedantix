@@ -409,6 +409,7 @@ footer { color: var(--game-muted); }
 
 .shared-rooms-dialog .motus-room-browser,
 .shared-rooms-dialog .cemantix-room-browser,
+.shared-rooms-dialog .chiffrantix-room-browser,
 .shared-rooms-dialog .sudoku-room-browser,
 .shared-rooms-dialog .naval-room-browser {
   margin-top: 22px;

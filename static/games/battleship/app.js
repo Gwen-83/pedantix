@@ -720,12 +720,20 @@
     }
   });
   document.getElementById('naval-home-button').addEventListener('click', () => {
-    localStorage.removeItem('battleship_active_room_id');
-    window.location.assign('/');
+    showHome();
   });
   document.getElementById('naval-orientation').addEventListener('click', () => {
     vertical = !vertical;
     renderLobby();
+  });
+  document.addEventListener('keydown', (event) => {
+    if ((event.key === 'r' || event.key === 'R') && !play.hidden && state?.status === 'lobby') {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      event.preventDefault();
+      vertical = !vertical;
+      renderLobby();
+    }
   });
   document.getElementById('naval-randomize').addEventListener('click', randomizeFleet);
   document.getElementById('naval-ready-button').addEventListener('click', () => {
@@ -741,5 +749,7 @@
     joinRoom(roomId);
   } else if (localStorage.getItem('battleship_active_room_id')) {
     joinRoom(localStorage.getItem('battleship_active_room_id'));
+  } else {
+    refreshRoomDirectory();
   }
 })();

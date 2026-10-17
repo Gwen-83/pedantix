@@ -147,6 +147,7 @@ class BattleshipRoom:
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
     match_number: int = 1
+    stats_recorded: bool = False
 
     def _alive_ids(self) -> List[str]:
         return [
@@ -436,6 +437,7 @@ class BattleshipManager:
             room.turn_number = 0
             room.winner_player_id = None
             room.started_at = None
+            room.stats_recorded = False
             return room
 
     def fire(

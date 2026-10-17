@@ -240,7 +240,7 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
         self.assertEqual(
             {item["game_id"] for item in catalog},
             {
-                "pedantix", "motus", "cemantix", "sudoku", "battleship",
+                "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
                 "geoguessr", "undercover", "bitoguessr",
             },
         )

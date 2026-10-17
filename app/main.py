@@ -48,6 +48,7 @@ from app.secret_gate import (
 from app.nlp import normalize_wiki_title
 from app.motus import MOTUS_DIFFICULTIES, motus_manager
 from app.cemantix import cemantix_manager
+from app.chiffrantix import ChiffrantixManager
 from app.battleship import battleship_manager
 from app.sudoku import sudoku_manager
 from app.undercover import undercover_manager
@@ -151,6 +152,7 @@ init_db()
 
 # Game manager instance
 game_manager = GameManager()
+chiffrantix_manager = ChiffrantixManager()
 online_presence: Dict[str, Dict[str, Any]] = {}
 online_presence_lock = threading.Lock()
 ONLINE_PRESENCE_TTL_SECONDS = 90
@@ -191,7 +193,7 @@ class PresenceRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=80)
     username: str = Field(min_length=1, max_length=24)
     game_id: Literal[
-        "pedantix", "motus", "cemantix", "sudoku", "battleship", "geoguessr",
+        "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship", "geoguessr",
         "undercover", "bitoguessr", "store"
     ]
 
@@ -288,10 +290,32 @@ class CemantixSoloGuessRequest(CemantixPlayerRequest):
     game_id: str
     guess: str
 
+class CemantixSoloActionRequest(CemantixPlayerRequest):
+    game_id: str
+
 class CemantixRoomPlayerRequest(CemantixPlayerRequest):
     room_id: str
 
 class CemantixRoomGuessRequest(CemantixRoomPlayerRequest):
+    guess: str
+
+class ChiffrantixPlayerRequest(BaseModel):
+    player_id: str
+    player_name: str
+    difficulty: str = "moyen"
+    category: str = "toutes"
+
+class ChiffrantixSoloGuessRequest(ChiffrantixPlayerRequest):
+    game_id: str
+    guess: str
+
+class ChiffrantixSoloHintRequest(ChiffrantixPlayerRequest):
+    game_id: str
+
+class ChiffrantixRoomPlayerRequest(ChiffrantixPlayerRequest):
+    room_id: str
+
+class ChiffrantixRoomGuessRequest(ChiffrantixRoomPlayerRequest):
     guess: str
 
 class BattleshipPlayerRequest(BaseModel):
@@ -472,6 +496,13 @@ async def cemantix_page():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page Cémantix est introuvable.")
+
+@app.get("/games/chiffrantix/")
+async def chiffrantix_page():
+    index_path = os.path.join(STATIC_DIR, "games", "chiffrantix", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Chiffrantix est introuvable.")
 
 @app.get("/games/battleship/")
 async def battleship_page():
@@ -1520,7 +1551,8 @@ async def guess_motus_room(req: MotusRoomGuessRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if room.status == "finished":
+    if room.status == "finished" and not room.stats_recorded:
+        room.stats_recorded = True
         for player in room.players.values():
             if player.is_spectator:
                 continue
@@ -1554,6 +1586,41 @@ async def get_motus_room(room_id: str, player_id: str = Query(...)):
     return room.to_dict(player_id)
 
 
+def _record_undercover_room_results(room) -> None:
+    if room.status != "finished" or room.stats_recorded:
+        return
+    room.stats_recorded = True
+    duration = max(0, int(time.time() - (room.started_at or room.created_at)))
+    for player in room.players.values():
+        if player.is_spectator:
+            continue
+        won = (
+            (room.winner == "citizens" and player.role == "citizen")
+            or (room.winner == "impostors" and player.role in ("undercover", "mr_white"))
+            or (room.winner == "mr_white" and player.role == "mr_white")
+        )
+        points = 3 if won else 0
+        if points:
+            increment_player_score(player.name, points, "undercover")
+        record_user_game_finish(
+            player.name,
+            won=won,
+            attempts=room.round_number,
+            points=points,
+            session_id=f"undercover:{room.room_id}:{room.match_number}",
+            mode="multiplayer",
+            title="Undercover",
+            duration_seconds=duration,
+            game_id="undercover",
+            difficulty="classique",
+            metrics={
+                "role": player.role or "citizen",
+                "winner": room.winner or "",
+                "rounds": room.round_number,
+            },
+        )
+
+
 @app.get("/api/undercover/rooms")
 async def list_undercover_rooms(player_id: Optional[str] = Query(None)):
     return {"rooms": undercover_manager.list_rooms(player_id)}
@@ -1582,6 +1649,7 @@ async def get_undercover_room(room_id: str, player_id: str = Query(...)):
         room = undercover_manager.get_room(room_id, player_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_undercover_room_results(room)
     return room.to_dict(player_id)
 
 
@@ -1639,6 +1707,7 @@ async def undercover_vote(req: UndercoverVoteRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_undercover_room_results(room)
     return room.to_dict(req.player_id)
 
 
@@ -1650,6 +1719,7 @@ async def undercover_guess(req: UndercoverGuessRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_undercover_room_results(room)
     return room.to_dict(req.player_id)
 
 
@@ -1663,6 +1733,13 @@ async def restart_undercover_room(req: UndercoverRoomPlayerRequest):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"undercover:{room.room_id}:{room.match_number}",
+        "undercover",
+        "multiplayer",
+        "Undercover",
+        "classique",
+    )
     return room.to_dict(req.player_id)
 
 
@@ -1717,6 +1794,42 @@ async def guess_cemantix_solo(req: CemantixSoloGuessRequest):
             },
         )
     return {"result": result, **game.to_dict()}
+
+
+@app.post("/api/cemantix/solo/hint")
+async def hint_cemantix_solo(req: CemantixSoloActionRequest):
+    try:
+        game = cemantix_manager.request_solo_hint(req.game_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return game.to_dict()
+
+
+@app.post("/api/cemantix/solo/giveup")
+async def giveup_cemantix_solo(req: CemantixSoloActionRequest):
+    try:
+        game = cemantix_manager.give_up_solo(req.game_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_user_game_finish(
+        game.player_name,
+        won=False,
+        attempts=len(game.guesses),
+        session_id=f"cemantix:{game.game_id}",
+        mode="solo",
+        title="Cémantix",
+        duration_seconds=max(0, int(time.time() - game.created_at)),
+        game_id="cemantix",
+        difficulty=game.difficulty,
+        metrics={
+            "best_similarity": max((guess["score"] for guess in game.guesses), default=0),
+        },
+    )
+    return game.to_dict()
 
 
 @app.post("/api/cemantix/room/create")
@@ -1782,8 +1895,9 @@ async def restart_cemantix_room(req: CemantixRoomPlayerRequest):
 
 
 def _record_cemantix_room_results(room) -> None:
-    if room.status != "finished":
+    if room.status != "finished" or room.stats_recorded:
         return
+    room.stats_recorded = True
     duration = max(0, int(time.time() - (room.started_at or time.time())))
     for player in room.players.values():
         if player.is_spectator:
@@ -1829,6 +1943,202 @@ async def get_cemantix_room(room_id: str, player_id: str = Query(...)):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     _record_cemantix_room_results(room)
     return room.to_dict(player_id, time.time())
+
+
+@app.get("/api/chiffrantix/rooms")
+async def list_chiffrantix_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": chiffrantix_manager.list_rooms(player_id)}
+
+
+@app.post("/api/chiffrantix/solo/new")
+async def new_chiffrantix_solo(req: ChiffrantixPlayerRequest):
+    try:
+        game = chiffrantix_manager.create_solo(
+            req.player_id, req.player_name, req.difficulty, req.category
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"chiffrantix:{game.game_id}",
+        "chiffrantix",
+        "solo",
+        game.question_item.get("answer", "Chiffrantix"),
+        game.difficulty,
+    )
+    return game.to_dict()
+
+
+@app.get("/api/chiffrantix/solo/{game_id}")
+async def get_chiffrantix_solo(game_id: str, player_id: str = Query(...)):
+    try:
+        return chiffrantix_manager.get_solo(game_id, player_id).to_dict()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/chiffrantix/solo/guess")
+async def guess_chiffrantix_solo(req: ChiffrantixSoloGuessRequest):
+    try:
+        game, result = chiffrantix_manager.guess_solo(
+            req.game_id, req.player_id, req.guess
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if game.status == "finished":
+        record_user_game_finish(
+            game.player_name,
+            won=True,
+            attempts=game.board.attempts,
+            points=1,
+            session_id=f"chiffrantix:{game.game_id}",
+            mode="solo",
+            title=f"{game.question_item['answer']} — {game.question_item['question']}",
+            duration_seconds=max(0, int(time.time() - game.created_at)),
+            revealed_words=game.board.revealed_count,
+            total_words=game.board.total_words,
+            game_id="chiffrantix",
+            difficulty=game.difficulty,
+            metrics={
+                "best_similarity": max(
+                    (g["score"] for g in game.board.guesses_history), default=0
+                ),
+                "category": game.question_item.get("category", "toutes"),
+            },
+        )
+    return {"result": result, **game.to_dict()}
+
+
+@app.post("/api/chiffrantix/solo/hint")
+async def hint_chiffrantix_solo(req: ChiffrantixSoloHintRequest):
+    try:
+        game, hint_info = chiffrantix_manager.hint_solo(req.game_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"hint": hint_info, **game.to_dict()}
+
+
+@app.post("/api/chiffrantix/room/create")
+async def create_chiffrantix_room(req: ChiffrantixPlayerRequest):
+    try:
+        room = chiffrantix_manager.create_room(
+            req.player_id, req.player_name, req.difficulty, req.category
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/chiffrantix/room/join")
+async def join_chiffrantix_room(req: ChiffrantixRoomPlayerRequest):
+    try:
+        room = chiffrantix_manager.join_room(
+            req.room_id, req.player_id, req.player_name
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/chiffrantix/room/start")
+async def start_chiffrantix_room(req: ChiffrantixRoomPlayerRequest):
+    try:
+        room = chiffrantix_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"chiffrantix:{room.room_id}:{room.match_number}",
+        "chiffrantix",
+        "multiplayer",
+        room.question_item.get("answer", "Chiffrantix"),
+        room.difficulty,
+    )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/chiffrantix/room/restart")
+async def restart_chiffrantix_room(req: ChiffrantixRoomPlayerRequest):
+    try:
+        room = chiffrantix_manager.restart_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"chiffrantix:{room.room_id}:{room.match_number}",
+        "chiffrantix",
+        "multiplayer",
+        room.question_item.get("answer", "Chiffrantix"),
+        room.difficulty,
+    )
+    return room.to_dict(req.player_id)
+
+
+def _record_chiffrantix_room_results(room) -> None:
+    if room.status != "finished" or room.stats_recorded:
+        return
+    room.stats_recorded = True
+    duration = max(0, int(time.time() - (room.started_at or time.time())))
+    for player in room.players.values():
+        if player.is_spectator:
+            continue
+        won = player.player_id == room.winner_player_id
+        best_sim = max(
+            (g["score"] for g in player.board.guesses_history), default=0
+        )
+        record_user_game_finish(
+            player.name,
+            won=won,
+            attempts=player.board.attempts,
+            points=3 if won else 0,
+            session_id=f"chiffrantix:{room.room_id}:{room.match_number}",
+            mode="multiplayer",
+            title=f"{room.question_item['answer']} — {room.question_item['question']}",
+            duration_seconds=duration,
+            revealed_words=player.board.revealed_count,
+            total_words=player.board.total_words,
+            difficulty=room.difficulty,
+            metrics={
+                "best_similarity": best_sim,
+                "category": room.question_item.get("category", "toutes"),
+            },
+            game_id="chiffrantix",
+        )
+
+
+@app.post("/api/chiffrantix/room/guess")
+async def guess_chiffrantix_room(req: ChiffrantixRoomGuessRequest):
+    try:
+        room, result = chiffrantix_manager.guess_room(
+            req.room_id, req.player_id, req.guess
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_chiffrantix_room_results(room)
+    return {"result": result, **room.to_dict(req.player_id)}
+
+
+@app.get("/api/chiffrantix/room/{room_id}")
+async def get_chiffrantix_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = chiffrantix_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_chiffrantix_room_results(room)
+    return room.to_dict(player_id)
 
 
 @app.get("/api/battleship/rooms")
@@ -1892,8 +2202,10 @@ def _record_sudoku_solo_result(game) -> None:
 
 
 def _record_sudoku_room_results(room) -> None:
-    if room.status != "finished":
+    room.advance(time.time())
+    if room.status != "finished" or room.stats_recorded:
         return
+    room.stats_recorded = True
     duration = max(0, int(time.time() - (room.started_at or time.time())))
     for player in room.players.values():
         if player.is_spectator:
@@ -2639,7 +2951,8 @@ async def fire_battleship_shot(req: BattleshipFireRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if room.status == "finished":
+    if room.status == "finished" and not room.stats_recorded:
+        room.stats_recorded = True
         duration = max(0, int(time.time() - (room.started_at or time.time())))
         for player in room.players.values():
             if player.is_spectator:

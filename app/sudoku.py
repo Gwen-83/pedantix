@@ -259,6 +259,7 @@ class SudokuRoom:
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
     match_number: int = 1
+    stats_recorded: bool = False
 
     def advance(self, now: float) -> None:
         if self.status == "playing" and self.deadline_at is not None and now >= self.deadline_at:
@@ -501,6 +502,7 @@ class SudokuManager:
             room.finish_reason = None
             room.started_at = None
             room.match_number += 1
+            room.stats_recorded = False
             for player in room.players.values():
                 player.is_spectator = False
                 player.board = _empty_board(puzzle)

@@ -360,8 +360,15 @@
     }
     renderRanking();
     const restartButton = document.getElementById('sudoku-restart-game');
-    restartButton.hidden = !room || state.status !== 'finished' || playerId !== state.host_player_id;
-    restartButton.disabled = roomBusy;
+    if (room) {
+      restartButton.textContent = 'Nouvelle grille';
+      restartButton.hidden = state.status !== 'finished' || playerId !== state.host_player_id;
+      restartButton.disabled = roomBusy;
+    } else {
+      restartButton.textContent = 'Nouvelle grille solo';
+      restartButton.hidden = state.status !== 'finished';
+      restartButton.disabled = false;
+    }
   }
 
   function updateView() {
@@ -627,11 +634,12 @@
     }
   });
   document.getElementById('sudoku-start-game').addEventListener('click', startRoom);
-  document.getElementById('sudoku-restart-game').addEventListener('click', restartRoom);
+  document.getElementById('sudoku-restart-game').addEventListener('click', () => {
+    if (gameType === 'solo') createSolo();
+    else restartRoom();
+  });
   document.getElementById('sudoku-home-button').addEventListener('click', () => {
-    localStorage.setItem('sudoku_active_game_mode', 'home');
-    localStorage.removeItem('sudoku_active_room_id');
-    window.location.assign('/');
+    showHome(true);
   });
   document.getElementById('sudoku-copy-invite').addEventListener('click', async (event) => {
     const url = event.currentTarget.dataset.inviteUrl;

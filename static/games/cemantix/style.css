@@ -149,6 +149,7 @@ button.cemantix-mode-card:hover { transform: translateY(-2px); border-color: rgb
 .cemantix-score-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .cemantix-score-legend i { width: 11px; height: 11px; border-radius: 3px; }
 .cemantix-cold { background: #50596b; }
+.cemantix-lukewarm { background: #38bdf8; }
 .cemantix-warm { background: #d39d36; }
 .cemantix-hot { background: #d85972; }
 
@@ -177,21 +178,31 @@ button.cemantix-mode-card:hover { transform: translateY(-2px); border-color: rgb
 
 .cemantix-round-message { min-height: 24px; margin: 16px 0 12px; color: #cbd5e1; text-align: center; font-size: 0.88rem; }
 .cemantix-hints { margin: 0 auto 14px; padding: 12px 14px; border: 1px solid rgba(129,140,248,.22); border-radius: 11px; background: rgba(129,140,248,.08); color: #dbe3ef; font-size: 0.82rem; }
-.cemantix-hints strong { display: block; margin-bottom: 5px; color: #c7d2fe; }
+.cemantix-hints strong { display: block; margin-bottom: 6px; color: #c7d2fe; }
 .cemantix-hints ul { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; padding: 0; list-style: none; }
-.cemantix-hints li { padding: 4px 9px; border-radius: 999px; background: rgba(129,140,248,.16); color: #e0e7ff; }
-.cemantix-guess-form { display: flex; max-width: 480px; gap: 8px; margin: 0 auto 20px; }
+.cemantix-hints li { padding: 4px 10px; border: 1px solid rgba(129,140,248,.28); border-radius: 999px; background: rgba(129,140,248,.16); color: #e0e7ff; cursor: pointer; transition: background 140ms ease, transform 140ms ease; }
+.cemantix-hints li:hover { background: rgba(129,140,248,.3); transform: translateY(-1px); }
+.cemantix-hints li small { margin-left: 5px; color: #a5b4fc; font-weight: 700; }
+.cemantix-guess-form { display: flex; max-width: 480px; gap: 8px; margin: 0 auto 12px; }
 .cemantix-guess-form input { flex: 1; padding: 11px 13px; font-size: 1rem; }
+.cemantix-solo-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 auto 18px; }
+.cemantix-solo-actions .cemantix-secondary-button { min-height: 36px; padding: 6px 12px; font-size: 0.78rem; }
 .cemantix-history { display: grid; gap: 10px; }
 .cemantix-history:empty { display: none; }
 .cemantix-player-history { padding: 14px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(255, 255, 255, 0.03); }
-.cemantix-player-history h2 { margin: 0 0 10px; font-size: 0.9rem; }
+.cemantix-history-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.cemantix-player-history h2 { margin: 0; font-size: 0.9rem; }
+.cemantix-sort-button { min-height: 30px; padding: 4px 10px; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; background: rgba(255,255,255,0.05); color: #cbd5e1; font-size: 0.74rem; font-weight: 700; }
+.cemantix-latest-guess { margin-bottom: 12px; padding: 9px 11px; border: 1px solid rgba(129, 140, 248, 0.35); border-radius: 10px; background: rgba(99, 102, 241, 0.1); }
+.cemantix-latest-label { display: block; margin-bottom: 4px; color: #a5b4fc; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
 .cemantix-guess-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .cemantix-guess-row { display: grid; grid-template-columns: minmax(100px, 1fr) auto minmax(90px, 1.2fr); align-items: center; gap: 10px; }
-.cemantix-guess-word { overflow-wrap: anywhere; color: #e2e8f0; font-size: 0.84rem; }
+.cemantix-guess-word { overflow-wrap: anywhere; color: #e2e8f0; font-size: 0.84rem; font-weight: 600; }
+.cemantix-guess-attempt { margin-right: 6px; color: #7c869b; font-size: 0.73rem; font-weight: 500; }
 .cemantix-guess-score { min-width: 42px; color: #cbd5e1; font-size: 0.76rem; font-variant-numeric: tabular-nums; text-align: right; }
 .cemantix-score-track { height: 7px; overflow: hidden; border-radius: 8px; background: rgba(255, 255, 255, 0.08); }
-.cemantix-score-track span { display: block; height: 100%; border-radius: inherit; background: #8b93a4; }
+.cemantix-score-track span { display: block; height: 100%; border-radius: inherit; background: #64748b; }
+.cemantix-score-track span.cemantix-score-lukewarm { background: #38bdf8; }
 .cemantix-score-track span.cemantix-score-warm { background: #d39d36; }
 .cemantix-score-track span.cemantix-score-hot { background: #d85972; }
 .cemantix-score-track span.cemantix-score-solved { background: #2da779; }
