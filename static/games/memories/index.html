@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr" data-presence-game="memories">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#273238">
+  <title>Memory — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+  <link rel="stylesheet" href="/static/games/memories/style.css">
+</head>
+<body>
+  <main class="memory-shell">
+    <header class="memory-header">
+      <a class="memory-back" href="/">← Ludothèque</a>
+      <div class="memory-brand"><span aria-hidden="true">🃏</span><span>MEMORY</span></div>
+      <span id="memory-player-name" class="memory-player-name"></span>
+      <label class="memory-theme-control" for="shared-theme-select">
+        <span aria-hidden="true">🎨</span>
+        <select id="shared-theme-select" aria-label="Thème de l’interface">
+          <option value="dark-colorful">Coloré sombre</option>
+          <option value="midnight">Nuit étoilée</option>
+          <option value="light-colorful">Coloré clair</option>
+          <option value="light-grey">Gris clair</option>
+          <option value="dark-grey">Charbon sombre</option>
+          <option value="parchment">Parchemin</option>
+        </select>
+      </label>
+    </header>
+
+    <section id="memory-home" class="memory-panel" aria-labelledby="memory-title">
+      <p class="memory-eyebrow">Retournez les cartes, mémorisez les symboles, trouvez toutes les paires</p>
+      <h1 id="memory-title">À vous de jouer de mémoire</h1>
+      <p class="memory-intro">En solo, faites le moins de coups possible. À plusieurs, chacun retourne deux cartes à son tour : une paire trouvée vous laisse rejouer, un raté passe la main.</p>
+      <div class="memory-settings">
+        <label for="memory-grid-size">Taille de la grille</label>
+        <select id="memory-grid-size" data-game-setting="grid-size">
+          <option value="4">4 × 4 · 8 paires · classique</option>
+          <option value="6">6 × 6 · 18 paires · expert</option>
+        </select>
+      </div>
+      <div class="memory-home-actions">
+        <button type="button" id="memory-solo-start" class="memory-primary">Jouer en solo</button>
+        <button type="button" id="memory-open-multiplayer" class="memory-secondary">Jouer en multijoueur</button>
+      </div>
+      <p id="memory-home-error" class="memory-error" role="alert" hidden></p>
+      <section id="memory-room-browser" class="memory-room-browser" aria-labelledby="memory-rooms-title">
+        <div class="memory-section-heading">
+          <div><h2 id="memory-rooms-title">Salons en attente</h2><p>Rejoignez un salon ouvert ou reprenez le vôtre.</p></div>
+          <button type="button" id="memory-refresh-rooms" class="memory-secondary">Actualiser</button>
+        </div>
+        <div id="memory-room-list" class="memory-room-list" aria-live="polite">Chargement des salons…</div>
+      </section>
+    </section>
+
+    <section id="memory-multiplayer-setup" class="memory-panel" hidden>
+      <button type="button" id="memory-setup-back" class="memory-back-button">← Retour</button>
+      <p class="memory-eyebrow">Multijoueur · de 2 à 8 joueurs</p>
+      <h1>Créer ou rejoindre un salon</h1>
+      <p>Tout le monde confirme sa présence dans le salon avant que l’hôte puisse lancer la partie.</p>
+      <div class="memory-setup-grid">
+        <section>
+          <h2>Créer un salon</h2>
+          <p>Choisissez la grille commune. Les joueurs jouent chacun leur tour.</p>
+          <button type="button" id="memory-create-room" class="memory-primary">Créer le salon</button>
+        </section>
+        <section>
+          <h2>Rejoindre avec un code</h2>
+          <label class="sr-only" for="memory-room-code">Code du salon</label>
+          <div class="memory-join-controls">
+            <input id="memory-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+            <button type="button" id="memory-join-room" class="memory-secondary">Rejoindre</button>
+          </div>
+        </section>
+      </div>
+      <p id="memory-setup-error" class="memory-error" role="alert" hidden></p>
+    </section>
+
+    <section id="memory-game" class="memory-panel" hidden>
+      <header class="memory-game-heading">
+        <div>
+          <p id="memory-mode-label" class="memory-eyebrow"></p>
+          <h1 id="memory-round-heading">Memory</h1>
+        </div>
+        <button type="button" id="memory-leave" class="memory-secondary">Quitter</button>
+      </header>
+
+      <section id="memory-lobby" class="memory-lobby" hidden aria-labelledby="memory-lobby-title">
+        <p class="memory-eyebrow">Salon multijoueur · code <strong id="memory-invite-code"></strong></p>
+        <h2 id="memory-lobby-title">En attente des joueurs</h2>
+        <p id="memory-lobby-summary"></p>
+        <button type="button" id="memory-copy-invite" class="memory-secondary">Copier le lien</button>
+        <ul id="memory-player-list" class="memory-player-list"></ul>
+        <div class="memory-lobby-actions">
+          <button type="button" id="memory-ready" class="memory-secondary">Confirmer ma présence</button>
+          <button type="button" id="memory-start" class="memory-primary" hidden>Démarrer la partie</button>
+        </div>
+      </section>
+
+      <div id="memory-playing" hidden>
+        <div class="memory-stats" aria-live="polite">
+          <div><span>Paires</span><strong id="memory-pairs">0 / 8</strong></div>
+          <div><span>Coups</span><strong id="memory-moves">0</strong></div>
+          <div><span>Temps</span><strong id="memory-time">00:00</strong></div>
+          <div id="memory-current-turn-box" hidden><span>À jouer</span><strong id="memory-current-turn"></strong></div>
+        </div>
+        <ul id="memory-scoreboard" class="memory-scoreboard" aria-label="Scores des joueurs" hidden></ul>
+        <p id="memory-game-message" class="memory-game-message" role="status" aria-live="polite"></p>
+        <div id="memory-board" class="memory-board" role="group" aria-label="Plateau de cartes"></div>
+      </div>
+
+      <section id="memory-finished" class="memory-finished" hidden aria-live="polite">
+        <h2 id="memory-finished-title">Partie terminée</h2>
+        <p id="memory-finished-summary"></p>
+        <ol id="memory-final-scores"></ol>
+        <button type="button" id="memory-replay" class="memory-primary" hidden>Rejouer</button>
+        <button type="button" id="memory-home-button" class="memory-secondary">Retour à l’accueil</button>
+      </section>
+      <p id="memory-game-error" class="memory-error" role="alert" hidden></p>
+    </section>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
+  <script src="/static/games/memories/app.js"></script>
+</body>
+</html>

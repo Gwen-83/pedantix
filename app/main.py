@@ -78,6 +78,7 @@ from app.bitoguessr import (
     bitoguessr_manager,
 )
 from app.plongee import plongee_manager
+from app.memories import memories_manager
 from app.game import GameManager, GameSession
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
@@ -88,7 +89,7 @@ app = FastAPI(title="Pédantix Local - Concours Multijoueur", version="2.0.0")
 
 GAME_LAUNCH_SLUGS = {
     "motus", "undercover", "cemantix", "chiffrantix", "battleship",
-    "sudoku", "geoguessr", "bitoguessr", "plongee",
+    "sudoku", "geoguessr", "bitoguessr", "plongee", "memories",
 }
 GAME_LAUNCH_LOCAL_LOCK = threading.Lock()
 
@@ -273,7 +274,7 @@ class PresenceRequest(BaseModel):
     username: str = Field(min_length=1, max_length=24)
     game_id: Literal[
         "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship", "geoguessr",
-        "undercover", "bitoguessr", "plongee", "store"
+        "undercover", "bitoguessr", "plongee", "store", "memories"
     ]
 
 class StoreChatMessageRequest(BaseModel):
@@ -283,7 +284,7 @@ class StoreInvitationRequest(BaseModel):
     recipient_username: str = Field(min_length=2, max_length=24)
     game_id: Literal[
         "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
-        "geoguessr", "plongee"
+        "geoguessr", "plongee", "memories"
     ]
 
 class StoreInvitationActionRequest(BaseModel):
@@ -500,6 +501,29 @@ class GeoGuessrPanoramaViewRequest(BaseModel):
     room_id: Optional[str] = None
     navigation: bool = False
 
+class MemoriesPlayerRequest(BaseModel):
+    player_id: str = Field(min_length=1, max_length=100)
+    player_name: str = Field(min_length=1, max_length=40)
+
+class MemoriesSoloCreateRequest(MemoriesPlayerRequest):
+    grid_size: Literal[4, 6] = 4
+
+class MemoriesRoomRequest(MemoriesPlayerRequest):
+    room_id: str = Field(min_length=1, max_length=6)
+
+class MemoriesRoomCreateRequest(MemoriesPlayerRequest):
+    grid_size: Literal[4, 6] = 4
+
+class MemoriesFlipRequest(MemoriesRoomRequest):
+    index: int = Field(ge=0, le=35)
+
+class MemoriesSoloFlipRequest(MemoriesPlayerRequest):
+    game_id: str = Field(min_length=1, max_length=64)
+    index: int = Field(ge=0, le=35)
+
+class MemoriesReadyRequest(MemoriesRoomRequest):
+    ready: bool = True
+
 class BitoguessrPlayerRequest(BaseModel):
     player_id: str = Field(min_length=1, max_length=100)
     player_name: str = Field(min_length=1, max_length=40)
@@ -646,6 +670,13 @@ async def geoguessr_page():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page GeoGuessr est introuvable.")
+
+@app.get("/games/memories/")
+async def memories_page():
+    index_path = os.path.join(STATIC_DIR, "games", "memories", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Mémories est introuvable.")
 
 @app.get("/games/undercover/")
 async def undercover_page():
@@ -857,6 +888,7 @@ STORE_INVITATION_GAMES = {
     "battleship": ("Bataille navale", battleship_manager, "battleship_player_id"),
     "geoguessr": ("GeoGuessr", geoguessr_manager, "geoguessr_player_id"),
     "plongee": ("Plongée", plongee_manager, "plongee_player_id"),
+    "memories": ("Memory", memories_manager, "memories_player_id"),
 }
 STORE_ROOM_PLAYER_LIMITS = {
     "motus": 8,
@@ -868,6 +900,7 @@ STORE_ROOM_PLAYER_LIMITS = {
     "undercover": 20,
     "bitoguessr": 8,
     "plongee": 8,
+    "memories": 8,
 }
 STORE_ACTIVE_ROOM_GAMES = {
     **STORE_INVITATION_GAMES,
@@ -897,6 +930,8 @@ def _create_invitation_room(
         room = manager.create_room(sender_id, sender_name, "moyen")
     elif game_id == "geoguessr":
         room = manager.create_room(sender_id, sender_name, "world", "cities")
+    elif game_id == "memories":
+        room = manager.create_room(sender_id, sender_name, 4)
     else:
         room = manager.create_room(sender_id, sender_name)
     manager.join_room(room.room_id, recipient_id, recipient_name)
@@ -3034,6 +3069,197 @@ async def get_geoguessr_room(room_id: str, player_id: str = Query(...)):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     _record_geoguessr_room_results(room)
+    return room.to_dict(player_id)
+
+
+def _record_memories_solo_result(game) -> None:
+    if game.status != "finished" or game.stats_recorded:
+        return
+    game.stats_recorded = True
+    duration = max(0, int(time.time() - game.started_at))
+    record_user_game_finish(
+        game.player_name,
+        won=True,
+        attempts=game.moves,
+        points=game.points,
+        session_id=f"memories:{game.game_id}",
+        mode="solo",
+        title="Memory",
+        duration_seconds=duration,
+        game_id="memories",
+        difficulty=f"{game.grid_size}x{game.grid_size}",
+        metrics={
+            "grid_size": game.grid_size,
+            "pairs": len(game.matched) // 2,
+            "moves": game.moves,
+        },
+    )
+    increment_player_score(game.player_name, game.points, "memories")
+
+
+def _record_memories_room_results(room) -> None:
+    if room.status != "finished" or room.stats_recorded:
+        return
+    room.stats_recorded = True
+    duration = max(0, int(time.time() - (room.started_at or time.time())))
+    winner_ids = set(room.winner_ids)
+    for player in room.players.values():
+        points = player.pairs * 100
+        record_user_game_finish(
+            player.name,
+            won=player.player_id in winner_ids,
+            attempts=player.moves,
+            points=points,
+            session_id=f"memories:{room.room_id}:{room.match_number}",
+            mode="multiplayer",
+            title="Memory",
+            duration_seconds=duration,
+            game_id="memories",
+            difficulty=f"{room.grid_size}x{room.grid_size}",
+            metrics={
+                "grid_size": room.grid_size,
+                "pairs": player.pairs,
+                "moves": player.moves,
+                "winner": player.player_id in winner_ids,
+            },
+        )
+        increment_player_score(player.name, points, "memories")
+
+
+@app.post("/api/memories/solo/new")
+async def create_memories_solo(req: MemoriesSoloCreateRequest):
+    try:
+        game = memories_manager.create_solo(
+            req.player_id, req.player_name, req.grid_size
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"memories:{game.game_id}",
+        "memories",
+        "solo",
+        "Memory",
+        f"{game.grid_size}x{game.grid_size}",
+    )
+    return game.to_dict()
+
+
+@app.get("/api/memories/solo/{game_id}")
+async def get_memories_solo(game_id: str, player_id: str = Query(...)):
+    try:
+        game = memories_manager.get_solo(game_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_memories_solo_result(game)
+    return game.to_dict()
+
+
+@app.post("/api/memories/solo/flip")
+async def flip_memories_solo(req: MemoriesSoloFlipRequest):
+    try:
+        game = memories_manager.flip_solo(req.game_id, req.player_id, req.index)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_memories_solo_result(game)
+    return game.to_dict()
+
+
+@app.get("/api/memories/rooms")
+async def list_memories_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": memories_manager.list_rooms(player_id)}
+
+
+@app.post("/api/memories/room/create")
+async def create_memories_room(req: MemoriesRoomCreateRequest):
+    try:
+        room = memories_manager.create_room(
+            req.player_id, req.player_name, req.grid_size
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/memories/room/join")
+async def join_memories_room(req: MemoriesRoomRequest):
+    try:
+        room = memories_manager.join_room(
+            req.room_id, req.player_id, req.player_name
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/memories/room/ready")
+async def set_memories_room_ready(req: MemoriesReadyRequest):
+    try:
+        room = memories_manager.set_ready(req.room_id, req.player_id, req.ready)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/memories/room/start")
+async def start_memories_room(req: MemoriesRoomRequest):
+    try:
+        room = memories_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"memories:{room.room_id}:{room.match_number}",
+        "memories",
+        "multiplayer",
+        "Memory",
+        f"{room.grid_size}x{room.grid_size}",
+    )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/memories/room/restart")
+async def restart_memories_room(req: MemoriesRoomRequest):
+    try:
+        room = memories_manager.restart_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/memories/room/flip")
+async def flip_memories_room(req: MemoriesFlipRequest):
+    try:
+        room = memories_manager.flip_room(
+            req.room_id, req.player_id, req.index
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_memories_room_results(room)
+    return room.to_dict(req.player_id)
+
+
+@app.get("/api/memories/room/{room_id}")
+async def get_memories_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = memories_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_memories_room_results(room)
     return room.to_dict(player_id)
 
 

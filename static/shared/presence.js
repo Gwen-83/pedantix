@@ -11,6 +11,7 @@
     undercover: 'Undercover',
     bitoguessr: 'Bitoguessr',
     plongee: 'Plongée',
+    memories: 'Memory',
     store: 'La ludothèque',
   };
   const gameId = document.documentElement.dataset.presenceGame
@@ -32,6 +33,7 @@
     battleship: 'Bataille navale',
     geoguessr: 'GeoGuessr',
     plongee: 'Plongée',
+    memories: 'Memory',
   };
   const gamePlayerStorageKeys = {
     motus: 'motus_player_id',
@@ -41,6 +43,7 @@
     battleship: 'battleship_player_id',
     geoguessr: 'geoguessr_player_id',
     plongee: 'plongee_player_id',
+    memories: 'memories_player_id',
   };
 
   function socialHeaders(json = false) {
