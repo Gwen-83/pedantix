@@ -47,13 +47,13 @@
       <h1 id="geo-home-title">Où se trouve cette ville ?</h1>
       <p class="geo-intro">Un nom de ville s’affiche. Placez votre estimation sur la carte : plus vous êtes proche, plus vous marquez de points. Jusqu’à 5 000 points par manche.</p>
       <label class="geo-region-label" for="geo-variant">Type de GeoGuessr</label>
-      <select id="geo-variant" class="geo-select">
+      <select id="geo-variant" class="geo-select" data-game-setting="solo-variant">
         <option value="cities">Villes sur carte</option>
-        <option value="panorama" disabled>Photo immersive navigable</option>
+        <option value="panorama">Photo immersive navigable</option>
       </select>
       <p id="geo-panorama-setup" class="geo-hint" role="status" hidden></p>
       <label class="geo-region-label" for="geo-region">Zone de jeu</label>
-      <select id="geo-region" class="geo-select">
+      <select id="geo-region" class="geo-select" data-game-setting="solo-region">
         <option value="france">France</option>
         <option value="europe">Europe</option>
         <option value="world" selected>Monde</option>
@@ -140,18 +140,18 @@
             <h3>Créer un salon</h3>
             <p>Jusqu’à huit joueurs. Choisissez de 1 à 20 manches ; 5 par défaut.</p>
             <label class="geo-region-label" for="geo-room-variant">Type de GeoGuessr</label>
-            <select id="geo-room-variant" class="geo-select">
+            <select id="geo-room-variant" class="geo-select" data-game-setting="room-variant">
               <option value="cities">Villes sur carte</option>
-              <option value="panorama" disabled>Photo immersive navigable</option>
+              <option value="panorama">Photo immersive navigable</option>
             </select>
             <label class="geo-region-label" for="geo-room-region">Zone de jeu</label>
-            <select id="geo-room-region" class="geo-select">
+            <select id="geo-room-region" class="geo-select" data-game-setting="room-region">
               <option value="france">France</option>
               <option value="europe">Europe</option>
               <option value="world" selected>Monde</option>
             </select>
             <label class="geo-region-label" for="geo-room-round-count">Nombre de manches (1 à 20)</label>
-            <input id="geo-room-round-count" class="geo-select" type="number" min="1" max="20" step="1" value="5" required>
+            <input id="geo-room-round-count" class="geo-select" type="number" min="1" max="20" step="1" value="5" data-game-setting="room-round-count" required>
           </div>
           <button type="button" id="geo-create-room" class="geo-primary-button">Créer le salon</button>
         </section>

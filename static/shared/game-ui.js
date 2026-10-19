@@ -28,6 +28,70 @@
     applyTheme(nextTheme);
   });
 
+  const gameId = document.documentElement.dataset.presenceGame;
+  const settingControls = [...document.querySelectorAll('[data-game-setting]')];
+  if (gameId && settingControls.length) {
+    const settingsKey = `game_settings_v1:${gameId}`;
+
+    function readGameSettings() {
+      try {
+        const savedSettings = localStorage.getItem(settingsKey);
+        if (!savedSettings) return {};
+        const parsed = JSON.parse(savedSettings);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? parsed
+          : {};
+      } catch (error) {
+        console.warn(`Impossible de lire les paramètres enregistrés pour ${gameId}.`, error);
+        return {};
+      }
+    }
+
+    function isValidSetting(control, value) {
+      if (typeof value !== 'string') return false;
+      if (control instanceof HTMLSelectElement) {
+        return [...control.options].some((option) => option.value === value && !option.disabled);
+      }
+      if (control instanceof HTMLInputElement) {
+        const previousValue = control.value;
+        control.value = value;
+        const valid = control.checkValidity();
+        if (!valid) control.value = previousValue;
+        return valid;
+      }
+      return false;
+    }
+
+    const savedSettings = readGameSettings();
+    settingControls.forEach((control) => {
+      const settingName = control.dataset.gameSetting;
+      if (!settingName || !Object.prototype.hasOwnProperty.call(savedSettings, settingName)) return;
+      const value = savedSettings[settingName];
+      if (isValidSetting(control, value)) control.value = value;
+    });
+
+    function saveGameSettings() {
+      const settings = {};
+      settingControls.forEach((control) => {
+        const settingName = control.dataset.gameSetting;
+        if (!settingName || !isValidSetting(control, control.value)) return;
+        settings[settingName] = control.value;
+      });
+      try {
+        localStorage.setItem(settingsKey, JSON.stringify(settings));
+      } catch (error) {
+        console.warn(`Impossible d’enregistrer les paramètres pour ${gameId}.`, error);
+      }
+    }
+
+    settingControls.forEach((control) => {
+      control.addEventListener('change', saveGameSettings);
+      if (control instanceof HTMLInputElement) {
+        control.addEventListener('input', saveGameSettings);
+      }
+    });
+  }
+
   const roomsOverlay = document.querySelector('[data-shared-rooms-modal]');
   if (!roomsOverlay) return;
 
@@ -37,6 +101,30 @@
   const roomErrorParent = roomError?.parentElement;
   const roomErrorNextSibling = roomError?.nextSibling;
   let lastTrigger = null;
+
+  function trapDialogFocus(event, activeDialog) {
+    if (event.key !== 'Tab') return;
+    if (!activeDialog) return;
+    const focusable = [...activeDialog.querySelectorAll(
+      'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    )].filter((element) => !element.closest('[hidden]') && element.getClientRects().length > 0);
+    if (!focusable.length) {
+      event.preventDefault();
+      activeDialog.focus();
+      return;
+    }
+    const activeIndex = focusable.indexOf(document.activeElement);
+    if (activeIndex < 0) {
+      event.preventDefault();
+      (event.shiftKey ? focusable[focusable.length - 1] : focusable[0]).focus();
+    } else if (event.shiftKey && activeIndex === 0) {
+      event.preventDefault();
+      focusable[focusable.length - 1].focus();
+    } else if (!event.shiftKey && activeIndex === focusable.length - 1) {
+      event.preventDefault();
+      focusable[0].focus();
+    }
+  }
 
   function closeRoomsModal() {
     roomsOverlay.hidden = true;
@@ -76,11 +164,12 @@
   roomsOverlay.addEventListener('click', (event) => {
     if (event.target === roomsOverlay) closeRoomsModal();
   });
+  roomsOverlay.addEventListener('keydown', (event) => trapDialogFocus(event, dialog));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !roomsOverlay.hidden) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      closeRoomsModal();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeRoomsModal();
     }
   });
 
@@ -101,6 +190,7 @@
       : null;
     const playSection = lobby.closest('section[id$="-play"]');
     let minimized = false;
+    let wasHidden = lobby.hidden;
 
     function closeLobby() {
       minimized = true;
@@ -129,6 +219,9 @@
     lobby.addEventListener('click', (event) => {
       if (event.target === lobby) closeLobby();
     });
+    if (dialog) {
+      lobby.addEventListener('keydown', (event) => trapDialogFocus(event, dialog));
+    }
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !lobby.hidden && !lobby.classList.contains('is-minimized')) {
         event.preventDefault();
@@ -142,9 +235,11 @@
         if (!minimized) resetLobby();
       } else if (minimized) {
         if (openButton) openButton.hidden = !minimized;
-      } else if (openButton) {
-        openButton.hidden = true;
+      } else {
+        if (openButton) openButton.hidden = true;
+        if (wasHidden) dialog?.focus();
       }
+      wasHidden = lobby.hidden;
     }).observe(lobby, { attributes: true, attributeFilter: ['hidden'] });
 
     if (playSection) {

@@ -137,6 +137,8 @@
       variantSelect.querySelector('option[value="panorama"]').disabled = panoramaUnavailable;
       roomVariantSelect.querySelector('option[value="panorama"]').disabled = panoramaUnavailable;
       if (panoramaUnavailable) {
+        if (variantSelect.value === 'panorama') variantSelect.value = 'cities';
+        if (roomVariantSelect.value === 'panorama') roomVariantSelect.value = 'cities';
         setup.replaceChildren(document.createTextNode(
           'Le mode photo nécessite GOOGLE_MAPS_BROWSER_API_KEY et GOOGLE_MAPS_SERVER_API_KEY, ou MAPILLARY_ACCESS_TOKEN configuré sur le serveur. '
         ));
@@ -165,6 +167,8 @@
       setup.hidden = false;
       variantSelect.querySelector('option[value="panorama"]').disabled = true;
       roomVariantSelect.querySelector('option[value="panorama"]').disabled = true;
+      if (variantSelect.value === 'panorama') variantSelect.value = 'cities';
+      if (roomVariantSelect.value === 'panorama') roomVariantSelect.value = 'cities';
     }
   }
 

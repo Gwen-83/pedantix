@@ -45,7 +45,7 @@
       <h1 id="sudoku-home-title">Une grille, neuf chiffres.</h1>
       <p class="sudoku-intro">Complétez chaque ligne, colonne et carré 3×3 avec les chiffres de 1 à 9.</p>
       <label class="sudoku-difficulty-label" for="sudoku-difficulty">Difficulté de la partie solo</label>
-      <select id="sudoku-difficulty" class="sudoku-select">
+      <select id="sudoku-difficulty" class="sudoku-select" data-game-setting="solo-difficulty">
         <option value="facile">Facile</option>
         <option value="moyen" selected>Moyen</option>
         <option value="difficile">Difficile</option>
@@ -141,7 +141,7 @@
             <h3>Créer un salon</h3>
             <p>Jusqu’à trois joueurs se disputent le podium.</p>
             <label class="sudoku-difficulty-label" for="sudoku-room-difficulty">Difficulté du salon</label>
-            <select id="sudoku-room-difficulty" class="sudoku-select">
+            <select id="sudoku-room-difficulty" class="sudoku-select" data-game-setting="room-difficulty">
               <option value="facile">Facile</option>
               <option value="moyen" selected>Moyen</option>
               <option value="difficile">Difficile</option>
