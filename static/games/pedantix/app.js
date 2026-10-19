@@ -97,7 +97,7 @@ class PedantixApp {
 
     // Anti-bot & anti-triche state
     this.guessToken = null;
-    this.lastGuessTimestamp = 0;
+    this.isGuessSubmitting = false;
     this.isInputLocked = false;
     this.inputLockTimeout = null;
     this.trustedKeystrokeCount = 0;
@@ -115,6 +115,11 @@ class PedantixApp {
 
     this.ws = null;
     this.pingInterval = null;
+    this.wsReconnectTimeout = null;
+    this.wsConnectTimeout = null;
+    this.wsReconnectAttempts = 0;
+    this.wsConnectedRoomId = null;
+    this.wsLastPongAt = 0;
     this.leaderboard = [];
     this.selectedLeaderboardPlayerId = null;
     this.showAllLeaderboardExpanded = false;
@@ -142,6 +147,8 @@ class PedantixApp {
     this.myTeam = 'blue';         // 'blue', 'red', 'green', 'yellow'
     this.teamsData = null;
     this.wsRoomId = null;
+    this.roomsRefreshInterval = null;
+    this.roomsFetchSequence = 0;
 
     this.initElements();
     this.initAudio();
@@ -1096,6 +1103,10 @@ class PedantixApp {
 
   closeModal(modalElem) {
     if (modalElem) modalElem.classList.remove('active');
+    if (modalElem === this.dom.roomsModal && this.roomsRefreshInterval) {
+      clearInterval(this.roomsRefreshInterval);
+      this.roomsRefreshInterval = null;
+    }
   }
 
   showToast(message) {
@@ -1343,14 +1354,7 @@ class PedantixApp {
   async leaveRoom(roomId) {
     if (!roomId) return;
     try {
-      if (this.ws) {
-        try {
-          this.ws.onclose = null;
-          this.ws.close();
-        } catch (e) {}
-        this.ws = null;
-        this.wsRoomId = null;
-      }
+      this.closeRoomWebSocket();
       await fetch(this.getApiUrl('/api/room/leave'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1410,12 +1414,7 @@ class PedantixApp {
       if (!this.roomId.startsWith('solo-')) {
         await this.leaveRoom(this.roomId);
       } else if (this.ws) {
-        try {
-          this.ws.onclose = null;
-          this.ws.close();
-        } catch (e) {}
-        this.ws = null;
-        this.wsRoomId = null;
+        this.closeRoomWebSocket();
       }
     }
 
@@ -1445,16 +1444,30 @@ class PedantixApp {
       this.dom.currentRoomNameText.textContent = this.isSoloMode ? '(Mode Solo)' : (this.roomId || 'Aucun salon sélectionné');
     }
     this.openModal(this.dom.roomsModal);
+    if (!this.roomsRefreshInterval) {
+      this.roomsRefreshInterval = setInterval(() => {
+        if (this.dom.roomsModal && this.dom.roomsModal.classList.contains('active')) {
+          this.fetchRoomsList(true);
+        }
+      }, 15000);
+    }
     await this.fetchRoomsList();
   }
 
-  async fetchRoomsList() {
+  async fetchRoomsList(silent = false) {
     if (!this.dom.roomsList) return;
-    this.dom.roomsList.innerHTML = '<div class="rooms-loading-placeholder">Chargement des salons en ligne...</div>';
+    const requestId = ++this.roomsFetchSequence;
+    if (!silent) {
+      this.dom.roomsList.innerHTML = '<div class="rooms-loading-placeholder">Chargement des salons en ligne...</div>';
+    }
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/rooms'));
+      const resp = await fetch(this.getApiUrl('/api/rooms'), {
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!resp.ok) throw new Error(`Erreur HTTP ${resp.status}`);
       const data = await resp.json();
+      if (requestId !== this.roomsFetchSequence) return;
       const rooms = (data.rooms || []).filter(r => !r.room_id.startsWith('solo-'));
 
       if (this.dom.roomsCountBadge) {
@@ -1480,6 +1493,10 @@ class PedantixApp {
         const statusLabel = r.status === 'playing' ? 'En jeu' : 'En attente';
         const statusClass = r.status === 'playing' ? 'playing' : 'lobby';
         const modeLabel = r.game_mode === 'team' ? 'Par équipes' : 'Chacun pour soi';
+        const reconnectingCount = r.reconnecting_players_count || 0;
+        const playersLabel = reconnectingCount
+          ? `${r.players_count} en ligne · ${reconnectingCount} en reconnexion`
+          : `${r.players_count} joueur${r.players_count > 1 ? 's' : ''}`;
 
         card.innerHTML = `
           <div class="room-card-header">
@@ -1487,7 +1504,7 @@ class PedantixApp {
             <span class="room-card-status-badge ${statusClass}">${statusLabel}</span>
           </div>
           <div class="room-card-meta">
-            <span class="room-card-player-count">${r.players_count} joueur${r.players_count > 1 ? 's' : ''}</span>
+            <span class="room-card-player-count">${this.escapeHtml(playersLabel)}</span>
             <span class="room-card-mode">${modeLabel}</span>
             <span class="room-card-host">Hôte : ${this.escapeHtml(r.host_name || 'Anonyme')}</span>
           </div>
@@ -1510,7 +1527,7 @@ class PedantixApp {
       });
     } catch (e) {
       console.warn('Erreur fetchRoomsList:', e);
-      if (this.dom.roomsList) {
+      if (!silent && requestId === this.roomsFetchSequence && this.dom.roomsList) {
         this.dom.roomsList.innerHTML = '<div class="rooms-loading-placeholder" style="color: #ef4444;">Erreur de connexion au serveur.</div>';
       }
     }
@@ -1541,12 +1558,7 @@ class PedantixApp {
         if (!this.roomId.startsWith('solo-')) {
           await this.leaveRoom(this.roomId);
         } else if (this.ws) {
-          try {
-            this.ws.onclose = null;
-            this.ws.close();
-          } catch (e) {}
-          this.ws = null;
-          this.wsRoomId = null;
+          this.closeRoomWebSocket();
         }
       }
 
@@ -2080,8 +2092,12 @@ class PedantixApp {
         this.totalWords = data.session.total_words || 0;
         this.revealedWordsCount = data.session.revealed_words_count || 0;
         this.solution = data.session.solution || null;
-        this.isWon = false;
-        this.dom.successBox.classList.remove('active');
+        this.isWon = !!(data.player && data.player.is_won);
+        if (this.isWon) {
+          this.handleVictory();
+        } else {
+          this.dom.successBox.classList.remove('active');
+        }
         this.dom.errorLabel.textContent = '';
         this.dom.wikiImg.style.display = 'none';
         this.hideOpponentWin();
@@ -2108,57 +2124,120 @@ class PedantixApp {
     }
   }
 
+  closeRoomWebSocket() {
+    if (this.pingInterval) clearInterval(this.pingInterval);
+    if (this.wsReconnectTimeout) clearTimeout(this.wsReconnectTimeout);
+    if (this.wsConnectTimeout) clearTimeout(this.wsConnectTimeout);
+    this.pingInterval = null;
+    this.wsReconnectTimeout = null;
+    this.wsConnectTimeout = null;
+
+    const socket = this.ws;
+    this.ws = null;
+    this.wsRoomId = null;
+    this.wsConnectedRoomId = null;
+    this.wsReconnectAttempts = 0;
+    if (socket) {
+      socket.onclose = null;
+      socket.onerror = null;
+      try {
+        socket.close();
+      } catch (e) {
+        console.warn('Erreur fermeture WebSocket:', e);
+      }
+    }
+  }
+
+  scheduleWebSocketReconnect() {
+    if (this.wsReconnectTimeout || this.wsRoomId !== this.roomId || !this.roomId) return;
+    const attempt = this.wsReconnectAttempts++;
+    const delay = Math.min(1000 * (2 ** Math.min(attempt, 5)), 30000);
+    this.wsReconnectTimeout = setTimeout(() => {
+      this.wsReconnectTimeout = null;
+      if (this.wsRoomId === this.roomId && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
+        this.initWebSocket();
+      }
+    }, delay);
+  }
+
   initWebSocket() {
     // Si la socket est déjà connectée au même salon, on la conserve
     if (this.ws && this.wsRoomId === this.roomId && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
-    if (this.ws) {
-      try {
-        this.ws.onclose = null;
-        this.ws.close();
-      } catch (e) {}
-      this.ws = null;
+    if (this.wsRoomId !== this.roomId) {
+      this.closeRoomWebSocket();
+      this.wsRoomId = this.roomId;
     }
 
-    this.wsRoomId = this.roomId;
     const wsUrl = this.getWsUrl(`/ws/room/${encodeURIComponent(this.roomId)}?player_id=${encodeURIComponent(this.playerId)}`);
 
     try {
-      this.ws = new WebSocket(wsUrl);
+      const socket = new WebSocket(wsUrl);
+      let openedAt = 0;
+      this.ws = socket;
+      this.wsConnectTimeout = setTimeout(() => {
+        if (this.ws === socket && socket.readyState === WebSocket.CONNECTING) socket.close();
+      }, 10000);
 
-      this.ws.onopen = () => {
-        this.ws.send(JSON.stringify({ type: 'identify', player_id: this.playerId }));
+      socket.onopen = () => {
+        if (this.ws !== socket) return;
+        if (this.wsConnectTimeout) clearTimeout(this.wsConnectTimeout);
+        this.wsConnectTimeout = null;
+        openedAt = Date.now();
+        const reconnecting = this.wsConnectedRoomId === this.roomId;
+        this.wsConnectedRoomId = this.roomId;
+        this.wsLastPongAt = Date.now();
+        if (reconnecting) this.joinRoom();
+        socket.send(JSON.stringify({ type: 'identify', player_id: this.playerId }));
         if (this.pingInterval) clearInterval(this.pingInterval);
         this.pingInterval = setInterval(() => {
-          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ type: 'ping' }));
+          if (this.ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+          if (Date.now() - this.wsLastPongAt > 45000) {
+            socket.close();
+            return;
           }
-        }, 20000);
+          try {
+            socket.send(JSON.stringify({ type: 'ping' }));
+          } catch (e) {
+            socket.close();
+          }
+        }, 15000);
       };
 
-      this.ws.onmessage = (event) => {
+      socket.onmessage = (event) => {
+        if (this.ws !== socket) return;
         try {
           const msg = JSON.parse(event.data);
+          if (msg.type === 'pong') {
+            this.wsLastPongAt = Date.now();
+            return;
+          }
           this.handleWebSocketMessage(msg);
         } catch (e) {
           console.error("Message WS invalide", e);
         }
       };
 
-      this.ws.onclose = () => {
+      socket.onclose = () => {
+        if (this.ws !== socket) return;
+        if (this.wsConnectTimeout) clearTimeout(this.wsConnectTimeout);
+        this.wsConnectTimeout = null;
+        if (openedAt && Date.now() - openedAt >= 60000) this.wsReconnectAttempts = 0;
         if (this.pingInterval) clearInterval(this.pingInterval);
-        if (this.wsRoomId === this.roomId) {
-          setTimeout(() => {
-            if (this.wsRoomId === this.roomId && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
-              this.initWebSocket();
-            }
-          }, 3000);
-        }
+        this.pingInterval = null;
+        this.ws = null;
+        this.scheduleWebSocketReconnect();
+      };
+
+      socket.onerror = () => {
+        if (this.ws === socket && socket.readyState !== WebSocket.CLOSED) socket.close();
       };
     } catch (e) {
       console.warn("WebSocket non disponible", e);
+      this.ws = null;
+      this.scheduleWebSocketReconnect();
     }
   }
 
@@ -2173,21 +2252,41 @@ class PedantixApp {
       if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
       if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
       if (msg.teams) this.teamsData = msg.teams;
-      if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
+      if (msg.leaderboard) {
+        this.updateLeaderboard(msg.leaderboard);
+        const me = msg.leaderboard.find(player => player.player_id === this.playerId);
+        if (me) {
+          this.isReady = !!me.is_ready;
+          this.isSpectator = !!me.is_spectator;
+          this.isHost = !!me.is_host;
+          this.updateSpectatorUI();
+        }
+      }
       if (msg.activity) this.updateActivity(msg.activity);
       if (msg.chat_messages) this.loadHistoricalChatMessages(msg.chat_messages);
       this.nextWordHintTime = msg.next_word_hint_time || null;
       this.roomStatus = msg.status || this.roomStatus;
-      this.canStart = msg.can_start || this.canStart;
+      if (msg.host_player_id !== undefined) this.isHost = msg.host_player_id === this.playerId;
+      if (msg.can_start !== undefined) this.canStart = msg.can_start;
       this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
       this.updateModeUI();
       this.syncRoomUI();
+      if (this.gameMode === 'team') {
+        this.renderTeamsRoster();
+        this.renderTeamConfrontation();
+      }
 
       if (msg.surrender_cooldowns && msg.surrender_cooldowns[this.playerId] > 0) {
         this.startSurrenderCooldown(msg.surrender_cooldowns[this.playerId]);
       }
 
-      if (this.roomStatus === 'playing' && this.nextWordHintTime && !this.isWon) {
+      if (this.roomStatus === 'starting' && msg.countdown_end) {
+        const seconds = Math.max(1, Math.ceil(msg.countdown_end - Date.now() / 1000));
+        this.startCountdown(seconds, msg.countdown_end);
+      } else if (this.roomStatus === 'ending' && msg.timer_30s_end) {
+        const seconds = Math.max(1, Math.ceil(msg.timer_30s_end - Date.now() / 1000));
+        this.startSprintTimer(msg.first_winner_name || 'Un joueur', seconds, msg.timer_30s_end);
+      } else if (this.roomStatus === 'playing' && this.nextWordHintTime && !this.isWon) {
         this.startWordHintTimer(this.nextWordHintTime);
       } else {
         this.stopWordHintTimer();
@@ -2253,7 +2352,7 @@ class PedantixApp {
       if (this.dom.lobbyModal && savedOverlayScroll) this.dom.lobbyModal.scrollTop = savedOverlayScroll;
       if (savedWindowScroll) window.scrollTo(0, savedWindowScroll);
 
-    } else if (msg.type === 'player_joined' || msg.type === 'player_ready_changed' || msg.type === 'player_left' || msg.type === 'player_disconnected' || msg.type === 'player_spectator_changed') {
+    } else if (msg.type === 'player_joined' || msg.type === 'player_ready_changed' || msg.type === 'player_left' || msg.type === 'player_disconnected' || msg.type === 'player_connected' || msg.type === 'player_spectator_changed') {
       const lobbyInner = this.dom.lobbyModal ? this.dom.lobbyModal.querySelector('.modal') : null;
       const savedLobbyScroll = lobbyInner ? lobbyInner.scrollTop : 0;
       const savedOverlayScroll = this.dom.lobbyModal ? this.dom.lobbyModal.scrollTop : 0;
@@ -2263,7 +2362,15 @@ class PedantixApp {
       if (msg.game_mode) this.gameMode = msg.game_mode;
       if (msg.difficulty) this.currentDifficulty = msg.difficulty;
       if (msg.teams) this.teamsData = msg.teams;
-      if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
+      if (msg.leaderboard) {
+        this.updateLeaderboard(msg.leaderboard);
+        const me = msg.leaderboard.find(player => player.player_id === this.playerId);
+        if (me) {
+          this.isReady = !!me.is_ready;
+          this.isSpectator = !!me.is_spectator;
+          this.updateSpectatorUI();
+        }
+      }
       if (msg.activity) this.updateActivity(msg.activity);
       if (msg.can_start !== undefined) this.canStart = msg.can_start;
       if (msg.host_player_id) {
@@ -2377,8 +2484,9 @@ class PedantixApp {
           hasNewReveals = true;
         }
 
-        if (tg.close_tokens && tg.close_tokens.length > 0) {
-          this.applyCloseTokens(tg.close_tokens, tg.word);
+        const teamCloseTokens = tg.close_tokens || [];
+        if (teamCloseTokens.length > 0) {
+          this.applyCloseTokens(teamCloseTokens, tg.word);
         }
 
         this.updateDayMeter();
@@ -2387,7 +2495,7 @@ class PedantixApp {
           if (hasNewReveals) {
             this.playTone('match');
             this.showToast(`🤝 ${tg.player_name} a trouvé "${tg.word}" (${tg.matches_count} occurrence${tg.matches_count > 1 ? 's' : ''}) !`);
-          } else if (tg.status === 'close' || (tg.close_tokens && tg.close_tokens.length > 0)) {
+          } else if (tg.status === 'close' || teamCloseTokens.length > 0) {
             this.playTone('close');
             this.showToast(`🤝 Mot proche trouvé par ${tg.player_name} : "${tg.word}" (${tg.score || 50}%)`);
           }
@@ -2646,21 +2754,24 @@ class PedantixApp {
     // Inputs disabled / enabled state
     if (this.isSpectator) {
       if (this.dom.guessInput) {
-        this.dom.guessInput.disabled = true;
         this.dom.guessInput.placeholder = '👁️ Mode Spectateur (en pause)...';
       }
-      if (this.dom.guessBtn) this.dom.guessBtn.disabled = true;
       if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
       if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
-    } else {
-      if (this.dom.guessInput && (this.roomStatus === 'playing' || this.isSoloMode)) {
-        this.dom.guessInput.disabled = false;
-        this.dom.guessInput.placeholder = 'Entrez un mot...';
-      }
-      if (this.dom.guessBtn && (this.roomStatus === 'playing' || this.isSoloMode)) {
-        this.dom.guessBtn.disabled = false;
-      }
+    } else if (this.dom.guessInput) {
+      this.dom.guessInput.placeholder = 'Entrez un mot...';
     }
+    this.updateGuessInputAvailability();
+  }
+
+  updateGuessInputAvailability() {
+    const canGuess = !this.isInputLocked
+      && !this.isGuessSubmitting
+      && !this.isSpectator
+      && !this.isWon
+      && (this.isSoloMode || this.roomStatus === 'playing' || this.roomStatus === 'ending');
+    if (this.dom.guessInput) this.dom.guessInput.disabled = !canGuess;
+    if (this.dom.guessBtn) this.dom.guessBtn.disabled = !canGuess;
   }
 
   async startGame() {
@@ -3200,12 +3311,7 @@ class PedantixApp {
     } else {
       // Switching to multiplayer:
       if (previousRoomId && previousRoomId.startsWith('solo-') && this.ws) {
-        try {
-          this.ws.onclose = null;
-          this.ws.close();
-        } catch (e) {}
-        this.ws = null;
-        this.wsRoomId = null;
+        this.closeRoomWebSocket();
       }
 
       document.body.classList.remove('solo-mode');
@@ -3806,7 +3912,7 @@ class PedantixApp {
     if (!closeTokens || closeTokens.length === 0) return;
     closeTokens.forEach(item => {
       const score = Number(item.score || 50);
-      if (score <= 30) return;
+      if (score < 48) return;
       const closeWord = item.word || fallbackWord;
       const token = this.tokensById[item.id];
       if (token && token.hint_revealed) return;
@@ -4185,7 +4291,7 @@ class PedantixApp {
       span.title = 'Mot dévoilé automatiquement comme indice';
       delete span.dataset.heat;
       delete span.dataset.word;
-    } else if (token.close_word && token.heat > 30) {
+    } else if (token.close_word && token.heat >= 48) {
       span.dataset.heat = token.heat;
       span.dataset.word = token.close_word;
       span.classList.add('close-heat-grey');
@@ -4256,17 +4362,15 @@ class PedantixApp {
       return;
     }
 
+    if (this.isGuessSubmitting) {
+      this.showToast('La proposition précédente est encore en cours de vérification.');
+      return;
+    }
+
     if (this.isInputLocked) {
       this.showToast('Veuillez patienter avant de pouvoir reproposer un mot.');
       return;
     }
-
-    const now = Date.now();
-    if (this.lastGuessTimestamp && (now - this.lastGuessTimestamp) < 300) {
-      this.showToast('Cadence trop rapide. Ralentissez !');
-      return;
-    }
-    this.lastGuessTimestamp = now;
 
     if (this.isSpectator) {
       this.showToast('👁️ Vous êtes en mode spectateur (en pause). Reprenez votre place pour proposer des mots.');
@@ -4291,17 +4395,15 @@ class PedantixApp {
       return;
     }
 
-    this.dom.guessInput.value = '';
-    if (this.dom.guessLenBadge) {
-      this.dom.guessLenBadge.style.display = 'none';
-    }
-    this.dom.guessInput.focus();
-
     if (!this.previousInputs.includes(rawWord)) {
       this.previousInputs.push(rawWord);
     }
     this.prevInputIdx = -1;
 
+    this.isGuessSubmitting = true;
+    this.updateGuessInputAvailability();
+    const previousPlaceholder = this.dom.guessInput.placeholder;
+    this.dom.guessInput.placeholder = 'Vérification du mot en cours…';
     try {
       const resp = await fetch(this.getApiUrl('/api/room/guess'), {
         method: 'POST',
@@ -4314,18 +4416,38 @@ class PedantixApp {
         })
       });
 
-      if (!resp.ok) throw new Error('Erreur réseau');
-      const data = await resp.json();
+      const data = await resp.json().catch(() => ({}));
 
       if (data.next_token) {
         this.guessToken = data.next_token;
       }
+      if (!resp.ok) {
+        throw new Error(data.detail || data.error || 'La proposition n’a pas pu être vérifiée. Réessayez.');
+      }
+      if (!data.status && !data.error) {
+        throw new Error('Réponse invalide du serveur. Votre mot est conservé pour réessayer.');
+      }
 
       this.processGuessResult(data, rawWord);
+      const wasRejected = data.status === 'bot_blocked'
+        || data.status === 'invalid_word'
+        || !!data.error;
+      if (!wasRejected && this.dom.guessInput.value.trim() === rawWord) {
+        this.dom.guessInput.value = '';
+        if (this.dom.guessLenBadge) this.dom.guessLenBadge.style.display = 'none';
+      }
 
     } catch (err) {
       console.error(err);
-      this.dom.errorLabel.textContent = 'Erreur lors de la vérification.';
+      const message = err.message || 'Erreur lors de la vérification.';
+      this.dom.errorLabel.textContent = `${message} Votre mot est conservé dans le champ.`;
+    } finally {
+      this.isGuessSubmitting = false;
+      if (!this.isInputLocked) {
+        this.dom.guessInput.placeholder = previousPlaceholder;
+      }
+      this.updateGuessInputAvailability();
+      if (!this.dom.guessInput.disabled) this.dom.guessInput.focus();
     }
   }
 
@@ -4348,12 +4470,11 @@ class PedantixApp {
         clearInterval(this.inputLockTimeout);
         this.inputLockTimeout = null;
         this.isInputLocked = false;
-        if (this.dom.guessInput) {
-          this.dom.guessInput.disabled = false;
+        if (this.dom.guessInput && !this.isSpectator) {
           this.dom.guessInput.placeholder = 'Entrez un mot...';
-          this.dom.guessInput.focus();
         }
-        if (submitBtn) submitBtn.disabled = false;
+        this.updateGuessInputAvailability();
+        if (!this.dom.guessInput.disabled) this.dom.guessInput.focus();
         if (this.dom.errorLabel && this.dom.errorLabel.textContent.includes('Anti-Triche')) {
           this.dom.errorLabel.textContent = '';
         }
@@ -4517,7 +4638,7 @@ class PedantixApp {
 
       tr.innerHTML = `
         <td class="number">${item.attempt}</td>
-        <td class="word">${this.escapeHtml(item.word)}</td>
+        <td class="word" title="${this.escapeHtml(item.word)}">${this.escapeHtml(item.word)}</td>
         <td class="count" style="text-align: right;">${badge}</td>
       `;
       tbody.appendChild(tr);

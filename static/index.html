@@ -193,7 +193,7 @@
           <span class="store-game-icon" aria-hidden="true">🌊</span>
           <span class="store-game-info">
             <span class="store-game-title">Plongée</span>
-            <span class="store-game-description">Répondez à sept questions ouvertes : les réponses rares vous font descendre plus profond.</span>
+            <span class="store-game-description">Trouvez des réponses pertinentes à sept questions : les plus rares vous font descendre plus profond.</span>
             <span class="store-game-tags"><span>Culture & rareté</span><span>Solo & multijoueur</span></span>
           </span>
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
@@ -232,12 +232,24 @@
         <section class="store-social-section" aria-labelledby="store-invitations-title">
           <div class="store-social-heading">
             <div>
-              <h2 id="store-invitations-title">Invitations reçues</h2>
-              <p>Les invitations vers vos salons apparaissent ici.</p>
+              <h2 id="store-invitations-title">Invitations envoyées</h2>
+              <p>En attente, acceptées, refusées ou expirées après cinq minutes.</p>
             </div>
           </div>
           <ul id="store-invitation-list" class="store-invitation-list" aria-live="polite">
-            <li class="store-social-empty">Aucune invitation reçue.</li>
+            <li class="store-social-empty">Aucune invitation envoyée.</li>
+          </ul>
+        </section>
+        <section class="store-social-section" aria-labelledby="store-active-rooms-title">
+          <div class="store-social-heading store-active-rooms-heading">
+            <div>
+              <h2 id="store-active-rooms-title">Salons actifs</h2>
+              <p>Rejoignez un salon public sans chercher son code.</p>
+            </div>
+            <button type="button" id="store-rooms-refresh" class="store-rooms-refresh">Actualiser</button>
+          </div>
+          <ul id="store-active-rooms" class="store-active-rooms" aria-live="polite">
+            <li class="store-social-empty">Chargement des salons…</li>
           </ul>
         </section>
       </aside>
@@ -272,8 +284,16 @@
         <h2 id="store-invite-title">Inviter un joueur</h2>
         <p id="store-invite-description"></p>
         <form id="store-invite-form" class="store-auth-form">
-          <label for="store-invite-room">Choisir l’un de vos salons</label>
-          <select id="store-invite-room" required></select>
+          <label for="store-invite-game">Choisir un jeu</label>
+          <select id="store-invite-game" required>
+            <option value="battleship">Bataille navale</option>
+            <option value="motus">Motus</option>
+            <option value="cemantix">Cémantix</option>
+            <option value="chiffrantix">Chiffrantix</option>
+            <option value="sudoku">Sudoku</option>
+            <option value="geoguessr">GeoGuessr</option>
+            <option value="plongee">Plongée</option>
+          </select>
           <button type="submit" id="store-invite-submit" class="store-auth-submit">Envoyer l’invitation</button>
         </form>
         <p id="store-invite-status" class="store-social-status" role="status"></p>

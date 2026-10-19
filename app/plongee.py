@@ -13,7 +13,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 ROUND_COUNT = 7
 ROUND_SECONDS = 25
 MAX_PLAYERS = 8
-UNKNOWN_ANSWER_SCORE = 50
 ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 PROMPTS_PATH = Path(__file__).resolve().parent / "data" / "plongee_prompts.json"
 
@@ -37,15 +36,21 @@ PROMPTS = _load_prompts()
 
 
 def _build_answer_index(prompt: Dict[str, Any]) -> Dict[str, Tuple[str, int]]:
-    answer_index: Dict[str, Tuple[str, int]] = {}
+    canonical_answers: Dict[str, Tuple[str, int]] = {}
     for item in prompt["answers"]:
         canonical = normalize_answer(item["answer"])
         score = int(item["score"])
         if not canonical or not 0 <= score <= 100:
             raise ValueError(f"Barème invalide pour la question {prompt['id']}.")
-        for variant in [item["answer"], *item.get("aliases", [])]:
+        canonical_answers[canonical] = (canonical, score)
+
+    answer_index = canonical_answers.copy()
+    for item in prompt["answers"]:
+        canonical = normalize_answer(item["answer"])
+        score = int(item["score"])
+        for variant in item.get("aliases", []):
             normalized = normalize_answer(variant)
-            if normalized:
+            if normalized and normalized not in answer_index:
                 answer_index[normalized] = (canonical, score)
     return answer_index
 
@@ -146,9 +151,11 @@ class PlongeeManager:
         if len(normalized) > 80:
             raise ValueError("La réponse ne peut pas dépasser 80 caractères.")
         benchmark = answer_index.get(normalized)
-        if benchmark:
-            return benchmark[0], benchmark[1], True
-        return normalized, UNKNOWN_ANSWER_SCORE, False
+        if benchmark is None:
+            raise ValueError(
+                "Réponse hors sujet ou absente du barème. Proposez une réponse qui correspond à la question."
+            )
+        return benchmark[0], benchmark[1], True
 
     def _expire_solo_round(self, game: PlongeeGame) -> None:
         if (

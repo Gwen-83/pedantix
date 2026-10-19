@@ -1746,30 +1746,25 @@ for cd in CONCEPT_DOMAINS:
 
 def calculate_numeric_proximity(g_val: int, t_val: int) -> float:
     """
-    Calculates proximity between two numbers (specifically years/dates).
-    Returns a score between 48.0 and 99.0 if within 100 units of each other,
-    or 0.0 if too far.
+    Calculates proximity between two numbers, including years and dates.
+    Scores range from 48.0 to 99.0 inside the threshold for the target's
+    magnitude, or return 0.0 when the numbers are too far apart.
     """
     diff = abs(g_val - t_val)
     if diff == 0:
         return 100.0
 
-    # Year comparison:
-    # Applies if both numbers are in the historical year range (>= 100 and <= 2500)
-    # or both are 4-digit numbers (1000 to 9999).
-    is_year_range = (
-        (100 <= g_val <= 2500 and 100 <= t_val <= 2500) or
-        (1000 <= g_val <= 9999 and 1000 <= t_val <= 9999)
+    threshold = (
+        20_000 if 10_000 <= t_val <= 99_999
+        else 1_000 if 1_000 <= t_val <= 9_999
+        else 100 if 100 <= t_val <= 999
+        else 0
     )
-
-    if is_year_range:
-        MAX_DIFF = 100
-        if diff <= MAX_DIFF:
-            score = 99.0 - (diff - 1) * (99.0 - 48.0) / (MAX_DIFF - 1)
-            return round(score, 1)
+    if not threshold or diff > threshold:
         return 0.0
 
-    return 0.0
+    score = 99.0 - (diff - 1) * (99.0 - 48.0) / (threshold - 1)
+    return round(score, 1)
 
 
 @functools.lru_cache(maxsize=32768)

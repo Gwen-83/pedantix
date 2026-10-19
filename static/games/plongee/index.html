@@ -43,9 +43,9 @@
     <section id="plongee-home" class="plongee-panel">
       <p class="plongee-eyebrow">7 questions · 25 secondes chacune</p>
       <h1>La réponse la plus rare<br>vous emmène au fond.</h1>
-      <p class="plongee-intro">Répondez librement à sept questions. Chaque réponse vaut des points selon sa rareté : plus elle est inattendue, plus vous plongez profond.</p>
+      <p class="plongee-intro">Trouvez des réponses pertinentes à sept questions. Plus une réponse admise est rare, plus vous plongez profond.</p>
       <div class="plongee-how">
-        <span><b>01</b><span>Une question ouverte</span></span>
+        <span><b>01</b><span>Une réponse qui correspond à la question</span></span>
         <span><b>02</b><span>Une réponse en 25 secondes</span></span>
         <span><b>03</b><span>Les réponses rares rapportent plus</span></span>
       </div>
@@ -69,7 +69,7 @@
           <div id="plongee-room-directory" aria-live="polite">Chargement…</div>
         </div>
       </div>
-      <p class="plongee-rules"><strong>Comment sont jugées les réponses ?</strong> Toute réponse textuelle non vide (80 caractères maximum) est acceptée. Les accents, la casse et la ponctuation sont ignorés ; les variantes connues partagent le même barème. Les niveaux de rareté sur 100 sont indicatifs, pas des statistiques d’audience. Une réponse absente du barème reçoit la valeur neutre (50/100), pas un bonus arbitraire. En multijoueur, une réponse partagée coûte 15 points par personne supplémentaire.</p>
+      <p class="plongee-rules"><strong>Comment sont jugées les réponses ?</strong> Une réponse doit correspondre à la question et figurer dans le barème du jeu ; une réponse hors sujet ou non reconnue est refusée sans consommer la manche. Les accents, la casse et la ponctuation sont ignorés, et les variantes répertoriées partagent le même score. Les niveaux de rareté sur 100 sont un barème indicatif, pas des statistiques d’audience. En multijoueur, une réponse partagée coûte 15 points par personne supplémentaire.</p>
       <p id="plongee-home-error" class="plongee-error" role="alert" hidden></p>
     </section>
 
@@ -99,7 +99,7 @@
           <h2 id="plongee-prompt"></h2>
           <form id="plongee-answer-form" class="plongee-answer-form">
             <label class="sr-only" for="plongee-answer">Votre réponse</label>
-            <input id="plongee-answer" name="answer" maxlength="160" autocomplete="off" placeholder="Votre réponse…" required>
+            <input id="plongee-answer" name="answer" maxlength="160" autocomplete="off" placeholder="Une réponse pertinente…" required>
             <button type="submit" class="plongee-primary">Valider</button>
           </form>
           <p id="plongee-answer-feedback" aria-live="polite"></p>
@@ -107,6 +107,14 @@
         <div id="plongee-results" class="plongee-results" hidden></div>
         <div id="plongee-scoreboard" class="plongee-scoreboard"></div>
         <button id="plongee-next" type="button" class="plongee-primary" hidden>Manche suivante →</button>
+        <section id="plongee-end-actions" class="plongee-end-actions" hidden aria-labelledby="plongee-end-title">
+          <h2 id="plongee-end-title">Plongée terminée</h2>
+          <p>Votre score et le classement final sont affichés ci-dessus.</p>
+          <div>
+            <button id="plongee-replay" type="button" class="plongee-primary">Rejouer en solo</button>
+            <button id="plongee-result-home" type="button" class="plongee-secondary">Retour à l’accueil</button>
+          </div>
+        </section>
       </div>
       <p id="plongee-game-error" class="plongee-error" role="alert" hidden></p>
     </section>

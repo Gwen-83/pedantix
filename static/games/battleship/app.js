@@ -24,6 +24,11 @@
   };
   const difficultySelect = document.getElementById('naval-difficulty');
   const difficultyLabel = document.getElementById('naval-difficulty-label');
+  const difficultyHelp = document.getElementById('naval-difficulty-help');
+  const savedDifficulty = localStorage.getItem('battleship_bot_difficulty');
+  if (['facile', 'moyen', 'difficile'].includes(savedDifficulty)) {
+    difficultySelect.value = savedDifficulty;
+  }
   const roomDirectory = document.getElementById('naval-room-directory');
   const rows = 'ABCDEFGHIJ';
   let playerId = localStorage.getItem('battleship_player_id');
@@ -97,9 +102,8 @@
 
   function showHome() {
     stopPolling();
-    if (state?.is_solo) {
-      localStorage.removeItem('battleship_solo_room_id');
-    }
+    localStorage.removeItem('battleship_solo_room_id');
+    localStorage.removeItem('battleship_active_room_id');
     state = null;
     home.hidden = false;
     play.hidden = true;
@@ -461,6 +465,15 @@
       target ? `Plateau de ${target.name}` : 'Plateau adverse';
     document.getElementById('naval-turn-badge').textContent =
       state.status === 'finished' ? 'Terminé' : isMyTurn() ? 'À vous' : 'En attente';
+    const difficulty = state.bot_difficulty || state.difficulty;
+    const difficultyNames = {
+      facile: 'Facile',
+      moyen: 'Moyen',
+      difficile: 'Difficile',
+    };
+    document.getElementById('naval-match-meta').textContent = state.is_solo
+      ? `Mode solo · Bot ${difficultyNames[difficulty] || difficulty} · Manche ${state.match_number}`
+      : `Multijoueur · Difficulté ${difficultyNames[difficulty] || difficulty} · Manche ${state.match_number}`;
     const ownShips = state.own_fleet.map((ship) => ({ ...ship }));
     const incoming = state.incoming_shots.map((shot) => ({ ...shot }));
     const newlySunkShips = ownShips
@@ -495,15 +508,49 @@
       return item;
     }));
     const scoreboard = document.getElementById('naval-scoreboard');
+    const restartButton = document.getElementById('naval-restart-button');
+    const canRestart = state.is_solo || playerId === state.host_player_id;
     scoreboard.hidden = state.status !== 'finished';
     if (!scoreboard.hidden) {
-      scoreboard.replaceChildren();
-      const heading = document.createElement('h2');
-      heading.textContent = turnMessage.textContent;
-      scoreboard.append(heading);
+      const winner = state.players.find((player) => player.player_id === state.winner_player_id);
+      const spectator = !!ownPlayer?.is_spectator;
+      const won = state.winner_player_id === playerId;
+      document.getElementById('naval-result-title').textContent = spectator
+        ? 'Bataille terminée'
+        : !winner ? 'Partie terminée' : won ? 'Victoire !' : 'Défaite';
+      document.getElementById('naval-result-message').textContent = spectator
+        ? `Vous observiez la partie. ${winner ? `${winner.name} remporte la bataille.` : 'La bataille est terminée.'}`
+        : winner ? `${winner.name} remporte la bataille.` : 'La bataille est terminée.';
+      const attacks = state.attacks || [];
+      const hitCount = attacks.filter((attack) => attack.hit).length;
+      const hitRate = attacks.length ? Math.round((hitCount / attacks.length) * 100) : 0;
+      const viewedPlayer = state.players.find(
+        (player) => player.player_id === (spectator ? state.observed_player_id : playerId),
+      );
+      const stats = [
+        [spectator ? 'Tirs observés' : 'Tirs effectués', attacks.length],
+        ['Touchés', hitCount],
+        ['Précision', `${hitRate} %`],
+        ['Navires à flot', viewedPlayer?.ships_remaining ?? 0],
+        ['Tours joués', state.turn_number],
+      ];
+      const statsContainer = document.getElementById('naval-result-stats');
+      statsContainer.replaceChildren(...stats.map(([label, value]) => {
+        const card = document.createElement('div');
+        card.className = 'naval-result-stat';
+        const number = document.createElement('strong');
+        number.textContent = String(value);
+        const caption = document.createElement('span');
+        caption.textContent = label;
+        card.append(number, caption);
+        return card;
+      }));
+      restartButton.textContent = state.is_solo ? 'Rejouer contre le bot' : 'Lancer une nouvelle manche';
+      const restartInfo = document.getElementById('naval-restart-info');
+      restartInfo.hidden = canRestart;
+      restartInfo.textContent = 'La prochaine manche sera lancée par l’hôte. Vous pouvez attendre ou retourner à la ludothèque.';
     }
-    const restartButton = document.getElementById('naval-restart-button');
-    restartButton.hidden = state.status !== 'finished' || playerId !== state.host_player_id;
+    restartButton.hidden = state.status !== 'finished' || !canRestart;
     restartButton.disabled = roomBusy;
   }
 
@@ -522,6 +569,10 @@
     [...difficultySelect.options].forEach((option, index) => {
       option.textContent = labels[index];
     });
+    difficultyHelp.textContent = mode === 'solo'
+      ? 'Le niveau modifie la stratégie de tir du bot, jamais les informations auxquelles il a accès.'
+      : 'En multijoueur, le niveau détermine la taille des flottes de tous les capitaines.';
+    difficultySelect.closest('.naval-difficulty-control').hidden = false;
   }
 
   function revealedTargetShips() {
@@ -764,6 +815,9 @@
 
   document.getElementById('naval-create-room').addEventListener('click', createRoom);
   document.getElementById('naval-solo-start').addEventListener('click', createSoloGame);
+  difficultySelect.addEventListener('change', () => {
+    localStorage.setItem('battleship_bot_difficulty', difficultySelect.value);
+  });
   document.getElementById('naval-refresh-rooms').addEventListener('click', refreshRoomDirectory);
   document.getElementById('naval-join-room').addEventListener('click', () => joinRoom(roomInput.value));
   roomInput.addEventListener('keydown', (event) => {
@@ -785,6 +839,7 @@
   document.getElementById('naval-home-button').addEventListener('click', () => {
     showHome();
   });
+  document.getElementById('naval-result-home').addEventListener('click', showHome);
   document.getElementById('naval-orientation').addEventListener('click', () => {
     vertical = !vertical;
     renderLobby();

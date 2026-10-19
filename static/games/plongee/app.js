@@ -97,6 +97,11 @@
   }
 
   async function startSolo() {
+    const startButtons = [
+      document.getElementById('plongee-solo-start'),
+      document.getElementById('plongee-replay'),
+    ];
+    startButtons.forEach((button) => { button.disabled = true; });
     hideError(homeError);
     try {
       state = await post('/api/plongee/solo/new', playerData());
@@ -104,7 +109,9 @@
       gameType = 'solo';
       showGame();
     } catch (error) {
-      showError(homeError, error.message);
+      showError(gamePanel.hidden ? homeError : gameError, error.message);
+    } finally {
+      startButtons.forEach((button) => { button.disabled = false; });
     }
   }
 
@@ -252,13 +259,13 @@
       ? 'Votre score final est affiché ci-dessus.'
       : hasAnswered
         ? gameType === 'solo'
-          ? `Réponse validée : ${state.result.score}/100${state.result.known_answer ? '' : ' · réponse inédite, rareté neutre'}`
+          ? `Réponse validée : ${state.result.score}/100 · rareté de la réponse`
           : 'Réponse enregistrée. Les résultats s’afficheront à la fin de la manche.'
         : state.time_left <= 0
           ? 'Manche terminée. Attendez les résultats.'
           : gameType === 'room'
             ? `${state.answer_count}/${state.players.length} réponses envoyées.`
-            : 'Réponse libre : une proposition avant la fin du compte à rebours.';
+            : 'Seules les réponses correspondant au barème sont acceptées.';
     document.getElementById('plongee-timer').textContent = String(Math.max(0, state.time_left));
 
     const lastRound = gameType === 'room' ? state.last_round : null;
@@ -271,9 +278,13 @@
     }
     renderScoreboard();
     const next = document.getElementById('plongee-next');
+    const finished = state.status === 'finished';
+    const endActions = document.getElementById('plongee-end-actions');
+    endActions.hidden = !finished;
+    document.getElementById('plongee-replay').hidden = !finished || gameType !== 'solo';
     const canAdvanceSolo = gameType === 'solo'
       && hasAnswered
-      && state.status !== 'finished';
+      && !finished;
     const canAdvanceRoom = gameType === 'room'
       && !!state.last_round
       && state.player_id === state.host_player_id;
@@ -315,6 +326,7 @@
     } catch (error) {
       showError(gameError, error.message);
       updateView();
+      answerInput.focus();
     }
   }
 
@@ -373,6 +385,8 @@
   document.getElementById('plongee-exit').addEventListener('click', showHome);
   answerForm.addEventListener('submit', submitAnswer);
   document.getElementById('plongee-next').addEventListener('click', advance);
+  document.getElementById('plongee-replay').addEventListener('click', startSolo);
+  document.getElementById('plongee-result-home').addEventListener('click', showHome);
   window.setInterval(() => {
     if (!state || gamePanel.hidden || state.status !== 'playing') return;
     const elapsed = Math.floor((Date.now() - stateReceivedAt) / 1000);

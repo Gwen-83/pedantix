@@ -4,6 +4,7 @@ from app.nlp import (
     FRENCH_VERB_LEMMAS,
     WORD_ASSOCIATIONS,
     calculate_proximity,
+    calculate_numeric_proximity,
     calculate_word2vec_cosine,
     calculate_word2vec_proximity,
     is_valid_french_word,
@@ -13,6 +14,26 @@ from app.synonyms_dict import CURATED_DOMAIN_ASSOCIATIONS
 
 
 class ProximityTests(unittest.TestCase):
+    def test_numeric_proximity_thresholds_scale_with_target_magnitude(self):
+        for guess, target, expected, beyond in (
+            (30_000, 10_000, 20_000, 20_001),
+            (3_500, 2_500, 1_000, 1_001),
+            (600, 500, 100, 101),
+        ):
+            with self.subTest(target=target):
+                self.assertEqual(
+                    calculate_numeric_proximity(guess, target),
+                    48.0,
+                )
+                self.assertEqual(
+                    calculate_numeric_proximity(target + beyond, target),
+                    0.0,
+                )
+                self.assertGreater(
+                    calculate_proximity(str(target + expected // 2), str(target)),
+                    48.0,
+                )
+
     def test_pedantix_proximity_uses_word2vec_and_keeps_exact_morphology(self):
         self.assertGreater(
             calculate_word2vec_proximity("chien", "chat"),

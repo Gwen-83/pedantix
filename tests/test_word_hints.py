@@ -74,6 +74,30 @@ class WordHintTests(unittest.TestCase):
 
         self.assertIsNone(self.room._pick_next_hint_word_id())
 
+    def test_hint_never_reveals_a_body_word_repeated_from_the_title(self):
+        with patch("app.game.record_game_start"):
+            session = GameSession(
+                session_id="repeated-title-word",
+                seed="P-1234",
+                title="Mars rouge",
+                url="",
+                image="",
+                paragraphs=["Mars est une planète rouge."],
+                mode="multiplayer",
+                category="general",
+            )
+        self.room.players = {
+            "first": RoomPlayer("first", "Joueur", session),
+        }
+
+        for _ in range(20):
+            token_id = self.room._pick_next_hint_word_id()
+            self.assertIsNotNone(token_id)
+            self.assertNotIn(
+                session.tokens_by_id[token_id]["normalized"],
+                {"mars", "rouge"},
+            )
+
     def test_hint_word_is_visible_but_does_not_count_as_discovered(self):
         with patch("app.game.record_game_start"):
             session = GameSession(
@@ -111,7 +135,7 @@ class GameProximityDisplayTests(unittest.TestCase):
             patch("app.game.record_game_start"),
             patch("app.game.record_guess"),
             patch("app.game.is_valid_french_word", return_value=True),
-            patch("app.game.calculate_word2vec_proximity", return_value=proximity),
+            patch("app.game.calculate_proximity", return_value=proximity),
         ):
             session = GameSession(
                 session_id="proximity-test",
@@ -129,20 +153,84 @@ class GameProximityDisplayTests(unittest.TestCase):
             result = session.submit_guess("autre")
         return result, session
 
-    def test_temperature_at_floor_does_not_grey_a_token(self):
-        result, session = self._submit_proximity_guess(30.0)
+    def test_semantic_link_below_threshold_does_not_grey_a_token(self):
+        result, session = self._submit_proximity_guess(47.9)
 
         self.assertEqual(result["status"], "miss")
         self.assertEqual(result["score"], 0)
         self.assertEqual(result["close_tokens"], [])
         self.assertEqual(session.token_heat, {})
 
-    def test_temperature_above_floor_greys_the_matching_token(self):
-        result, session = self._submit_proximity_guess(30.1)
+    def test_semantic_link_at_threshold_greys_the_matching_token(self):
+        result, session = self._submit_proximity_guess(48.0)
 
         self.assertEqual(result["status"], "close")
-        self.assertEqual(result["close_tokens"][0]["score"], 30.1)
-        self.assertEqual(session.token_heat[next(iter(session.token_heat))], 30.1)
+        self.assertEqual(result["close_tokens"][0]["score"], 48)
+        self.assertEqual(session.token_heat[next(iter(session.token_heat))], 48)
+
+    def test_related_words_are_greyed_using_semantic_proximity(self):
+        with (
+            patch("app.game.record_game_start"),
+            patch("app.game.record_guess"),
+            patch("app.game.is_valid_french_word", return_value=True),
+        ):
+            session = GameSession(
+                session_id="semantic-proximity-test",
+                seed="P-1234",
+                title="Océan",
+                url="",
+                image="",
+                paragraphs=["L'eau couvre les mers."],
+                mode="solo",
+                category="general",
+            )
+            result = session.submit_guess("eau")
+
+        ocean_tokens = [
+            token_id
+            for token_id, token in session.tokens_by_id.items()
+            if token.get("normalized") == "ocean"
+        ]
+        self.assertTrue(ocean_tokens)
+        self.assertTrue(
+            any(
+                item["id"] in ocean_tokens and item["score"] >= 48
+                for item in result["close_tokens"]
+            )
+        )
+
+    def test_numeric_token_is_revealed_when_guess_is_within_ten(self):
+        with (
+            patch("app.game.record_game_start"),
+            patch("app.game.record_guess"),
+            patch("app.game.is_valid_french_word", return_value=True),
+        ):
+            session = GameSession(
+                session_id="numeric-proximity-test",
+                seed="P-1234",
+                title="Événement 1985",
+                url="",
+                image="",
+                paragraphs=["Cet événement a eu lieu en 1985."],
+                mode="solo",
+                category="general",
+            )
+            year_token = next(
+                token for token in session.tokens
+                if token.get("normalized") == "1985"
+            )
+            year_token_id = year_token["id"]
+            session.unrevealed_unique_words = {"1985"}
+            session.word_to_token_ids = {"1985": [year_token_id]}
+
+            outside_reveal_range = session.submit_guess("1975")
+            revealed = session.submit_guess("1976")
+
+        self.assertEqual(outside_reveal_range["status"], "close")
+        self.assertEqual(outside_reveal_range["newly_revealed"], {})
+        self.assertEqual(revealed["status"], "match")
+        self.assertEqual(revealed["newly_revealed"][str(year_token_id)], "1985")
+        self.assertTrue(session.tokens_by_id[year_token_id]["revealed"])
 
 
 if __name__ == "__main__":

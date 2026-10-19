@@ -453,8 +453,33 @@ html.store-mode .game-store {
   font-size: 0.72rem;
 }
 
+.store-active-rooms-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.store-rooms-refresh {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border: 1px solid var(--game-border);
+  border-radius: 8px;
+  background: var(--game-panel-raised);
+  color: var(--game-text);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.store-rooms-refresh:hover {
+  border-color: var(--game-accent);
+}
+
 .store-chat-list,
-.store-invitation-list {
+.store-invitation-list,
+.store-active-rooms {
   display: grid;
   gap: 8px;
   max-height: 240px;
@@ -465,7 +490,8 @@ html.store-mode .game-store {
 }
 
 .store-chat-list li,
-.store-invitation-list li {
+.store-invitation-list li,
+.store-active-rooms li {
   display: grid;
   gap: 3px;
   min-width: 0;
@@ -474,6 +500,53 @@ html.store-mode .game-store {
   border-radius: 9px;
   background: var(--game-panel-raised);
   font-size: 0.75rem;
+}
+
+.store-active-rooms .store-active-room {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.store-active-room-details {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.store-active-room-details strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.store-active-room-details small {
+  color: var(--game-muted);
+  font-size: 0.66rem;
+}
+
+.store-active-room-join {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--game-accent);
+  color: var(--game-accent-contrast);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.store-active-room-join:hover {
+  background: var(--game-accent-hover);
+}
+
+.store-active-room-join:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .store-chat-message-heading {

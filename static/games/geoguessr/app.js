@@ -771,6 +771,7 @@
     updateRoundCountdown();
     const region = state.region || regionSelect.value;
     const isRoom = gameType === 'room';
+    const isSpectator = isRoom && !!state.player?.is_spectator;
     const isPanorama = state.variant === 'panorama';
     const waitingForNextRound = isWaitingForNextRound();
     if (!isPanorama) {

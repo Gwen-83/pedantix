@@ -22,12 +22,13 @@
   const chatInput = document.getElementById('store-chat-input');
   const chatStatus = document.getElementById('store-chat-status');
   const invitationList = document.getElementById('store-invitation-list');
+  const activeRoomList = document.getElementById('store-active-rooms');
   const inviteOverlay = document.getElementById('store-invite-overlay');
   const inviteForm = document.getElementById('store-invite-form');
-  const inviteRoomSelect = document.getElementById('store-invite-room');
+  const inviteGameSelect = document.getElementById('store-invite-game');
   let lastChatId = 0;
   let pendingInviteUsername = null;
-  let inviteRooms = [];
+  let roomsRequestInFlight = false;
   const params = new URLSearchParams(window.location.search);
   const requestedNext = params.get('next');
   const launchTarget = requestedNext ? new URL(requestedNext, window.location.origin) : null;
@@ -259,7 +260,7 @@
     if (!invitations.length) {
       const empty = document.createElement('li');
       empty.className = 'store-social-empty';
-      empty.textContent = 'Aucune invitation reçue.';
+      empty.textContent = 'Aucune invitation envoyée.';
       invitationList.append(empty);
       return;
     }
@@ -272,20 +273,14 @@
     invitations.forEach((invitation) => {
       const item = document.createElement('li');
       const text = document.createElement('span');
-      text.textContent = `${invitation.sender_username} vous invite dans ${gameNames[invitation.game_id] || invitation.game_id} · salon ${invitation.room_id}`;
-      const actions = document.createElement('div');
-      actions.className = 'store-invitation-actions';
-      const accept = document.createElement('button');
-      accept.type = 'button';
-      accept.className = 'store-invitation-accept';
-      accept.textContent = 'Rejoindre';
-      accept.addEventListener('click', () => handleInvitation(invitation, 'accepted'));
-      const dismiss = document.createElement('button');
-      dismiss.type = 'button';
-      dismiss.textContent = 'Ignorer';
-      dismiss.addEventListener('click', () => handleInvitation(invitation, 'dismissed'));
-      actions.append(accept, dismiss);
-      item.append(text, actions);
+      const statuses = {
+        pending: 'En attente · valable 5 minutes',
+        accepted: `Acceptée · salon ${invitation.room_id}`,
+        declined: 'Refusée',
+        expired: 'Expirée',
+      };
+      text.textContent = `Invitation à ${invitation.recipient_username} · ${gameNames[invitation.game_id] || invitation.game_id} · ${statuses[invitation.status] || invitation.status}`;
+      item.append(text);
       invitationList.append(item);
     });
   }
@@ -293,7 +288,7 @@
   async function refreshInvitations() {
     if (!localStorage.getItem('pedantix_auth_token')) return;
     try {
-      const data = await socialRequest('/api/social/invitations');
+      const data = await socialRequest('/api/social/invitations/sent');
       renderInvitations(data.invitations || []);
     } catch (error) {
       invitationList.replaceChildren();
@@ -304,23 +299,60 @@
     }
   }
 
-  function gameUrl(gameId, roomId) {
-    return `/games/${encodeURIComponent(gameId)}/?room=${encodeURIComponent(roomId)}`;
-  }
-
-  async function handleInvitation(invitation, action) {
+  async function refreshActiveRooms() {
+    if (roomsRequestInFlight) return;
+    roomsRequestInFlight = true;
     try {
-      await socialRequest(`/api/social/invitations/${invitation.id}`, {
-        method: 'POST',
-        body: JSON.stringify({ action }),
-      });
-      if (action === 'accepted') {
-        window.location.href = gameUrl(invitation.game_id, invitation.room_id);
+      const data = await socialRequest('/api/social/rooms');
+      const rooms = data.rooms || [];
+      activeRoomList.replaceChildren();
+      if (!rooms.length) {
+        const empty = document.createElement('li');
+        empty.className = 'store-social-empty';
+        empty.textContent = 'Aucun salon public disponible pour le moment.';
+        activeRoomList.append(empty);
         return;
       }
-      await refreshInvitations();
+
+      rooms.forEach((room) => {
+        const item = document.createElement('li');
+        item.className = 'store-active-room';
+        const details = document.createElement('div');
+        details.className = 'store-active-room-details';
+        const title = document.createElement('strong');
+        title.textContent = `${room.game_name} · ${room.room_id}`;
+        const metadata = document.createElement('small');
+        const roomState = room.status === 'playing' ? 'Partie en cours' : 'En attente';
+        const headcount = `${room.player_count} joueur${room.player_count === 1 ? '' : 's'}`;
+        const mode = room.game_mode ? ` · ${room.game_mode}` : '';
+        metadata.textContent = `${roomState}${mode} · ${headcount}${room.host_name ? ` · hôte : ${room.host_name}` : ''}`;
+        details.append(title, metadata);
+
+        const join = document.createElement('button');
+        join.type = 'button';
+        join.className = 'store-active-room-join';
+        join.textContent = 'Rejoindre';
+        join.setAttribute(
+          'aria-label',
+          `Rejoindre le salon ${room.room_id} de ${room.game_name}`,
+        );
+        join.addEventListener('click', () => {
+          join.disabled = true;
+          join.textContent = 'Ouverture…';
+          window.location.href =
+            `/games/${encodeURIComponent(room.game_id)}/?room=${encodeURIComponent(room.room_id)}`;
+        });
+        item.append(details, join);
+        activeRoomList.append(item);
+      });
     } catch (error) {
-      chatStatus.textContent = `Impossible de traiter l’invitation : ${error.message}`;
+      activeRoomList.replaceChildren();
+      const message = document.createElement('li');
+      message.className = 'store-social-empty';
+      message.textContent = `Impossible de charger les salons : ${error.message}`;
+      activeRoomList.append(message);
+    } finally {
+      roomsRequestInFlight = false;
     }
   }
 
@@ -331,55 +363,39 @@
       return;
     }
     document.getElementById('store-invite-description').textContent =
-      `Choisissez le salon à partager avec ${username}.`;
-    document.getElementById('store-invite-status').textContent = 'Chargement de vos salons…';
-    inviteRoomSelect.replaceChildren();
-    document.getElementById('store-invite-submit').disabled = true;
+      `Choisissez un jeu. Un salon privé avec vous deux sera créé si ${username} accepte. L’invitation expire dans 5 minutes.`;
+    document.getElementById('store-invite-status').textContent = '';
+    document.getElementById('store-invite-submit').disabled = false;
     inviteOverlay.hidden = false;
-    try {
-      const data = await socialRequest('/api/social/rooms');
-      inviteRooms = data.rooms || [];
-      inviteRoomSelect.replaceChildren(...inviteRooms.map((room) => {
-        const option = document.createElement('option');
-        option.value = `${room.game_id}:${room.room_id}`;
-        option.textContent = `${room.game_name} · Salon ${room.room_id}${room.status === 'playing' ? ' · en cours' : ' · en attente'}`;
-        return option;
-      }));
-      document.getElementById('store-invite-status').textContent = inviteRooms.length
-        ? ''
-        : 'Vous ne participez à aucun salon actif. Créez ou rejoignez un salon dans un jeu, puis revenez inviter ce joueur.';
-      document.getElementById('store-invite-submit').disabled = !inviteRooms.length;
-      inviteForm.dataset.recipient = username;
-      document.getElementById('store-invite-close').focus();
-    } catch (error) {
-      document.getElementById('store-invite-status').textContent =
-        `Impossible de charger vos salons : ${error.message}`;
-    }
+    inviteForm.dataset.recipient = username;
+    document.getElementById('store-invite-close').focus();
   }
 
   async function sendInvitation(event) {
     event.preventDefault();
-    const [gameId, ...roomParts] = inviteRoomSelect.value.split(':');
-    const roomId = roomParts.join(':');
-    if (!gameId || !roomId) return;
+    const gameId = inviteGameSelect.value;
     const submit = document.getElementById('store-invite-submit');
     submit.disabled = true;
     document.getElementById('store-invite-status').textContent = 'Envoi…';
     try {
-      await socialRequest('/api/social/invitations', {
+      const invitation = await socialRequest('/api/social/invitations', {
         method: 'POST',
         body: JSON.stringify({
           recipient_username: inviteForm.dataset.recipient,
           game_id: gameId,
-          room_id: roomId,
         }),
       });
-      document.getElementById('store-invite-status').textContent = 'Invitation envoyée.';
+      const awaiting = new Set(JSON.parse(localStorage.getItem('store_awaiting_invitation_ids') || '[]'));
+      awaiting.add(Number(invitation.id));
+      localStorage.setItem('store_awaiting_invitation_ids', JSON.stringify([...awaiting]));
+      document.getElementById('store-invite-status').textContent =
+        `Invitation envoyée à ${invitation.recipient_username}. Elle expire dans 5 minutes.`;
+      refreshInvitations();
       window.setTimeout(() => { inviteOverlay.hidden = true; }, 900);
     } catch (error) {
       document.getElementById('store-invite-status').textContent =
         `Impossible d’envoyer l’invitation : ${error.message}`;
-      submit.disabled = !inviteRooms.length;
+      submit.disabled = false;
     }
   }
 
@@ -406,6 +422,7 @@
     }
   });
   document.getElementById('store-chat-login').addEventListener('click', () => openDialog(false));
+  document.getElementById('store-rooms-refresh').addEventListener('click', refreshActiveRooms);
   document.addEventListener('store:invite-player', (event) => {
     openInviteDialog(event.detail.username);
   });
@@ -417,8 +434,10 @@
   });
   inviteForm.addEventListener('submit', sendInvitation);
   refreshChat(true);
+  refreshActiveRooms();
   window.setInterval(() => refreshChat(), 3000);
   window.setInterval(refreshInvitations, 5000);
+  window.setInterval(refreshActiveRooms, 10000);
 
   storeFilters.forEach(button => {
     button.addEventListener('click', () => {

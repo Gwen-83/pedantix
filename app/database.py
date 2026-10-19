@@ -22,6 +22,7 @@ import datetime as _dt
 import hashlib
 import secrets
 import uuid
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.nlp import normalize_wiki_title
@@ -269,7 +270,9 @@ def create_store_invitation(
     sender_username: str,
     recipient_username: str,
     game_id: str,
-    room_id: str,
+    sender_player_id: str,
+    recipient_player_id: str,
+    expires_at: float,
 ) -> Dict[str, Any]:
     with DatabaseContext() as db:
         db.execute(
@@ -286,14 +289,22 @@ def create_store_invitation(
             raise ValueError("Compte introuvable.")
         db.execute(
             """INSERT INTO store_invitations
-               (sender_username, recipient_username, game_id, room_id)
-               VALUES (?, ?, ?, ?) RETURNING id""",
-            (sender["username"], recipient["username"], game_id, room_id),
+               (sender_username, recipient_username, game_id, room_id,
+                sender_player_id, recipient_player_id, expires_at)
+               VALUES (?, ?, ?, '', ?, ?, ?) RETURNING id""",
+            (
+                sender["username"],
+                recipient["username"],
+                game_id,
+                sender_player_id,
+                recipient_player_id,
+                expires_at,
+            ),
         )
         invitation_id = db.fetchone()["id"]
         db.execute(
             """SELECT id, sender_username, recipient_username, game_id, room_id,
-                      status, created_at
+                      sender_player_id, recipient_player_id, status, created_at, expires_at
                FROM store_invitations WHERE id = ?""",
             (invitation_id,),
         )
@@ -307,28 +318,85 @@ def get_store_invitations(username: str, limit: int = 20) -> List[Dict[str, Any]
     limit = max(1, min(limit, 50))
     with DatabaseContext() as db:
         db.execute(
+            """UPDATE store_invitations SET status = 'expired'
+               WHERE status = 'pending' AND expires_at <= ?""",
+            (time.time(),),
+        )
+        db.execute(
             """SELECT id, sender_username, recipient_username, game_id, room_id,
-                      status, created_at
+                      sender_player_id, recipient_player_id, status, created_at, expires_at
                FROM store_invitations
                WHERE LOWER(recipient_username) = LOWER(?) AND status = 'pending'
+                 AND expires_at > ?
+               ORDER BY id DESC LIMIT ?""",
+            (username.strip(), time.time(), limit),
+        )
+        return [_jsonable(dict(row)) for row in reversed(db.fetchall())]
+
+
+def get_store_sent_invitations(username: str, limit: int = 20) -> List[Dict[str, Any]]:
+    limit = max(1, min(limit, 50))
+    with DatabaseContext() as db:
+        db.execute(
+            """UPDATE store_invitations SET status = 'expired'
+               WHERE status = 'pending' AND expires_at <= ?""",
+            (time.time(),),
+        )
+        db.execute(
+            """SELECT id, sender_username, recipient_username, game_id, room_id,
+                      sender_player_id, recipient_player_id, status, created_at, expires_at
+               FROM store_invitations
+               WHERE LOWER(sender_username) = LOWER(?)
+                 AND status IN ('pending', 'accepted', 'declined', 'expired')
                ORDER BY id DESC LIMIT ?""",
             (username.strip(), limit),
         )
         return [_jsonable(dict(row)) for row in reversed(db.fetchall())]
 
 
+def get_store_invitation_for_accept(
+    invitation_id: int, username: str
+) -> Optional[Dict[str, Any]]:
+    with DatabaseContext() as db:
+        now = time.time()
+        db.execute(
+            """UPDATE store_invitations SET status = 'expired'
+               WHERE id = ? AND LOWER(recipient_username) = LOWER(?)
+                 AND status = 'pending' AND expires_at <= ?""",
+            (invitation_id, username.strip(), now),
+        )
+        db.execute(
+            """SELECT id, sender_username, recipient_username, game_id, room_id,
+                      sender_player_id, recipient_player_id, status, created_at, expires_at
+               FROM store_invitations
+               WHERE id = ? AND LOWER(recipient_username) = LOWER(?)
+                 AND status = 'pending' AND expires_at > ?""",
+            (invitation_id, username.strip(), now),
+        )
+        row = db.fetchone()
+        return _jsonable(dict(row)) if row is not None else None
+
+
 def update_store_invitation_status(
-    invitation_id: int, username: str, status: str
+    invitation_id: int, username: str, status: str, room_id: str = ""
 ) -> bool:
-    if status not in {"accepted", "dismissed"}:
+    if status not in {"accepted", "declined"}:
         raise ValueError("Statut d'invitation invalide.")
     with DatabaseContext() as db:
-        db.execute(
-            """UPDATE store_invitations SET status = ?
-               WHERE id = ? AND LOWER(recipient_username) = LOWER(?)
-                 AND status = 'pending'""",
-            (status, invitation_id, username.strip()),
-        )
+        if status == "accepted":
+            db.execute(
+                """UPDATE store_invitations SET status = ?, room_id = ?
+                   WHERE id = ? AND LOWER(recipient_username) = LOWER(?)
+                     AND status = 'pending' AND expires_at > ?""",
+                (status, room_id, invitation_id, username.strip(), time.time()),
+            )
+        else:
+            db.execute(
+                """UPDATE store_invitations SET status = ?
+                   WHERE id = ? AND LOWER(recipient_username) = LOWER(?)
+                     AND status = 'pending' AND expires_at > ?""",
+                (status, invitation_id, username.strip(), time.time()),
+            )
         return db.cursor.rowcount == 1
 
 
@@ -404,8 +472,13 @@ _SCHEMA_PG = [
     """CREATE TABLE IF NOT EXISTS store_invitations (
         id BIGSERIAL PRIMARY KEY, sender_username TEXT NOT NULL,
         recipient_username TEXT NOT NULL, game_id TEXT NOT NULL, room_id TEXT NOT NULL,
+        sender_player_id TEXT NOT NULL DEFAULT '', recipient_player_id TEXT NOT NULL DEFAULT '',
+        expires_at DOUBLE PRECISION NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'pending',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS global_game_controls (
+        control_id TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0,
+        updated_by TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_games_finished ON games(finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_article_category ON article_cache(category)",
@@ -485,8 +558,13 @@ _SCHEMA_SQLITE = [
     """CREATE TABLE IF NOT EXISTS store_invitations (
         id INTEGER PRIMARY KEY AUTOINCREMENT, sender_username TEXT NOT NULL,
         recipient_username TEXT NOT NULL, game_id TEXT NOT NULL, room_id TEXT NOT NULL,
+        sender_player_id TEXT NOT NULL DEFAULT '', recipient_player_id TEXT NOT NULL DEFAULT '',
+        expires_at REAL NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS global_game_controls (
+        control_id TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0,
+        updated_by TEXT NOT NULL DEFAULT '', updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
     "CREATE INDEX IF NOT EXISTS idx_user_game_stats_user_finished ON user_game_stats(username, finished_at DESC)",
@@ -526,6 +604,9 @@ def _migrate_multigame_schema(db: DatabaseContext) -> None:
     _ensure_column(db, "user_game_stats", "game_id", "TEXT NOT NULL DEFAULT 'pedantix'")
     _ensure_column(db, "user_game_stats", "difficulty", "TEXT")
     _ensure_column(db, "user_game_stats", "metrics_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(db, "store_invitations", "sender_player_id", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(db, "store_invitations", "recipient_player_id", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(db, "store_invitations", "expires_at", "REAL NOT NULL DEFAULT 0")
 
     db.execute(
         """INSERT INTO player_game_scores (player_name, game_id, score, last_played)
@@ -594,12 +675,81 @@ def init_db() -> bool:
         with DatabaseContext() as db:
             for stmt in (_SCHEMA_PG if db.is_pg else _SCHEMA_SQLITE):
                 db.execute(stmt)
+            db.execute(
+                """INSERT INTO global_game_controls (control_id, paused, updated_by)
+                   VALUES ('global', 0, 'system')
+                   ON CONFLICT (control_id) DO NOTHING"""
+            )
             _migrate_multigame_schema(db)
             logger.info(f"Base de données prête ({'Supabase/PostgreSQL' if db.is_pg else 'SQLite'})")
         return True
     except Exception as e:
         logger.error(f"init_db a échoué : {e}")
         return False
+
+
+@contextmanager
+def _global_control_db():
+    with DatabaseContext() as db:
+        if IS_POSTGRES and not db.is_pg:
+            raise RuntimeError("La base PostgreSQL partagée est indisponible.")
+        yield db
+
+
+def get_global_game_pause() -> bool:
+    try:
+        with _global_control_db() as db:
+            db.execute(
+                "SELECT paused FROM global_game_controls WHERE control_id = 'global'"
+            )
+            row = db.fetchone()
+            if row is None:
+                raise RuntimeError("Le contrôle global des parties n'est pas initialisé.")
+            return bool(row["paused"])
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        logger.error("Lecture du contrôle global des parties impossible: %s", exc)
+        raise RuntimeError("Impossible de vérifier l'état global des parties.") from exc
+
+
+@contextmanager
+def global_game_launch_guard():
+    with _global_control_db() as db:
+        try:
+            lock_clause = " FOR SHARE" if db.is_pg else ""
+            db.execute(
+                "SELECT paused FROM global_game_controls WHERE control_id = 'global'"
+                + lock_clause
+            )
+            row = db.fetchone()
+            if row is None:
+                raise RuntimeError("Le contrôle global des parties n'est pas initialisé.")
+            paused = bool(row["paused"])
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            logger.error("Vérification du contrôle global des parties impossible: %s", exc)
+            raise RuntimeError("Impossible de vérifier l'état global des parties.") from exc
+        yield paused
+
+
+def set_global_game_pause(paused: bool, updated_by: str) -> None:
+    try:
+        with _global_control_db() as db:
+            db.execute(
+                """UPDATE global_game_controls
+                   SET paused = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE control_id = 'global'""",
+                (1 if paused else 0, updated_by),
+            )
+            if db.cursor.rowcount != 1:
+                raise RuntimeError("Le contrôle global des parties n'est pas initialisé.")
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        logger.error("Mise à jour du contrôle global des parties impossible: %s", exc)
+        raise RuntimeError("Impossible de modifier l'état global des parties.") from exc
 
 
 def db_backend() -> str:

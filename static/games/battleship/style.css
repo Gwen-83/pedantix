@@ -71,15 +71,18 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em; }
 .naval-intro { max-width: 64ch; margin: 12px 0 28px; color: #aab3c5; line-height: 1.65; }
 .naval-difficulty-label { display: block; margin-bottom: 7px; color: #dbe3ef; font-size: 0.8rem; font-weight: 800; }
+.naval-difficulty-control { width: min(100%, 440px); margin-bottom: 16px; padding: 15px 16px 1px; border: 1px solid rgba(56, 189, 248, 0.24); border-radius: 14px; background: rgba(56, 189, 248, 0.055); }
 .naval-difficulty-select {
+  width: 100%;
   min-width: 250px;
-  margin-bottom: 18px;
+  margin-bottom: 0;
   padding: 9px 32px 9px 11px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 9px;
   background: #111827;
   color: #f8fafc;
 }
+.naval-difficulty-help { margin: 8px 0 12px; color: #aab3c5; font-size: 0.76rem; line-height: 1.45; }
 
 .naval-mode-card {
   display: flex;
@@ -231,6 +234,7 @@ h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em;
 .naval-setup .naval-cell { border-radius: 4px; }
 
 .naval-battle { margin-top: 20px; }
+.naval-match-meta { margin: 0 0 10px; color: #aab3c5; font-size: 0.75rem; font-weight: 700; text-align: center; }
 .naval-turn-message { margin: 0 0 16px; padding: 12px 14px; border: 1px solid rgba(56, 189, 248, 0.19); border-radius: 11px; background: rgba(56, 189, 248, 0.07); color: #dbeafe; font-size: 0.88rem; text-align: center; }
 .naval-shot-result { min-height: 0; margin: 0 0 12px; padding: 0; color: #cbd5e1; text-align: center; font-size: 0.85rem; font-weight: 800; }
 .naval-shot-result:not(:empty) { padding: 10px 12px; border: 1px solid rgba(251,191,36,.2); border-radius: 10px; background: rgba(251,191,36,.07); }
@@ -251,9 +255,17 @@ h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.045em;
 .naval-board-badge { flex: 0 0 auto; padding: 5px 8px; border-radius: 99px; background: rgba(255, 255, 255, 0.07); color: #cbd5e1; font-size: 0.68rem; font-weight: 700; }
 .naval-status-section { margin-top: 20px; }
 .naval-status-section h2 { margin-bottom: 10px; }
-.naval-scoreboard { margin-top: 18px; padding: 17px; border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 14px; background: rgba(56, 189, 248, 0.07); text-align: center; }
-.naval-scoreboard h2 { margin: 0 0 6px; font-size: 1.1rem; }
-.naval-scoreboard p { margin: 0; color: #cbd5e1; }
+.naval-scoreboard { margin-top: 18px; padding: clamp(18px, 4vw, 26px); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 16px; background: linear-gradient(140deg, rgba(56, 189, 248, 0.11), rgba(23, 29, 44, 0.88)); text-align: center; }
+.naval-result-eyebrow { margin: 0 0 5px !important; color: #7dd3fc !important; font-size: 0.68rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+.naval-scoreboard h2 { margin: 0 0 6px; font-size: clamp(1.25rem, 4vw, 1.65rem); }
+.naval-scoreboard .naval-result-message { margin: 0; color: #cbd5e1; }
+.naval-result-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 9px; margin: 18px 0; }
+.naval-result-stat { display: grid; gap: 5px; padding: 12px 8px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 11px; background: rgba(7, 12, 23, 0.38); }
+.naval-result-stat strong { color: #f8fafc; font-size: 1.1rem; }
+.naval-result-stat span { color: #aab3c5; font-size: 0.7rem; }
+.naval-restart-info { margin: 0 0 14px; color: #aab3c5; font-size: 0.8rem; line-height: 1.5; }
+.naval-result-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }
+.naval-result-actions button { min-height: 42px; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 footer { padding-top: 18px; color: #707b8e; font-size: 0.72rem; text-align: center; }

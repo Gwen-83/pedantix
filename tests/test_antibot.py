@@ -39,6 +39,25 @@ class TestAntiBotGuard(unittest.TestCase):
         self.assertTrue(allowed)
         self.assertEqual(guard.players["recovering-player"]["rapid_strikes"], 2)
 
+    def test_stale_guess_token_does_not_invalidate_the_current_token(self):
+        guard = AntiBotGuard()
+        stale_token = guard.get_or_issue_token("shared-player")
+        valid, _, current_token = guard.verify_token("shared-player", stale_token)
+
+        self.assertTrue(valid)
+        self.assertNotEqual(current_token, stale_token)
+
+        valid, error, refreshed_token = guard.verify_token("shared-player", stale_token)
+
+        self.assertFalse(valid)
+        self.assertIn("invalide", error)
+        self.assertEqual(refreshed_token, current_token)
+        self.assertEqual(guard.players["shared-player"]["token"], current_token)
+
+        valid, _, next_token = guard.verify_token("shared-player", refreshed_token)
+        self.assertTrue(valid)
+        self.assertNotEqual(next_token, current_token)
+
 
 if __name__ == "__main__":
     unittest.main()

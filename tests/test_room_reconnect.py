@@ -3,12 +3,17 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from app.room import PLAYER_DISCONNECT_GRACE_SECONDS, Room, RoomPlayer
+from app.room import PLAYER_DISCONNECT_GRACE_SECONDS, Room, RoomManager, RoomPlayer
 
 
 class FakeWebSocket:
     async def send_text(self, message):
         pass
+
+
+class FailingWebSocket:
+    async def send_text(self, message):
+        raise ConnectionError("socket closed")
 
 
 class FakeSoloSession:
@@ -75,8 +80,12 @@ class RoomReconnectTests(unittest.IsolatedAsyncioTestCase):
 
         await self.room.handle_websocket_disconnect(self.original_socket)
 
-        self.assertEqual(self.room.get_leaderboard(), before)
-        self.assertTrue(self.player.connected)
+        after_disconnect = self.room.get_leaderboard()
+        self.assertEqual(after_disconnect[0]["is_ready"], before[0]["is_ready"])
+        self.assertEqual(after_disconnect[0]["score"], before[0]["score"])
+        self.assertFalse(after_disconnect[0]["connected"])
+        self.assertFalse(self.player.connected)
+        self.assertIsNotNone(self.player.disconnected_at)
         self.assertTrue(self.player.is_ready)
 
         reconnected_player = self.room.get_or_create_player(
@@ -84,11 +93,62 @@ class RoomReconnectTests(unittest.IsolatedAsyncioTestCase):
             self.player.name,
         )
         reconnect_socket = FakeWebSocket()
-        self.room.add_websocket(reconnect_socket, self.player.player_id)
+        self.assertTrue(self.room.add_websocket(reconnect_socket, self.player.player_id))
 
         self.assertIs(reconnected_player, self.player)
+        self.assertTrue(self.player.connected)
+        self.assertIsNone(self.player.disconnected_at)
         self.assertEqual(self.room.get_leaderboard(), before)
         self.assertNotIn(self.player.player_id, self.room._disconnect_tasks)
+
+    async def test_failed_broadcast_marks_player_disconnected(self):
+        self.room.remove_websocket(self.original_socket)
+        socket = FailingWebSocket()
+        self.room.add_websocket(socket, self.player.player_id)
+
+        await self.room.broadcast({"type": "test"})
+
+        self.assertFalse(self.player.connected)
+        self.assertIsNotNone(self.player.disconnected_at)
+        self.assertNotIn(socket, self.room.ws_player_map)
+        self.assertIn(self.player.player_id, self.room._disconnect_tasks)
+
+    async def test_multiplayer_room_survives_reconnect_grace_in_room_listing(self):
+        await self.room.handle_websocket_disconnect(self.original_socket)
+        manager = RoomManager.__new__(RoomManager)
+        manager.rooms = {self.room.room_id: self.room}
+
+        active_rooms = manager.list_active_rooms()
+
+        self.assertEqual(len(active_rooms), 1)
+        self.assertEqual(active_rooms[0]["room_id"], self.room.room_id)
+        self.assertEqual(active_rooms[0]["players_count"], 0)
+        self.assertEqual(active_rooms[0]["reconnecting_players_count"], 1)
+        self.assertIs(manager.get_room(self.room.room_id), self.room)
+
+    async def test_room_listing_reconciles_stale_connected_flags(self):
+        self.room.remove_websocket(self.original_socket)
+        manager = RoomManager.__new__(RoomManager)
+        manager.rooms = {self.room.room_id: self.room}
+
+        active_rooms = manager.list_active_rooms()
+
+        self.assertEqual(active_rooms[0]["players_count"], 0)
+        self.assertEqual(active_rooms[0]["reconnecting_players_count"], 1)
+        self.assertFalse(self.player.connected)
+        self.assertIsNotNone(self.player.disconnected_at)
+        self.assertIn(self.player.player_id, self.room._disconnect_tasks)
+
+    async def test_room_is_cleaned_after_all_players_exceed_reconnect_grace(self):
+        await self.room.handle_websocket_disconnect(self.original_socket)
+        manager = RoomManager.__new__(RoomManager)
+        manager.rooms = {self.room.room_id: self.room}
+        disconnected_at = self.player.disconnected_at
+
+        with patch("app.room.time.time", return_value=disconnected_at + PLAYER_DISCONNECT_GRACE_SECONDS + 1):
+            manager.cleanup_abandoned_rooms()
+
+        self.assertIsNone(manager.get_room(self.room.room_id))
 
     async def test_player_is_removed_only_after_reconnect_grace_expires(self):
         with patch("app.room.PLAYER_DISCONNECT_GRACE_SECONDS", 0.01):
@@ -207,6 +267,9 @@ class RoomReconnectTests(unittest.IsolatedAsyncioTestCase):
             self.assertIs(room.players["helper-1"], helper)
             self.assertIs(helper.session, helper_session)
             self.assertEqual(reloaded_join["session"]["session_id"], helper_session.session_id)
+            self.assertIn("helper-1", room._disconnect_tasks)
+            resumed_socket = FakeWebSocket()
+            self.assertTrue(room.add_websocket(resumed_socket, helper.player_id))
             self.assertNotIn("helper-1", room._disconnect_tasks)
 
             await leave_room(RoomLeaveRequest(room_id=room.room_id, player_id="helper-1"))

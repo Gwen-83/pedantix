@@ -575,6 +575,104 @@ footer { color: var(--game-muted); }
   cursor: pointer;
 }
 
+.shared-invitation-overlay {
+  position: fixed;
+  z-index: 20000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(4, 8, 14, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.shared-invitation-overlay[hidden] { display: none; }
+
+.shared-invitation-dialog {
+  width: min(460px, 100%);
+  padding: clamp(22px, 5vw, 34px);
+  border: 1px solid var(--game-border);
+  border-radius: 22px;
+  background: var(--game-panel);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+  color: var(--game-text);
+  text-align: center;
+}
+
+.shared-invitation-icon {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  margin: 0 auto 12px;
+  border-radius: 17px;
+  background: var(--game-panel-raised);
+  font-size: 1.65rem;
+}
+
+.shared-invitation-eyebrow {
+  margin: 0 0 7px;
+  color: var(--game-accent);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.shared-invitation-dialog h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 4vw, 1.65rem);
+}
+
+.shared-invitation-copy,
+.shared-invitation-countdown {
+  color: var(--game-muted);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.shared-invitation-countdown {
+  margin: 14px 0 0;
+  color: var(--game-accent);
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 800;
+}
+
+.shared-invitation-error {
+  color: #fca5a5;
+  font-size: 0.82rem;
+}
+
+.shared-invitation-actions {
+  display: grid;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.shared-invitation-actions button {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--game-border);
+  border-radius: 10px;
+  background: var(--game-panel-raised);
+  color: var(--game-text);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.shared-invitation-actions .shared-invitation-accept {
+  border-color: transparent;
+  background: var(--game-accent);
+  color: var(--game-accent-contrast);
+}
+
+.shared-invitation-actions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 @media (max-width: 600px) {
   main[class$="-shell"] { padding: 12px 14px 16px; }
 

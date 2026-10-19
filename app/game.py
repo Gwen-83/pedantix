@@ -6,7 +6,7 @@ import json
 from typing import Dict, Any, List, Optional, Set
 
 from app.nlp import (
-    normalize_text, check_match, calculate_word2vec_proximity,
+    normalize_text, check_match, calculate_proximity,
     is_valid_french_word, clean_guess, normalize_wiki_title
 )
 from app.synonyms_dict import EXPANDED_STOPWORDS
@@ -21,6 +21,9 @@ from app.database import (
     record_game_start, record_guess, record_game_finish,
     get_cached_article, get_random_cached_article, cache_article
 )
+
+PEDANTIX_LINK_THRESHOLD = 48.0
+
 
 class GameSession:
     def __init__(
@@ -66,7 +69,7 @@ class GameSession:
         self.guesses_history: List[Dict[str, Any]] = []
         self.guessed_words: Set[str] = set()
         self.revealed_word_ids: Set[int] = set()
-        self.token_heat: Dict[int, float] = {}  # token_id -> highest cosine temperature above 30
+        self.token_heat: Dict[int, float] = {}  # token_id -> highest semantic proximity
         self.token_close_words: Dict[int, Dict[str, Any]] = {}  # token_id -> {"score": score_int, "word": clean_word}
 
         # Inverted index & unrevealed tracking for high-performance matching and proximity
@@ -113,6 +116,7 @@ class GameSession:
             }
 
         norm_guess = normalize_text(clean_word)
+        is_numeric_guess = clean_word.isdigit()
         is_repeat = norm_guess in self.guessed_words
 
         # Fast repeat exit
@@ -152,6 +156,25 @@ class GameSession:
                         self.token_close_words.pop(tid, None)
                         newly_revealed[tid] = t["text"]
 
+        if is_numeric_guess:
+            guess_value = int(clean_word)
+            for target_norm in self.unrevealed_unique_words:
+                if (
+                    target_norm.isdigit()
+                    and abs(guess_value - int(target_norm)) < 10
+                ):
+                    matched_norms.append(target_norm)
+                    tids = self.word_to_token_ids.get(target_norm, [])
+                    all_matched_ids.extend(tids)
+                    for tid in tids:
+                        token = self.tokens_by_id[tid]
+                        if not token["revealed"]:
+                            token["revealed"] = True
+                            self.revealed_word_ids.add(tid)
+                            self.token_heat.pop(tid, None)
+                            self.token_close_words.pop(tid, None)
+                            newly_revealed[tid] = token["text"]
+
         for mn in matched_norms:
             self.unrevealed_unique_words.discard(mn)
 
@@ -180,16 +203,14 @@ class GameSession:
 
         close_tokens: List[Dict[str, Any]] = []
         max_score = 0.0
-        is_guess_digit = clean_word.isdigit()
-
         for target_norm in self.unrevealed_unique_words:
-            if is_guess_digit != target_norm.isdigit():
+            if is_numeric_guess != target_norm.isdigit():
                 continue
-            if not is_guess_digit and (target_norm in EXPANDED_STOPWORDS or len(target_norm) <= 1):
+            if not is_numeric_guess and (target_norm in EXPANDED_STOPWORDS or len(target_norm) <= 1):
                 continue
 
-            prox = calculate_word2vec_proximity(clean_word, target_norm)
-            if prox > 30.0:
+            prox = calculate_proximity(clean_word, target_norm)
+            if prox >= PEDANTIX_LINK_THRESHOLD:
                 max_score = max(max_score, prox)
                 score_val = round(prox, 2)
                 for tid in self.word_to_token_ids.get(target_norm, []):
@@ -210,7 +231,7 @@ class GameSession:
 
         if all_matched_ids:
             status = "match"
-        elif max_score > 30:
+        elif max_score >= PEDANTIX_LINK_THRESHOLD:
             status = "close"
         else:
             status = "miss"
@@ -276,6 +297,18 @@ class GameSession:
             "total_words": self.total_words,
             "history": self.guesses_history
         }
+
+    def get_close_tokens(self) -> List[Dict[str, Any]]:
+        """Returns the complete current set of unrevealed proximity hints."""
+        return [
+            {
+                "id": token_id,
+                "score": score,
+                "word": self.token_close_words.get(token_id, {}).get("word", ""),
+            }
+            for token_id, score in sorted(self.token_heat.items())
+            if token_id in self.tokens_by_id and not self.tokens_by_id[token_id]["revealed"]
+        ]
 
     def surrender(self) -> Dict[str, Any]:
         """L'abandon est désactivé : il faut trouver le titre !"""

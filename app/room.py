@@ -187,12 +187,24 @@ class Room:
 
         available_ids: Optional[Set[int]] = None
         for session in sessions:
+            title_word_ids = set(getattr(session, "title_word_ids", ()))
+            title_words = set()
+            for token in session.tokens:
+                if token.get("is_word") and (
+                    token.get("is_title") or token.get("id") in title_word_ids
+                ):
+                    title_word = normalize_wiki_title(
+                        token.get("normalized") or token.get("text", "")
+                    )
+                    if title_word:
+                        title_words.add(title_word)
             hidden_word_ids = {
                 token["id"] for token in session.tokens
                 if token.get("is_word")
                 and not token.get("is_title")
                 and not token.get("revealed")
                 and token["id"] not in self.hinted_word_ids
+                and normalize_wiki_title(token.get("normalized") or token.get("text", "")) not in title_words
             }
             available_ids = (
                 hidden_word_ids if available_ids is None
@@ -557,16 +569,11 @@ class Room:
     def get_or_create_player(self, player_id: str, player_name: str) -> RoomPlayer:
         if player_id in self.players:
             player = self.players[player_id]
-            task = self._disconnect_tasks.pop(player_id, None)
-            if task and not task.done():
-                task.cancel()
             if player_name and player.name != player_name:
                 old_name = player.name
                 player.name = player_name
                 player.refresh_score()
                 self.add_activity(f"✏️ {old_name} s'appelle maintenant {player_name}", "rename")
-            player.connected = True
-            player.disconnected_at = None
             player.refresh_score()
             # If no host exists, assign this player as host
             if not self.host_player_id or self.host_player_id not in self.players:
@@ -798,6 +805,8 @@ class Room:
 
         if "error" in guess_res or guess_res.get("is_repeat") or guess_res.get("status") == "already_guessed":
             return guess_res
+        if self.game_mode == "team":
+            guess_res["team_close_tokens"] = session.get_close_tokens()
 
         # Update progress
         attempts = guess_res["attempt_number"]
@@ -1540,16 +1549,41 @@ class Room:
         self.websockets.clear()
         self.ws_player_map.clear()
 
-    def add_websocket(self, ws: WebSocket, player_id: Optional[str] = None):
+    def add_websocket(self, ws: WebSocket, player_id: Optional[str] = None) -> bool:
+        reconnected = False
         self.websockets.add(ws)
         if player_id:
             self.ws_player_map[ws] = player_id
             if player_id in self.players:
-                self.players[player_id].connected = True
-                self.players[player_id].disconnected_at = None
+                player = self.players[player_id]
+                reconnected = not player.connected or player.disconnected_at is not None
+                player.connected = True
+                player.disconnected_at = None
                 task = self._disconnect_tasks.pop(player_id, None)
                 if task and not task.done():
                     task.cancel()
+        return reconnected
+
+    def mark_player_disconnected(self, player_id: str):
+        player = self.players.get(player_id)
+        if not player:
+            return
+        player.connected = False
+        if player.disconnected_at is None:
+            player.disconnected_at = time.time()
+        existing_task = self._disconnect_tasks.get(player_id)
+        if existing_task and not existing_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._disconnect_tasks[player_id] = loop.create_task(
+            self._delayed_remove_player(
+                player_id,
+                delay=PLAYER_DISCONNECT_GRACE_SECONDS,
+            )
+        )
 
     def remove_websocket(self, ws: WebSocket):
         self.websockets.discard(ws)
@@ -1562,16 +1596,19 @@ class Room:
         if pid and pid in self.players:
             has_other_ws = any(p_id == pid for p_id in self.ws_player_map.values())
             if not has_other_ws:
-                # Keep the player unchanged while a page reload or reconnect is in progress.
-                existing_task = self._disconnect_tasks.pop(pid, None)
-                if existing_task and not existing_task.done():
-                    existing_task.cancel()
-                self._disconnect_tasks[pid] = asyncio.create_task(
-                    self._delayed_remove_player(
-                        pid,
-                        delay=PLAYER_DISCONNECT_GRACE_SECONDS,
-                    )
-                )
+                player = self.players[pid]
+                # Preserve the player state while a page reload or reconnect is in progress.
+                self.mark_player_disconnected(pid)
+                await self.broadcast({
+                    "type": "player_disconnected",
+                    "player_id": pid,
+                    "player_name": player.name,
+                    "host_player_id": self.host_player_id,
+                    "leaderboard": self.get_leaderboard(),
+                    "teams": self.get_teams_data(),
+                    "can_start": self.can_start(),
+                    "activity": self.recent_activity,
+                })
 
     async def _delayed_remove_player(self, player_id: str, delay: float = 4.0):
         try:
@@ -1608,9 +1645,8 @@ class Room:
                 self.ws_player_map.pop(ws, None)
                 self.websockets.discard(ws)
 
-        # Si le salon n'a plus aucun membre connecté ou plus aucun joueur, le salon est immédiatement supprimé
-        has_connected = any(p.connected for p in self.players.values())
-        if len(self.players) == 0 or not has_connected:
+        # Keep disconnected players in the room during their reconnect grace period.
+        if len(self.players) == 0:
             if self.room_id != "default":
                 room_manager.delete_room(self.room_id)
             else:
@@ -1731,7 +1767,8 @@ class Room:
                 to_remove.add(ws)
 
         for dead_ws in to_remove:
-            self.remove_websocket(dead_ws)
+            logger.warning("Socket WebSocket inaccessible dans le salon %s.", self.room_id)
+            await self.handle_websocket_disconnect(dead_ws)
 
 
 class RoomManager:
@@ -2066,10 +2103,15 @@ class RoomManager:
                     to_delete.append(rid)
                 continue
 
-            # Multiplayer rooms: delete immediately if 0 players, or if all players disconnected for > 10s
+            # Keep multiplayer rooms available throughout the WebSocket reconnect grace period.
             if len(r.players) == 0:
                 to_delete.append(rid)
-            elif all(not p.connected for p in r.players.values()) and (now - r.created_at > 10):
+            elif all(
+                not p.connected
+                and p.disconnected_at is not None
+                and now - p.disconnected_at > PLAYER_DISCONNECT_GRACE_SECONDS
+                for p in r.players.values()
+            ):
                 to_delete.append(rid)
 
         for rid in to_delete:
@@ -2084,18 +2126,26 @@ class RoomManager:
             if r.room_id.startswith("solo-"):
                 continue  # Never expose private solo rooms
             active_ws_pids = set(r.ws_player_map.values())
-            for p in r.players.values():
-                if p.player_id in active_ws_pids:
-                    p.connected = True
-                    p.disconnected_at = None
-            connected_names = [p.name for p in r.players.values() if p.connected]
+            for player in r.players.values():
+                if player.player_id in active_ws_pids:
+                    player.connected = True
+                    player.disconnected_at = None
+                    task = r._disconnect_tasks.pop(player.player_id, None)
+                    if task and not task.done():
+                        task.cancel()
+                elif player.connected or player.disconnected_at is None:
+                    r.mark_player_disconnected(player.player_id)
+            connected_names = [
+                p.name for p in r.players.values()
+                if p.player_id in active_ws_pids
+            ]
             active_count = len(connected_names)
-            # Never list empty rooms with 0 connected players
-            if active_count == 0:
+            if not r.players:
                 continue
             active.append({
                 "room_id": r.room_id,
                 "players_count": active_count,
+                "reconnecting_players_count": len(r.players) - active_count,
                 "players": connected_names[:6],
                 "status": r.status,
                 "game_mode": r.game_mode,

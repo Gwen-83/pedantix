@@ -9,6 +9,7 @@ import hashlib
 import datetime
 import asyncio
 import threading
+from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any, List, Literal
 from fastapi import FastAPI, HTTPException, Query, Header, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.staticfiles import StaticFiles
@@ -29,12 +30,18 @@ from app.database import (
     get_stats_overview,
     user_exists,
     verify_user_token,
+    get_global_game_pause,
+    global_game_launch_guard,
+    set_global_game_pause,
+    db_backend,
     create_user,
     authenticate_user,
     get_store_chat_messages,
     create_store_chat_message,
     create_store_invitation,
     get_store_invitations,
+    get_store_sent_invitations,
+    get_store_invitation_for_accept,
     update_store_invitation_status,
     record_user_guess_word,
     record_user_game_finish,
@@ -77,6 +84,69 @@ from app.tunnel import tunnel_manager
 from app.antibot import anti_bot_guard
 
 app = FastAPI(title="Pédantix Local - Concours Multijoueur", version="2.0.0")
+
+GAME_LAUNCH_SLUGS = {
+    "motus", "undercover", "cemantix", "chiffrantix", "battleship",
+    "sudoku", "geoguessr", "bitoguessr", "plongee",
+}
+GAME_LAUNCH_LOCAL_LOCK = threading.Lock()
+
+
+@asynccontextmanager
+async def _game_launch_process_lock():
+    if db_backend() != "sqlite":
+        yield
+        return
+    await asyncio.to_thread(GAME_LAUNCH_LOCAL_LOCK.acquire)
+    try:
+        yield
+    finally:
+        GAME_LAUNCH_LOCAL_LOCK.release()
+
+
+def _is_game_launch_request(method: str, path: str) -> bool:
+    if method == "GET" and path == "/api/game/new":
+        return True
+    if method != "POST":
+        return False
+    if path in {
+        "/api/room/create",
+        "/api/room/start",
+        "/api/room/next-round",
+        "/api/room/difficulty",
+        "/api/social/invitations",
+    }:
+        return True
+    parts = path.strip("/").split("/")
+    if len(parts) != 4 or parts[0] != "api" or parts[1] not in GAME_LAUNCH_SLUGS:
+        return False
+    return (
+        parts[2:] in (["solo", "new"], ["room", "create"], ["room", "start"], ["room", "restart"])
+    )
+
+
+@app.middleware("http")
+async def enforce_global_game_pause(request: Request, call_next):
+    if _is_game_launch_request(request.method, request.url.path):
+        try:
+            async with _game_launch_process_lock():
+                with global_game_launch_guard() as paused:
+                    if paused:
+                        return JSONResponse(
+                            status_code=423,
+                            content={
+                                "detail": "Les parties sont temporairement en pause. Réessayez plus tard.",
+                                "games_paused": True,
+                            },
+                        )
+                    return await call_next(request)
+        except RuntimeError as exc:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": str(exc), "games_paused": True},
+            )
+    return await call_next(request)
+
 
 # Enable CORS (support PEDANTIX_ALLOWED_ORIGINS or default to allow all)
 allowed_origins_env = os.environ.get("PEDANTIX_ALLOWED_ORIGINS", "*")
@@ -211,13 +281,12 @@ class StoreChatMessageRequest(BaseModel):
 class StoreInvitationRequest(BaseModel):
     recipient_username: str = Field(min_length=2, max_length=24)
     game_id: Literal[
-        "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
-        "geoguessr", "undercover", "bitoguessr", "plongee"
+        "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
+        "geoguessr", "plongee"
     ]
-    room_id: str = Field(min_length=1, max_length=80)
 
 class StoreInvitationActionRequest(BaseModel):
-    action: Literal["accepted", "dismissed"]
+    action: Literal["accepted", "declined"]
 
 class AuthRegisterRequest(BaseModel):
     username: str
@@ -234,6 +303,10 @@ class AdminUsersRequest(BaseModel):
 class AdminPasswordResetRequest(AdminUsersRequest):
     target_username: str
     new_password: str
+
+class GamePauseRequest(BaseModel):
+    paused: bool
+    admin_password: str
 
 class HintRequest(BaseModel):
     session_id: str
@@ -755,46 +828,74 @@ def _require_store_user(username: Optional[str], token: Optional[str]) -> str:
     return username.strip()
 
 
-def _store_room_managers():
-    return (
-        ("pedantix", "Pédantix", room_manager),
-        ("motus", "Motus", motus_manager),
-        ("cemantix", "Cémantix", cemantix_manager),
-        ("chiffrantix", "Chiffrantix", chiffrantix_manager),
-        ("sudoku", "Sudoku", sudoku_manager),
-        ("battleship", "Bataille navale", battleship_manager),
-        ("geoguessr", "GeoGuessr", geoguessr_manager),
-        ("undercover", "Undercover", undercover_manager),
-        ("bitoguessr", "Bitoguessr", bitoguessr_manager),
-        ("plongee", "Plongée", plongee_manager),
+def _is_gwen_controller(username: Optional[str], token: Optional[str]) -> bool:
+    return bool(
+        username
+        and username.strip().casefold() == "gwen"
+        and token
+        and verify_user_token(username, token)
     )
 
 
-def _active_store_rooms(username: str) -> List[Dict[str, str]]:
-    active_rooms = []
-    for game_id, game_name, manager in _store_room_managers():
-        for room in manager.rooms.values():
-            if room.status not in {"lobby", "playing"}:
-                continue
-            if game_id == "pedantix" and room.room_id.startswith("solo-"):
-                continue
-            players = getattr(room, "players", {}).values()
-            if not any(
-                player.name.strip().casefold() == username.casefold()
-                and not getattr(player, "is_spectator", False)
-                for player in players
-            ):
-                continue
-            active_rooms.append(
-                {
-                    "game_id": game_id,
-                    "game_name": game_name,
-                    "room_id": room.room_id,
-                    "status": room.status,
-                }
-            )
-    active_rooms.sort(key=lambda room: (room["game_name"], room["room_id"]))
-    return active_rooms
+STORE_INVITATION_TTL_SECONDS = 5 * 60
+store_invitation_lock = threading.RLock()
+STORE_INVITATION_GAMES = {
+    "motus": ("Motus", motus_manager, "motus_player_id"),
+    "cemantix": ("Cémantix", cemantix_manager, "cemantix_player_id"),
+    "chiffrantix": ("Chiffrantix", chiffrantix_manager, "chiffrantix_player_id"),
+    "sudoku": ("Sudoku", sudoku_manager, "sudoku_player_id"),
+    "battleship": ("Bataille navale", battleship_manager, "battleship_player_id"),
+    "geoguessr": ("GeoGuessr", geoguessr_manager, "geoguessr_player_id"),
+    "plongee": ("Plongée", plongee_manager, "plongee_player_id"),
+}
+STORE_ROOM_PLAYER_LIMITS = {
+    "motus": 8,
+    "cemantix": 8,
+    "chiffrantix": 8,
+    "battleship": None,
+    "sudoku": None,
+    "geoguessr": 8,
+    "undercover": 20,
+    "bitoguessr": 8,
+    "plongee": 8,
+}
+STORE_ACTIVE_ROOM_GAMES = {
+    **STORE_INVITATION_GAMES,
+    "undercover": ("Undercover", undercover_manager, "undercover_player_id"),
+    "bitoguessr": ("Bitoguessr", bitoguessr_manager, "bitoguessr_player_id"),
+}
+
+
+def _create_invitation_room(
+    invitation: Dict[str, Any],
+) -> Dict[str, str]:
+    game_id = invitation["game_id"]
+    config = STORE_INVITATION_GAMES.get(game_id)
+    if config is None:
+        raise ValueError("Ce jeu ne peut pas encore être lancé depuis une invitation.")
+    _game_name, manager, _player_storage_key = config
+    sender_id = invitation["sender_player_id"]
+    recipient_id = invitation["recipient_player_id"]
+    sender_name = invitation["sender_username"]
+    recipient_name = invitation["recipient_username"]
+
+    if game_id in {"battleship", "motus", "cemantix"}:
+        room = manager.create_room(sender_id, sender_name, "moyen")
+    elif game_id == "chiffrantix":
+        room = manager.create_room(sender_id, sender_name, "moyen", "toutes")
+    elif game_id == "sudoku":
+        room = manager.create_room(sender_id, sender_name, "moyen")
+    elif game_id == "geoguessr":
+        room = manager.create_room(sender_id, sender_name, "world", "cities")
+    else:
+        room = manager.create_room(sender_id, sender_name)
+    manager.join_room(room.room_id, recipient_id, recipient_name)
+    return {
+        "game_id": game_id,
+        "room_id": room.room_id,
+        "sender_player_id": sender_id,
+        "recipient_player_id": recipient_id,
+    }
 
 
 @app.get("/api/social/chat")
@@ -821,12 +922,50 @@ async def post_store_chat(
 
 
 @app.get("/api/social/rooms")
-async def get_store_social_rooms(
-    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
-    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
-):
-    username = _require_store_user(x_auth_user, x_auth_token)
-    return {"rooms": _active_store_rooms(username)}
+async def get_store_social_rooms():
+    active_rooms = []
+    for room in room_manager.list_active_rooms():
+        if room["status"] not in {"lobby", "playing"}:
+            continue
+        active_rooms.append({
+            "game_id": "pedantix",
+            "game_name": "Pédantix",
+            "room_id": room["room_id"],
+            "status": room["status"],
+            "player_count": room["players_count"],
+            "spectator_count": 0,
+            "host_name": room["host_name"],
+            "difficulty": room.get("difficulty"),
+            "game_mode": room.get("game_mode"),
+        })
+
+    for game_id, (game_name, manager, _player_storage_key) in STORE_ACTIVE_ROOM_GAMES.items():
+        for room in manager.list_rooms():
+            if room["status"] not in {"lobby", "playing"}:
+                continue
+            if game_id == "plongee" and room["status"] != "lobby":
+                continue
+            player_count = int(room.get("player_count", 0))
+            spectator_count = int(room.get("spectator_count", 0))
+            player_limit = STORE_ROOM_PLAYER_LIMITS[game_id]
+            current_count = player_count + spectator_count
+            if player_limit is not None and current_count >= player_limit:
+                continue
+            active_rooms.append({
+                "game_id": game_id,
+                "game_name": game_name,
+                "room_id": room["room_id"],
+                "status": room["status"],
+                "player_count": player_count,
+                "spectator_count": spectator_count,
+                "host_name": room.get("host_name", ""),
+                "difficulty": room.get("difficulty"),
+                "game_mode": None,
+            })
+    active_rooms.sort(
+        key=lambda room: (room["game_name"].casefold(), room["room_id"])
+    )
+    return {"rooms": active_rooms}
 
 
 @app.post("/api/social/invitations")
@@ -849,26 +988,17 @@ async def post_store_invitation(
     if not is_online:
         raise HTTPException(status_code=409, detail="Ce joueur n'est plus en ligne.")
 
-    room = next(
-        (
-            room for game_id, _game_name, manager in _store_room_managers()
-            if game_id == req.game_id
-            for room in manager.rooms.values()
-            if room.room_id.casefold() == req.room_id.strip().casefold()
-            and room.status in {"lobby", "playing"}
-        ),
-        None,
-    )
-    if room is None:
-        raise HTTPException(status_code=404, detail="Ce salon n'est plus disponible.")
-    if not any(
-        player.name.strip().casefold() == username.casefold()
-        and not getattr(player, "is_spectator", False)
-        for player in getattr(room, "players", {}).values()
-    ):
-        raise HTTPException(status_code=403, detail="Vous ne participez pas à ce salon.")
+    if req.game_id not in STORE_INVITATION_GAMES:
+        raise HTTPException(status_code=400, detail="Ce jeu n'est pas disponible pour les invitations.")
     try:
-        return create_store_invitation(username, recipient, req.game_id, room.room_id)
+        return create_store_invitation(
+            username,
+            recipient,
+            req.game_id,
+            username,
+            recipient,
+            now + STORE_INVITATION_TTL_SECONDS,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -882,6 +1012,15 @@ async def get_store_social_invitations(
     return {"invitations": get_store_invitations(username)}
 
 
+@app.get("/api/social/invitations/sent")
+async def get_store_sent_social_invitations(
+    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
+    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+):
+    username = _require_store_user(x_auth_user, x_auth_token)
+    return {"invitations": get_store_sent_invitations(username)}
+
+
 @app.post("/api/social/invitations/{invitation_id}")
 async def update_store_social_invitation(
     invitation_id: int,
@@ -890,9 +1029,47 @@ async def update_store_social_invitation(
     x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
 ):
     username = _require_store_user(x_auth_user, x_auth_token)
-    if not update_store_invitation_status(invitation_id, username, req.action):
-        raise HTTPException(status_code=404, detail="Cette invitation est introuvable ou déjà traitée.")
-    return {"status": req.action}
+    if req.action == "declined":
+        if not update_store_invitation_status(invitation_id, username, "declined"):
+            raise HTTPException(
+                status_code=404,
+                detail="Cette invitation a expiré ou a déjà été traitée.",
+            )
+        return {"status": "declined"}
+
+    with store_invitation_lock:
+        invitation = get_store_invitation_for_accept(invitation_id, username)
+        if invitation is None:
+            raise HTTPException(
+                status_code=410,
+                detail="Cette invitation a expiré ou a déjà été traitée.",
+            )
+        try:
+            async with _game_launch_process_lock():
+                with global_game_launch_guard() as paused:
+                    if paused:
+                        raise HTTPException(
+                            status_code=423,
+                            detail="Les parties sont temporairement en pause. Cette invitation ne peut pas être acceptée.",
+                        )
+                    created = _create_invitation_room(invitation)
+        except (KeyError, ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        if not update_store_invitation_status(
+            invitation_id,
+            username,
+            "accepted",
+            created["room_id"],
+        ):
+            raise HTTPException(
+                status_code=410,
+                detail="Cette invitation a expiré ou a déjà été traitée.",
+            )
+    return {
+        "status": "accepted",
+        **created,
+        "player_id": created["recipient_player_id"],
+    }
 
 
 @app.get("/api/network-info")
@@ -987,6 +1164,9 @@ async def join_room(req: RoomJoinRequest):
         new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty, exclude_titles=excluded)
         room.set_difficulty(req.difficulty, new_article=new_art)
     player = room.get_or_create_player(req.player_id, req.player_name)
+    if not any(pid == player.player_id for pid in room.ws_player_map.values()):
+        if player.connected or player.disconnected_at is None:
+            room.mark_player_disconnected(player.player_id)
     if req.assist_token:
         owner_id = room.room_id.removeprefix("solo-")
         player.session = room.players[owner_id].session
@@ -1349,7 +1529,7 @@ async def room_guess(req: RoomGuessRequest, request: Request):
             "status": "bot_blocked",
             "error": err_msg,
             "cooldown_seconds": 1,
-            "next_token": anti_bot_guard.rotate_token(identifier)
+            "next_token": anti_bot_guard.get_or_issue_token(identifier)
         }
 
     # 2. Contrôle de cadence anti-bot / anti-spam
@@ -1369,7 +1549,7 @@ async def room_guess(req: RoomGuessRequest, request: Request):
             "error": err_msg,
             "cooldown_seconds": meta.get("remaining", 1),
             "penalty": meta.get("penalty", False),
-            "next_token": anti_bot_guard.rotate_token(identifier)
+            "next_token": anti_bot_guard.get_or_issue_token(identifier)
         }
 
     # 3. Contrôle du jeton cryptographique séquentiel (protection contre scripts externes sans handshake)
@@ -1411,7 +1591,8 @@ async def room_guess(req: RoomGuessRequest, request: Request):
             "matches_count": res.get("matches_count", 0),
             "score": res.get("score", 0),
             "newly_revealed": res.get("newly_revealed", {}) if room.game_mode == "team" else {},
-            "close_tokens": res.get("close_tokens", []) if room.game_mode == "team" else [],
+            "close_tokens": res.get("team_close_tokens", res.get("close_tokens", []))
+            if room.game_mode == "team" else [],
             "attempt_number": res.get("attempt_number", player.attempts)
         } if room.game_mode == "team" else None,
         "cooperative_solo": room.is_cooperative_solo,
@@ -1536,7 +1717,7 @@ async def get_room_state(room_id: str, player_id: Optional[str] = None):
 async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] = Query(None)):
     await websocket.accept()
     room = room_manager.get_or_create_room(room_id)
-    room.add_websocket(websocket, player_id)
+    reconnected = room.add_websocket(websocket, player_id)
 
     try:
         # Send initial room state
@@ -1563,6 +1744,18 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
             "rounds_played": room.rounds_played,
             "next_word_hint_time": room.next_word_hint_time
         }))
+        if reconnected and player_id in room.players:
+            player = room.players[player_id]
+            await room.broadcast({
+                "type": "player_connected",
+                "player_id": player_id,
+                "player_name": player.name,
+                "host_player_id": room.host_player_id,
+                "leaderboard": room.get_leaderboard(),
+                "teams": room.get_teams_data(),
+                "can_start": room.can_start(),
+                "activity": room.recent_activity,
+            })
 
         while True:
             raw_msg = await websocket.receive_text()
@@ -1603,12 +1796,13 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
                             "leaderboard": room.get_leaderboard(),
                             "activity": room.recent_activity
                         })
-            except Exception:
-                pass
+            except (json.JSONDecodeError, AttributeError, TypeError) as exc:
+                logger.warning("Message WebSocket invalide dans le salon %s: %s", room_id, exc)
 
     except WebSocketDisconnect:
         await room.handle_websocket_disconnect(websocket)
     except Exception:
+        logger.exception("Erreur WebSocket dans le salon %s.", room_id)
         await room.handle_websocket_disconnect(websocket)
 
 
@@ -3408,6 +3602,43 @@ async def admin_reset_password(req: AdminPasswordResetRequest):
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "ok", "username": req.target_username.strip()}
+
+
+@app.get("/api/games/pause")
+async def get_games_pause_state(
+    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
+    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+):
+    try:
+        paused = await asyncio.to_thread(get_global_game_pause)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "paused": paused,
+        "can_control": _is_gwen_controller(x_auth_user, x_auth_token),
+    }
+
+
+@app.post("/api/admin/game-pause")
+async def set_games_pause_state(
+    req: GamePauseRequest,
+    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
+    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+):
+    if (
+        not _is_gwen_controller(x_auth_user, x_auth_token)
+        or not _verify_admin_credentials("Gwen", req.admin_password)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Seul le compte administrateur Gwen peut modifier la pause des parties.",
+        )
+    try:
+        async with _game_launch_process_lock():
+            await asyncio.to_thread(set_global_game_pause, req.paused, "Gwen")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"paused": req.paused, "can_control": True}
 
 
 @app.get("/api/user/stats")

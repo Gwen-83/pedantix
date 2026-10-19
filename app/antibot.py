@@ -123,8 +123,7 @@ class AntiBotGuard:
 
         # Si le client fournit un jeton erroné ou manquant
         if not client_token or client_token != current_token:
-            new_token = self.rotate_token(identifier)
-            return False, "Jeton de sécurité invalide ou expiré (Protection anti-bot).", new_token
+            return False, "Jeton de sécurité invalide ou expiré (Protection anti-bot).", current_token
 
         # Tout est valide, on renouvelle le jeton pour le coup suivant
         new_token = self.rotate_token(identifier)
