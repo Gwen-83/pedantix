@@ -852,6 +852,327 @@ def get_stats_overview() -> Dict[str, Any]:
         raise RuntimeError("Impossible de charger les statistiques de la ludothèque.") from e
 
 
+def _parse_analytics_datetime(value: Any) -> Optional[_dt.datetime]:
+    if isinstance(value, _dt.datetime):
+        parsed = value
+    elif value:
+        try:
+            parsed = _dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_dt.timezone.utc)
+    return parsed.astimezone(_dt.timezone.utc)
+
+
+def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
+    if period not in {"7", "30", "90", "365", "all"}:
+        raise ValueError("Période d’analyse invalide.")
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    start = now - _dt.timedelta(days=int(period)) if period != "all" else None
+    try:
+        with DatabaseContext() as db:
+            session_sql = (
+                "SELECT session_id, game_id, mode, title, difficulty, created_at, finished_at "
+                "FROM game_sessions"
+            )
+            params: Tuple[Any, ...] = ()
+            if start:
+                session_sql += " WHERE created_at >= ?"
+                params = (start.strftime("%Y-%m-%d %H:%M:%S"),)
+            session_sql += " ORDER BY created_at DESC"
+            db.execute(session_sql, params)
+            session_rows = [dict(row) for row in db.fetchall()]
+
+            stats_sql = (
+                "SELECT u.session_id, u.username, u.game_id, u.mode, u.difficulty, "
+                "u.won, u.surrendered, u.attempts, u.duration_seconds, u.points, u.finished_at "
+                "FROM user_game_stats u JOIN game_sessions s ON s.session_id = u.session_id"
+            )
+            if start:
+                stats_sql += " WHERE s.created_at >= ?"
+                db.execute(stats_sql, params)
+            else:
+                db.execute(stats_sql)
+            stats_rows = [dict(row) for row in db.fetchall()]
+
+            db.execute("SELECT game_id, display_name FROM game_catalog ORDER BY display_name")
+            catalog = {row["game_id"]: row["display_name"] for row in db.fetchall()}
+    except Exception as exc:
+        logger.error("Chargement des statistiques analytiques impossible : %s", exc)
+        raise RuntimeError("Impossible de charger les statistiques analytiques.") from exc
+
+    def new_game(game_id: str) -> Dict[str, Any]:
+        return {
+            "game_id": game_id,
+            "name": catalog.get(game_id, game_id),
+            "sessions_started": 0,
+            "sessions_finished": 0,
+            "participants": set(),
+            "player_seconds": 0,
+            "wall_seconds": 0,
+            "wins": 0,
+            "participant_results": 0,
+            "surrenders": 0,
+            "attempts": 0,
+            "points": 0,
+            "modes": {},
+            "difficulties": {},
+        }
+
+    sessions: Dict[str, Dict[str, Any]] = {}
+    games: Dict[str, Dict[str, Any]] = {}
+    modes: Dict[str, Dict[str, Any]] = {}
+    difficulties: Dict[str, Dict[str, int]] = {}
+    by_day: Dict[str, Dict[str, Any]] = {}
+    by_hour = [0] * 24
+    by_weekday = [0] * 7
+    players: Dict[str, Dict[str, Any]] = {}
+    total_wall_seconds = 0
+
+    for row in session_rows:
+        session_id = str(row["session_id"])
+        started_at = _parse_analytics_datetime(row.get("created_at"))
+        finished_at = _parse_analytics_datetime(row.get("finished_at"))
+        if not started_at or (start and started_at < start):
+            continue
+        game_id = str(row.get("game_id") or "unknown")
+        game = games.setdefault(game_id, new_game(game_id))
+        mode = str(row.get("mode") or "unknown")
+        game["sessions_started"] += 1
+        game["modes"][mode] = game["modes"].get(mode, 0) + 1
+        mode_group = modes.setdefault(
+            mode, {"mode": mode, "sessions": 0, "finished_sessions": 0,
+                   "player_seconds": 0, "results": 0, "wins": 0}
+        )
+        mode_group["sessions"] += 1
+        day = started_at.date().isoformat()
+        daily = by_day.setdefault(
+            day,
+            {"date": day, "sessions_started": 0, "sessions_finished": 0,
+             "player_seconds": 0, "players": set()},
+        )
+        daily["sessions_started"] += 1
+        by_hour[started_at.hour] += 1
+        by_weekday[started_at.weekday()] += 1
+        wall_seconds = 0
+        if finished_at:
+            game["sessions_finished"] += 1
+            mode_group["finished_sessions"] += 1
+            daily["sessions_finished"] += 1
+            elapsed = int((finished_at - started_at).total_seconds())
+            if elapsed > 0:
+                wall_seconds = elapsed
+                game["wall_seconds"] += elapsed
+                total_wall_seconds += elapsed
+        sessions[session_id] = {
+            "session_id": session_id,
+            "game_id": game_id,
+            "game_name": game["name"],
+            "title": str(row.get("title") or ""),
+            "mode": mode,
+            "difficulty": row.get("difficulty"),
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "wall_seconds": wall_seconds,
+            "players": [],
+            "player_seconds": 0,
+        }
+
+    for row in stats_rows:
+        session_id = str(row["session_id"])
+        session = sessions.get(session_id)
+        if not session:
+            continue
+        game = games[session["game_id"]]
+        username = str(row.get("username") or "")
+        duration = max(0, int(row.get("duration_seconds") or 0))
+        won = bool(row.get("won"))
+        surrendered = bool(row.get("surrendered"))
+        game["participants"].add(username)
+        game["player_seconds"] += duration
+        game["participant_results"] += 1
+        game["wins"] += int(won)
+        game["surrenders"] += int(surrendered)
+        game["attempts"] += max(0, int(row.get("attempts") or 0))
+        game["points"] += int(row.get("points") or 0)
+        mode = str(row.get("mode") or session["mode"])
+        mode_group = modes.setdefault(
+            mode, {"mode": mode, "sessions": 0, "finished_sessions": 0,
+                   "player_seconds": 0, "results": 0, "wins": 0}
+        )
+        mode_group["player_seconds"] += duration
+        mode_group["results"] += 1
+        mode_group["wins"] += int(won)
+        session["player_seconds"] += duration
+        session["players"].append(username)
+        day = session["started_at"].date().isoformat()
+        daily = by_day[day]
+        daily["player_seconds"] += duration
+        daily["players"].add(username)
+
+        difficulty = str(row.get("difficulty") or "Non renseignée")
+        difficulty_group = difficulties.setdefault(
+            difficulty, {
+                "difficulty": difficulty, "games": 0, "wins": 0,
+                "surrenders": 0, "attempts": 0, "player_seconds": 0,
+            }
+        )
+        difficulty_group["games"] += 1
+        difficulty_group["wins"] += int(won)
+        difficulty_group["surrenders"] += int(surrendered)
+        difficulty_group["attempts"] += max(0, int(row.get("attempts") or 0))
+        difficulty_group["player_seconds"] += duration
+        game["difficulties"][difficulty] = game["difficulties"].get(difficulty, 0) + 1
+
+        player = players.setdefault(
+            username,
+            {"username": username, "games": 0, "wins": 0, "player_seconds": 0,
+             "points": 0, "attempts": 0, "surrenders": 0,
+             "last_played_at": None, "games_by_id": {}},
+        )
+        player["games"] += 1
+        player["wins"] += int(won)
+        player["player_seconds"] += duration
+        player["points"] += int(row.get("points") or 0)
+        player["attempts"] += max(0, int(row.get("attempts") or 0))
+        player["surrenders"] += int(surrendered)
+        player["games_by_id"][session["game_id"]] = (
+            player["games_by_id"].get(session["game_id"], 0) + 1
+        )
+        played_at = _parse_analytics_datetime(row.get("finished_at")) or session["started_at"]
+        if not player["last_played_at"] or played_at > player["last_played_at"]:
+            player["last_played_at"] = played_at
+
+    all_player_seconds = sum(game["player_seconds"] for game in games.values())
+    all_sessions = len(sessions)
+    finished_sessions = sum(game["sessions_finished"] for game in games.values())
+    total_results = sum(game["participant_results"] for game in games.values())
+    wins = sum(game["wins"] for game in games.values())
+    game_results = []
+    for game in games.values():
+        game_results.append({
+            **{key: value for key, value in game.items()
+               if key not in {"participants", "modes", "difficulties"}},
+            "unique_players": len(game["participants"]),
+            "player_hours": round(game["player_seconds"] / 3600, 2),
+            "player_time_share_pct": round(
+                game["player_seconds"] / all_player_seconds * 100, 1
+            ) if all_player_seconds else 0,
+            "session_share_pct": round(game["sessions_started"] / all_sessions * 100, 1)
+            if all_sessions else 0,
+            "win_rate_pct": round(game["wins"] / game["participant_results"] * 100, 1)
+            if game["participant_results"] else 0,
+            "surrender_rate_pct": round(game["surrenders"] / game["participant_results"] * 100, 1)
+            if game["participant_results"] else 0,
+            "avg_attempts": round(game["attempts"] / game["participant_results"], 1)
+            if game["participant_results"] else 0,
+            "avg_player_seconds": round(game["player_seconds"] / game["participant_results"])
+            if game["participant_results"] else 0,
+        })
+    game_results.sort(key=lambda game: (-game["player_seconds"], game["name"].casefold()))
+
+    timeline = []
+    if by_day:
+        day_dates = sorted(by_day)
+        first_day = _dt.date.fromisoformat(day_dates[0])
+        last_day = _dt.date.fromisoformat(day_dates[-1])
+        current_day = first_day
+        while current_day <= last_day:
+            day = current_day.isoformat()
+            daily = by_day.get(day, {"sessions_started": 0, "sessions_finished": 0,
+                                     "player_seconds": 0, "players": set()})
+            timeline.append({
+                "date": day,
+                "sessions_started": daily["sessions_started"],
+                "sessions_finished": daily["sessions_finished"],
+                "player_seconds": daily["player_seconds"],
+                "unique_players": len(daily["players"]),
+            })
+            current_day += _dt.timedelta(days=1)
+
+    recent_sessions = []
+    for session in sorted(
+        sessions.values(), key=lambda item: item["started_at"], reverse=True
+    )[:50]:
+        recent_sessions.append({
+            **{key: value for key, value in session.items()
+               if key not in {"started_at", "finished_at", "players"}},
+            "started_at": session["started_at"].isoformat(),
+            "finished_at": session["finished_at"].isoformat() if session["finished_at"] else None,
+            "players": sorted(set(session["players"]), key=str.casefold),
+        })
+
+    player_results = []
+    for player in players.values():
+        player_results.append({
+            **{key: value for key, value in player.items()
+               if key not in {"last_played_at", "games_by_id"}},
+            "win_rate_pct": round(player["wins"] / player["games"] * 100, 1)
+            if player["games"] else 0,
+            "avg_attempts": round(player["attempts"] / player["games"], 1)
+            if player["games"] else 0,
+            "player_hours": round(player["player_seconds"] / 3600, 2),
+            "last_played_at": player["last_played_at"].isoformat()
+            if player["last_played_at"] else None,
+            "favorite_game": max(
+                player["games_by_id"], key=player["games_by_id"].get
+            ) if player["games_by_id"] else None,
+        })
+    player_results.sort(key=lambda player: (-player["player_seconds"], -player["games"]))
+
+    return {
+        "period": period,
+        "generated_at": now.isoformat(),
+        "summary": {
+            "sessions_started": all_sessions,
+            "sessions_finished": finished_sessions,
+            "sessions_active": max(0, all_sessions - finished_sessions),
+            "completion_rate_pct": round(finished_sessions / all_sessions * 100, 1)
+            if all_sessions else 0,
+            "unique_players": len(players),
+            "participant_results": total_results,
+            "wins": wins,
+            "win_rate_pct": round(wins / total_results * 100, 1) if total_results else 0,
+            "player_seconds": all_player_seconds,
+            "player_hours": round(all_player_seconds / 3600, 2),
+            "wall_seconds": total_wall_seconds,
+            "wall_hours": round(total_wall_seconds / 3600, 2),
+            "games_used": len(games),
+            "avg_player_seconds": round(all_player_seconds / total_results)
+            if total_results else 0,
+            "total_points": sum(game["points"] for game in games.values()),
+            "total_attempts": sum(game["attempts"] for game in games.values()),
+            "surrenders": sum(game["surrenders"] for game in games.values()),
+            "avg_attempts": round(
+                sum(game["attempts"] for game in games.values()) / total_results, 1
+            ) if total_results else 0,
+        },
+        "games": game_results,
+        "modes": sorted(modes.values(), key=lambda item: item["mode"]),
+        "difficulties": sorted(difficulties.values(), key=lambda item: item["difficulty"]),
+        "timeline": timeline,
+        "hourly_activity": [{"hour": hour, "sessions_started": count}
+                            for hour, count in enumerate(by_hour)],
+        "weekday_activity": [
+            {"weekday": day, "sessions_started": by_weekday[day]}
+            for day in range(7)
+        ],
+        "players": player_results[:50],
+        "recent_sessions": recent_sessions,
+        "data_scope": {
+            "page_views_tracked": False,
+            "duration_definition": (
+                "Le temps de jeu cumule les durées enregistrées par joueur ; "
+                "le temps mural compte chaque session une seule fois."
+            ),
+        },
+    }
+
+
 def ping_db() -> bool:
     try:
         with DatabaseContext() as db:

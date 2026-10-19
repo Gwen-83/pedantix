@@ -83,7 +83,11 @@ html.store-mode .game-store {
 }
 
 .store-account-button,
-.store-logout-button {
+.store-logout-button,
+.store-admin-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 40px;
   padding: 0 16px;
   border: 1px solid var(--game-border);
@@ -94,11 +98,17 @@ html.store-mode .game-store {
   font-size: 0.88rem;
   font-weight: 700;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .store-account-button:hover,
-.store-logout-button:hover {
+.store-logout-button:hover,
+.store-admin-link:hover {
   border-color: var(--game-accent);
+}
+
+.store-admin-link[hidden] {
+  display: none;
 }
 
 .store-logout-button {

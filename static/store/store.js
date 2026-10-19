@@ -12,6 +12,7 @@
   const accountName = document.getElementById('store-account-name');
   const accountButton = document.getElementById('store-account-button');
   const logoutButton = document.getElementById('store-logout-button');
+  const adminUsageLink = document.getElementById('store-admin-usage-link');
   const gameLinks = [...document.querySelectorAll('.store-game-card-available')];
   const gameSearch = document.getElementById('store-game-search');
   const gameCount = document.getElementById('store-game-count');
@@ -114,6 +115,7 @@
     accountName.textContent = username ? `Bonjour, ${username}` : '';
     accountButton.hidden = !!username;
     logoutButton.hidden = !username;
+    adminUsageLink.hidden = !authenticated || username.trim().toLocaleLowerCase() !== 'gwen';
     chatForm.hidden = !authenticated;
     document.getElementById('store-chat-login').hidden = authenticated;
     if (authenticated) {

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark-colorful">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#273238">
+  <title>Statistiques d’utilisation — Pédantix</title>
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+  <link rel="stylesheet" href="/static/admin/usage.css">
+  <script defer src="/static/admin/usage.js"></script>
+</head>
+<body class="usage-page">
+  <main class="usage-dashboard">
+    <header class="usage-header">
+      <div>
+        <a class="usage-back" href="/">← Retour à la ludothèque</a>
+        <p class="usage-eyebrow">Espace administrateur · Gwen</p>
+        <h1>Statistiques d’utilisation</h1>
+        <p class="usage-intro">Activité des jeux, durée cumulée, tendances et résultats, calculés à partir des parties enregistrées.</p>
+      </div>
+      <div class="usage-controls">
+        <label for="usage-period">Période</label>
+        <select id="usage-period">
+          <option value="7">7 derniers jours</option>
+          <option value="30">30 derniers jours</option>
+          <option value="90" selected>90 derniers jours</option>
+          <option value="365">365 derniers jours</option>
+          <option value="all">Depuis le début</option>
+        </select>
+        <button id="usage-export" type="button">Exporter CSV</button>
+      </div>
+    </header>
+
+    <p id="usage-status" class="usage-status" role="status" aria-live="polite">Chargement des statistiques…</p>
+    <section id="usage-content" hidden>
+      <div id="usage-kpis" class="usage-kpis" aria-label="Indicateurs clés"></div>
+      <p class="usage-definition">
+        Le <strong>temps de jeu</strong> additionne les durées individuelles enregistrées (temps-joueur, donc les joueurs d’une même partie comptent séparément).
+        Le <strong>temps mural</strong> compte une seule fois la durée écoulée de chaque session terminée.
+        Les visites de pages sans lancement de partie ne sont pas historisées.
+      </p>
+
+      <section class="usage-panel">
+        <div class="usage-panel-heading">
+          <div><h2>Activité dans le temps</h2><p>Parties lancées et terminées par jour</p></div>
+        </div>
+        <div id="usage-timeline" class="usage-chart" aria-label="Graphique d’activité par jour"></div>
+      </section>
+
+      <div class="usage-grid">
+        <section class="usage-panel">
+          <div class="usage-panel-heading"><div><h2>Heures de lancement</h2><p>Répartition selon l’heure locale du serveur, UTC</p></div></div>
+          <div id="usage-hours" class="usage-bars" aria-label="Parties lancées par heure"></div>
+        </section>
+        <section class="usage-panel">
+          <div class="usage-panel-heading"><div><h2>Jours de la semaine</h2><p>Parties lancées selon le jour</p></div></div>
+          <div id="usage-weekdays" class="usage-bars usage-weekdays" aria-label="Parties lancées par jour de la semaine"></div>
+        </section>
+      </div>
+
+      <section class="usage-panel">
+        <div class="usage-panel-heading"><div><h2>Répartition par jeu</h2><p>Part des sessions et du temps-joueur enregistré</p></div></div>
+        <div class="usage-table-wrap">
+          <table>
+            <thead><tr>
+              <th>Jeu</th><th>Parties lancées</th><th>Terminées</th><th>Joueurs</th>
+              <th>Temps de jeu</th><th>Part du temps</th><th>Temps mural</th>
+              <th>Victoires / résultats</th><th>Tentatives moy.</th><th>Abandons</th><th>Points</th>
+            </tr></thead>
+            <tbody id="usage-games"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="usage-grid">
+        <section class="usage-panel">
+          <div class="usage-panel-heading"><div><h2>Modes de jeu</h2><p>Parties et durée enregistrée par mode</p></div></div>
+          <div class="usage-table-wrap"><table><thead><tr><th>Mode</th><th>Sessions</th><th>Terminées</th><th>Résultats</th><th>Victoires</th><th>Temps-joueur</th></tr></thead><tbody id="usage-modes"></tbody></table></div>
+        </section>
+        <section class="usage-panel">
+          <div class="usage-panel-heading"><div><h2>Difficultés</h2><p>Résultats et temps-joueur par niveau</p></div></div>
+          <div class="usage-table-wrap"><table><thead><tr><th>Difficulté</th><th>Résultats</th><th>Victoires</th><th>Tentatives moy.</th><th>Abandons</th><th>Temps-joueur</th></tr></thead><tbody id="usage-difficulties"></tbody></table></div>
+        </section>
+      </div>
+
+      <section class="usage-panel">
+        <div class="usage-panel-heading"><div><h2>Joueurs les plus actifs</h2><p>Comptes ayant terminé au moins une partie pendant la période</p></div></div>
+        <div class="usage-table-wrap">
+          <table><thead><tr><th>Compte</th><th>Parties terminées</th><th>Victoires</th><th>Taux de victoire</th><th>Tentatives moy.</th><th>Abandons</th><th>Temps-joueur</th><th>Points</th><th>Jeu favori</th><th>Dernière activité</th></tr></thead>
+            <tbody id="usage-players"></tbody></table>
+        </div>
+      </section>
+
+      <section class="usage-panel">
+        <div class="usage-panel-heading"><div><h2>Parties récentes</h2><p>Jusqu’aux 50 dernières sessions lancées dans la période</p></div></div>
+        <div class="usage-table-wrap">
+          <table><thead><tr><th>Début</th><th>Jeu</th><th>Mode</th><th>Difficulté</th><th>Joueurs</th><th>Temps-joueur</th><th>Temps mural</th><th>État</th></tr></thead>
+            <tbody id="usage-recent"></tbody></table>
+        </div>
+      </section>
+      <p id="usage-generated" class="usage-generated"></p>
+    </section>
+  </main>
+</body>
+</html>

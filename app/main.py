@@ -28,6 +28,7 @@ from app.database import (
     get_db_status,
     get_game_catalog,
     get_stats_overview,
+    get_admin_usage_analytics,
     user_exists,
     verify_user_token,
     get_global_game_pause,
@@ -587,6 +588,12 @@ async def root():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return {"message": "Pédantix Local API opérationnelle."}
+
+
+@app.get("/admin/usage/")
+async def admin_usage_page():
+    return FileResponse(os.path.join(STATIC_DIR, "admin", "usage.html"))
+
 
 @app.get("/games/pedantix/")
 async def pedantix_page():
@@ -3672,6 +3679,22 @@ async def stats_game_catalog():
 async def stats_overview():
     try:
         return get_stats_overview()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/admin/usage-analytics")
+async def admin_usage_analytics(
+    period: str = Query("90"),
+    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
+    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+):
+    if not _is_gwen_controller(x_auth_user, x_auth_token):
+        raise HTTPException(status_code=403, detail="Accès réservé au compte administrateur Gwen.")
+    try:
+        return await asyncio.to_thread(get_admin_usage_analytics, period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
