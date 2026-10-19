@@ -109,7 +109,8 @@
         <div class="sudoku-board-layout">
           <div id="sudoku-grid" class="sudoku-grid" role="grid" aria-label="Grille de Sudoku"></div>
           <aside class="sudoku-controls">
-            <p class="sudoku-instructions">Sélectionnez une case vide, puis un chiffre. Les flèches et les touches 1 à 9 fonctionnent aussi.</p>
+            <p class="sudoku-instructions">Sélectionnez une case vide, puis un chiffre. Activez les notes pour inscrire des candidats. Les flèches, les touches 1 à 9 et N fonctionnent aussi.</p>
+            <button type="button" id="sudoku-notes-toggle" class="sudoku-clear-button" aria-pressed="false">✎ Mode notes : désactivé</button>
             <div id="sudoku-number-pad" class="sudoku-number-pad" aria-label="Choisir un chiffre"></div>
             <button type="button" id="sudoku-clear-cell" class="sudoku-clear-button">Effacer la case</button>
             <div id="sudoku-scoreboard" class="sudoku-scoreboard" hidden></div>

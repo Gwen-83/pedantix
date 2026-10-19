@@ -97,6 +97,17 @@ body {
   color: var(--game-text);
 }
 
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--game-accent);
+  outline-offset: 3px;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 main[class$="-shell"] {
   width: min(920px, 100%);
   padding: 20px 24px 18px;

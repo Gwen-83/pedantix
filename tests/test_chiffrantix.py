@@ -92,6 +92,27 @@ class ChiffrantixTests(unittest.TestCase):
             "https://fr.wikipedia.org/wiki/Prise_de_la_Bastille",
         )
 
+    def test_secondary_semantic_bridge_marks_related_question_word_as_warm(self):
+        from app.chiffrantix import ChiffrantixBoard
+
+        board = ChiffrantixBoard(
+            {"question": "Quelle est la date de la prise de la Bastille ?", "answer": "1789"}
+        )
+
+        result = board.submit_guess("jacobin")
+        bastille_id = board.word_to_token_ids["bastille"][0]
+
+        self.assertEqual(result["status"], "close")
+        self.assertEqual(result["score"], 53.4)
+        self.assertEqual(
+            result["close_tokens"],
+            [{"id": bastille_id, "score": 53.4, "word": "jacobin"}],
+        )
+        self.assertEqual(
+            board.get_public_tokens()[bastille_id]["heat"],
+            53.4,
+        )
+
     def test_solo_hint_reveals_a_word_without_finishing_game(self):
         game = self.manager.create_solo(
             "player-1", "Alice", difficulty="facile", category="histoire"

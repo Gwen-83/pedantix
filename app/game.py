@@ -6,12 +6,17 @@ import json
 from typing import Dict, Any, List, Optional, Set
 
 from app.nlp import (
-    normalize_text, check_match, calculate_proximity, is_valid_french_word,
-    clean_guess, normalize_wiki_title
+    normalize_text, check_match, calculate_word2vec_proximity,
+    is_valid_french_word, clean_guess, normalize_wiki_title
 )
 from app.synonyms_dict import EXPANDED_STOPWORDS
 from app.tokenizer import ArticleTokenizer
-from app.wiki import WikipediaClient, ALL_CURATED_TITLES
+from app.wiki import (
+    WikipediaClient,
+    ALL_CURATED_TITLES,
+    CURATED_BY_DIFFICULTY,
+    article_matches_difficulty,
+)
 from app.database import (
     record_game_start, record_guess, record_game_finish,
     get_cached_article, get_random_cached_article, cache_article
@@ -61,7 +66,7 @@ class GameSession:
         self.guesses_history: List[Dict[str, Any]] = []
         self.guessed_words: Set[str] = set()
         self.revealed_word_ids: Set[int] = set()
-        self.token_heat: Dict[int, int] = {}  # token_id -> highest proximity score (48-100)
+        self.token_heat: Dict[int, float] = {}  # token_id -> highest cosine temperature above 30
         self.token_close_words: Dict[int, Dict[str, Any]] = {}  # token_id -> {"score": score_int, "word": clean_word}
 
         # Inverted index & unrevealed tracking for high-performance matching and proximity
@@ -174,7 +179,7 @@ class GameSession:
         self.guessed_words.add(norm_guess)
 
         close_tokens: List[Dict[str, Any]] = []
-        max_score = 0
+        max_score = 0.0
         is_guess_digit = clean_word.isdigit()
 
         for target_norm in self.unrevealed_unique_words:
@@ -183,32 +188,29 @@ class GameSession:
             if not is_guess_digit and (target_norm in EXPANDED_STOPWORDS or len(target_norm) <= 1):
                 continue
 
-            prox = calculate_proximity(clean_word, target_norm)
-            if prox >= 48.0:
-                score_int = round(prox)
-                if score_int > max_score:
-                    max_score = score_int
-                if prox < 80.0:
-                    continue
+            prox = calculate_word2vec_proximity(clean_word, target_norm)
+            if prox > 30.0:
+                max_score = max(max_score, prox)
+                score_val = round(prox, 2)
                 for tid in self.word_to_token_ids.get(target_norm, []):
                     t = self.tokens_by_id[tid]
                     if not t["revealed"]:
                         current_heat = self.token_heat.get(tid, 0)
-                        if score_int > current_heat:
-                            self.token_heat[tid] = score_int
+                        if score_val > current_heat:
+                            self.token_heat[tid] = score_val
                             self.token_close_words[tid] = {
-                                "score": score_int,
+                                "score": score_val,
                                 "word": clean_word
                             }
                             close_tokens.append({
                                 "id": tid,
-                                "score": score_int,
+                                "score": score_val,
                                 "word": clean_word
                             })
 
         if all_matched_ids:
             status = "match"
-        elif max_score >= 48:
+        elif max_score > 30:
             status = "close"
         else:
             status = "miss"
@@ -220,7 +222,7 @@ class GameSession:
             "word": clean_word,
             "status": status,
             "count": matches_count,
-            "score": max_score if status == "close" else (100 if status == "match" else 0),
+            "score": round(max_score) if status == "close" else (100 if status == "match" else 0),
             "timestamp": round(time.time() - self.created_at)
         }
         self.guesses_history.append(guess_record)
@@ -265,7 +267,7 @@ class GameSession:
             "word": clean_word,
             "attempt_number": self.attempts,
             "matches_count": matches_count,
-            "score": max_score if status == "close" else (100 if status == "match" else 0),
+            "score": round(max_score) if status == "close" else (100 if status == "match" else 0),
             "newly_revealed": {str(k): v for k, v in newly_revealed.items()},
             "close_tokens": close_tokens,
             "is_won": self.is_won,
@@ -393,12 +395,17 @@ class GameManager:
         difficulty: str = "moyen",
         exclude_titles: Optional[Set[str]] = None
     ) -> GameSession:
+        if difficulty not in ("facile", "moyen", "difficile"):
+            difficulty = "moyen"
+
         session_id = str(uuid.uuid4())
         seed_num = random.randint(1000, 9999)
         seed = f"P-{seed_num}"
 
         article_data = None
         cacheable_article = True
+        exclude_set = set(exclude_titles) if exclude_titles else set()
+        exclude_norm = {normalize_wiki_title(title) for title in exclude_set if title}
 
         # 1. Custom query or URL
         if query:
@@ -413,6 +420,9 @@ class GameManager:
         elif category and category in ("histoire", "geographie", "sciences", "monuments", "biographies", "arts_culture", "nature", "tech_jeux", "litterature"):
             article_data = self.wiki_client.fetch_curated_article(category, difficulty=difficulty, exclude_titles=exclude_titles)
 
+        if article_data and normalize_wiki_title(article_data.get("title", "")) in exclude_norm:
+            raise ValueError("Cet article a déjà été proposé au cours des 21 derniers jours.")
+
         # 4. Random French Wikipedia article meeting difficulty criteria
         if not article_data:
             article_data = self.wiki_client.fetch_random_wikipedia_article(difficulty=difficulty, exclude_titles=exclude_titles)
@@ -422,28 +432,31 @@ class GameManager:
                 candidates = [
                     c for c in self.offline_curated.values()
                     if c.get("title", "") not in exclude_set and normalize_wiki_title(c.get("title", "")) not in exclude_norm
+                    and article_matches_difficulty(c, difficulty)
                 ]
                 if candidates:
                     article_data = dict(random.choice(candidates))
             if not article_data and category:
-                article_data = get_random_cached_article(category, exclude_titles=exclude_titles)
+                cached_article = get_random_cached_article(category, exclude_titles=exclude_titles)
+                if cached_article and article_matches_difficulty(cached_article, difficulty):
+                    article_data = cached_article
             if not article_data:
-                article_data = get_random_cached_article(exclude_titles=exclude_titles)
+                cached_article = get_random_cached_article(exclude_titles=exclude_titles)
+                if cached_article and article_matches_difficulty(cached_article, difficulty):
+                    article_data = cached_article
 
         # Ultimate fallback
         if not article_data:
             cacheable_article = False
-            fallback_candidates = [
-                "Tour Eiffel", "Colisée", "Musée du Louvre", "Statue de la Liberté",
-                "Pyramides de Gizeh", "Pont du Gard", "Château de Versailles",
-                "Alhambra (Grenade)", "Mont Blanc", "Taj Mahal", "Acropole d'Athènes",
-                "Grande Muraille", "Stonehenge", "Sagrada Família", "Machu Picchu",
-                "Système solaire", "Voie lactée", "Lune", "Soleil", "Mars (planète)"
-            ]
+            fallback_candidates = CURATED_BY_DIFFICULTY.get(difficulty, [])
             exclude_set = set(exclude_titles) if exclude_titles else set()
             exclude_norm = {normalize_wiki_title(t) for t in exclude_set if t}
             valid_fallbacks = [t for t in fallback_candidates if t not in exclude_set and normalize_wiki_title(t) not in exclude_norm]
-            cand_title = random.choice(valid_fallbacks) if valid_fallbacks else random.choice(fallback_candidates)
+            if not valid_fallbacks:
+                raise RuntimeError(
+                    f"Aucun article {difficulty} disponible hors des articles joués récemment."
+                )
+            cand_title = random.choice(valid_fallbacks)
             article_data = {
                 "title": cand_title,
                 "paragraphs": [
@@ -458,6 +471,11 @@ class GameManager:
                 "lang_count": 80 if difficulty == "facile" else (35 if difficulty == "moyen" else 20),
                 "pageviews_90d": 40000 if difficulty == "facile" else (8000 if difficulty == "moyen" else 1500)
             }
+
+        if normalize_wiki_title(article_data.get("title", "")) in exclude_norm:
+            raise RuntimeError("La sélection d'article a réintroduit un article déjà joué.")
+        if mode != "daily" and not query and not article_matches_difficulty(article_data, difficulty):
+            raise RuntimeError("La sélection d'article ne correspond pas à la difficulté demandée.")
 
         # Cache in DB for future offline use
         if cacheable_article:

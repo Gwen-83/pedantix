@@ -5,10 +5,10 @@ Couche base de données de Pédantix.
 - game_sessions décrit les sessions communes; user_game_stats conserve un résultat par joueur et par jeu.
 - Les anciennes lignes restent en place et sont migrées vers game_id='pedantix'.
 - Pool de connexions PostgreSQL (évite une connexion TCP+SSL par requête).
-- Les écritures "non critiques" (historique, stats) passent par une file d'attente
+- Les écritures non critiques (stats et historique de score) passent par une file d'attente
   traitée par un thread : elles ne bloquent JAMAIS la boucle asynchrone du jeu.
-- Aucune fonction publique ne lève d'exception : une panne de base ne doit pas
-  casser une partie en cours.
+- L'historique anti-répétition est persisté avant de valider une nouvelle partie ;
+  une panne de lecture ou d'écriture bloque la sélection plutôt que de permettre un doublon.
 """
 
 import json
@@ -219,6 +219,119 @@ def _user_game_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def get_store_chat_messages(after_id: int = 0, limit: int = 50) -> List[Dict[str, Any]]:
+    limit = max(1, min(limit, 100))
+    with DatabaseContext() as db:
+        if after_id > 0:
+            db.execute(
+                """SELECT id, username, message, created_at
+                   FROM store_chat_messages WHERE id > ?
+                   ORDER BY id ASC LIMIT ?""",
+                (after_id, limit),
+            )
+            return [_jsonable(dict(row)) for row in db.fetchall()]
+        db.execute(
+            """SELECT id, username, message, created_at
+               FROM store_chat_messages ORDER BY id DESC LIMIT ?""",
+            (limit,),
+        )
+        return [_jsonable(dict(row)) for row in reversed(db.fetchall())]
+
+
+def create_store_chat_message(username: str, message: str) -> Dict[str, Any]:
+    with DatabaseContext() as db:
+        db.execute(
+            "SELECT username FROM users WHERE LOWER(username) = LOWER(?)",
+            (username.strip(),),
+        )
+        user = db.fetchone()
+        if user is None:
+            raise ValueError("Compte introuvable.")
+        canonical_username = user["username"]
+        db.execute(
+            """INSERT INTO store_chat_messages (username, message)
+               VALUES (?, ?) RETURNING id""",
+            (canonical_username, message),
+        )
+        message_id = db.fetchone()["id"]
+        db.execute(
+            """SELECT id, username, message, created_at
+               FROM store_chat_messages WHERE id = ?""",
+            (message_id,),
+        )
+        row = db.fetchone()
+        if row is None:
+            raise RuntimeError("Le message envoyé n'a pas été enregistré.")
+        return _jsonable(dict(row))
+
+
+def create_store_invitation(
+    sender_username: str,
+    recipient_username: str,
+    game_id: str,
+    room_id: str,
+) -> Dict[str, Any]:
+    with DatabaseContext() as db:
+        db.execute(
+            "SELECT username FROM users WHERE LOWER(username) = LOWER(?)",
+            (sender_username.strip(),),
+        )
+        sender = db.fetchone()
+        db.execute(
+            "SELECT username FROM users WHERE LOWER(username) = LOWER(?)",
+            (recipient_username.strip(),),
+        )
+        recipient = db.fetchone()
+        if sender is None or recipient is None:
+            raise ValueError("Compte introuvable.")
+        db.execute(
+            """INSERT INTO store_invitations
+               (sender_username, recipient_username, game_id, room_id)
+               VALUES (?, ?, ?, ?) RETURNING id""",
+            (sender["username"], recipient["username"], game_id, room_id),
+        )
+        invitation_id = db.fetchone()["id"]
+        db.execute(
+            """SELECT id, sender_username, recipient_username, game_id, room_id,
+                      status, created_at
+               FROM store_invitations WHERE id = ?""",
+            (invitation_id,),
+        )
+        row = db.fetchone()
+        if row is None:
+            raise RuntimeError("L'invitation envoyée n'a pas été enregistrée.")
+        return _jsonable(dict(row))
+
+
+def get_store_invitations(username: str, limit: int = 20) -> List[Dict[str, Any]]:
+    limit = max(1, min(limit, 50))
+    with DatabaseContext() as db:
+        db.execute(
+            """SELECT id, sender_username, recipient_username, game_id, room_id,
+                      status, created_at
+               FROM store_invitations
+               WHERE LOWER(recipient_username) = LOWER(?) AND status = 'pending'
+               ORDER BY id DESC LIMIT ?""",
+            (username.strip(), limit),
+        )
+        return [_jsonable(dict(row)) for row in reversed(db.fetchall())]
+
+
+def update_store_invitation_status(
+    invitation_id: int, username: str, status: str
+) -> bool:
+    if status not in {"accepted", "dismissed"}:
+        raise ValueError("Statut d'invitation invalide.")
+    with DatabaseContext() as db:
+        db.execute(
+            """UPDATE store_invitations SET status = ?
+               WHERE id = ? AND LOWER(recipient_username) = LOWER(?)
+                 AND status = 'pending'""",
+            (status, invitation_id, username.strip()),
+        )
+        return db.cursor.rowcount == 1
+
+
 # ---------------------------------------------------------------------------
 # Schéma
 # ---------------------------------------------------------------------------
@@ -285,6 +398,14 @@ _SCHEMA_PG = [
         last_attempt_at DOUBLE PRECISION NOT NULL DEFAULT 0,
         unlocked_at DOUBLE PRECISION NOT NULL DEFAULT 0,
         username TEXT)""",
+    """CREATE TABLE IF NOT EXISTS store_chat_messages (
+        id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, message TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS store_invitations (
+        id BIGSERIAL PRIMARY KEY, sender_username TEXT NOT NULL,
+        recipient_username TEXT NOT NULL, game_id TEXT NOT NULL, room_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_games_finished ON games(finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_article_category ON article_cache(category)",
@@ -293,6 +414,8 @@ _SCHEMA_PG = [
     "CREATE INDEX IF NOT EXISTS idx_player_game_scores_game_score ON player_game_scores(game_id, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_lookup ON user_played_articles(user_identifier, played_at)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_title ON user_played_articles(article_title)",
+    "CREATE INDEX IF NOT EXISTS idx_store_chat_messages_created ON store_chat_messages(id DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_store_invitations_recipient_status ON store_invitations(recipient_username, status, id DESC)",
 ]
 
 _SCHEMA_SQLITE = [
@@ -356,12 +479,22 @@ _SCHEMA_SQLITE = [
         last_attempt_at REAL NOT NULL DEFAULT 0,
         unlocked_at REAL NOT NULL DEFAULT 0,
         username TEXT)""",
+    """CREATE TABLE IF NOT EXISTS store_chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, message TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS store_invitations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, sender_username TEXT NOT NULL,
+        recipient_username TEXT NOT NULL, game_id TEXT NOT NULL, room_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
     "CREATE INDEX IF NOT EXISTS idx_user_game_stats_user_finished ON user_game_stats(username, finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_player_game_scores_game_score ON player_game_scores(game_id, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_lookup ON user_played_articles(user_identifier, played_at)",
     "CREATE INDEX IF NOT EXISTS idx_user_played_title ON user_played_articles(article_title)",
+    "CREATE INDEX IF NOT EXISTS idx_store_chat_messages_created ON store_chat_messages(id DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_store_invitations_recipient_status ON store_invitations(recipient_username, status, id DESC)",
 ]
 
 _GAME_CATALOG = (
@@ -536,6 +669,39 @@ def get_game_catalog() -> List[Dict[str, Any]]:
         raise RuntimeError("Impossible de charger le catalogue des jeux.") from e
 
 
+def get_stats_overview() -> Dict[str, Any]:
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                """SELECT gc.game_id, gc.display_name, gc.enabled,
+                          COUNT(DISTINCT gs.session_id) AS started_games,
+                          COUNT(DISTINCT CASE WHEN gs.finished_at IS NOT NULL
+                                              THEN gs.session_id END) AS finished_games
+                   FROM game_catalog gc
+                   LEFT JOIN game_sessions gs ON gs.game_id = gc.game_id
+                   GROUP BY gc.game_id, gc.display_name, gc.enabled
+                   ORDER BY gc.display_name"""
+            )
+            games = [
+                {
+                    "game_id": row["game_id"],
+                    "display_name": row["display_name"],
+                    "enabled": bool(row["enabled"]),
+                    "started_games": int(row["started_games"] or 0),
+                    "finished_games": int(row["finished_games"] or 0),
+                }
+                for row in db.fetchall()
+            ]
+            return {
+                "started_games": sum(game["started_games"] for game in games),
+                "finished_games": sum(game["finished_games"] for game in games),
+                "games": games,
+            }
+    except Exception as e:
+        logger.warning(f"get_stats_overview: {e}")
+        raise RuntimeError("Impossible de charger les statistiques de la ludothèque.") from e
+
+
 def ping_db() -> bool:
     try:
         with DatabaseContext() as db:
@@ -610,7 +776,7 @@ def get_random_cached_article(category: Optional[str] = None, exclude_titles: Op
 
 
 # ---------------------------------------------------------------------------
-# Suivi des pages apparues / jouées (règle des 15 jours sans répétition)
+# Suivi des pages apparues / jouées (règle des 21 jours sans répétition)
 # ---------------------------------------------------------------------------
 _recent_played_cache: Dict[str, Dict[str, float]] = {}
 _recent_played_lock = threading.Lock()
@@ -643,7 +809,8 @@ def _record_played_article_sync(identifiers: List[str], article_title: str):
                     (ident, clean_title),
                 )
     except Exception as e:
-        logger.warning(f"_record_played_article_sync: {e}")
+        logger.error(f"_record_played_article_sync: {e}")
+        raise RuntimeError("Impossible d'enregistrer l'historique récent des articles.") from e
 
 
 def record_played_article(identifiers: List[str], article_title: str):
@@ -660,10 +827,10 @@ def record_played_article(identifiers: List[str], article_title: str):
             if ident not in _recent_played_cache:
                 _recent_played_cache[ident] = {}
             _recent_played_cache[ident][clean_title] = now_ts
-    _enqueue(_record_played_article_sync, clean_ids, clean_title)
+    _record_played_article_sync(clean_ids, clean_title)
 
 
-def get_recently_played_articles(identifiers: List[str], days: int = 15) -> Set[str]:
+def get_recently_played_articles(identifiers: List[str], days: int = 21) -> Set[str]:
     """Retourne l'ensemble des titres d'articles apparus pour ces identifiants durant les X derniers jours."""
     if not identifiers:
         return set()
@@ -702,7 +869,8 @@ def get_recently_played_articles(identifiers: List[str], days: int = 15) -> Set[
                 if t:
                     titles.add(t)
     except Exception as e:
-        logger.warning(f"get_recently_played_articles: {e}")
+        logger.error(f"get_recently_played_articles: {e}")
+        raise RuntimeError("Impossible de vérifier l'historique récent des articles.") from e
 
     return titles
 

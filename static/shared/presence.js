@@ -56,6 +56,7 @@
       return;
     }
 
+    const currentUsername = (localStorage.getItem('pedantix_auth_user') || '').trim();
     for (const player of players) {
       const item = document.createElement('li');
       const name = document.createElement('span');
@@ -64,6 +65,19 @@
       const game = document.createElement('small');
       game.textContent = gameLabels[player.game_id] || 'En ligne';
       item.append(name, game);
+      if (currentUsername && player.username.toLocaleLowerCase() !== currentUsername.toLocaleLowerCase()) {
+        const invite = document.createElement('button');
+        invite.type = 'button';
+        invite.className = 'store-invite-player';
+        invite.textContent = 'Inviter';
+        invite.setAttribute('aria-label', `Inviter ${player.username} dans un salon`);
+        invite.addEventListener('click', () => {
+          document.dispatchEvent(new CustomEvent('store:invite-player', {
+            detail: { username: player.username },
+          }));
+        });
+        item.append(invite);
+      }
       list.append(item);
     }
   }

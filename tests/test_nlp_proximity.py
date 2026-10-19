@@ -4,6 +4,8 @@ from app.nlp import (
     FRENCH_VERB_LEMMAS,
     WORD_ASSOCIATIONS,
     calculate_proximity,
+    calculate_word2vec_cosine,
+    calculate_word2vec_proximity,
     is_valid_french_word,
     normalize_text,
 )
@@ -11,6 +13,20 @@ from app.synonyms_dict import CURATED_DOMAIN_ASSOCIATIONS
 
 
 class ProximityTests(unittest.TestCase):
+    def test_pedantix_proximity_uses_word2vec_and_keeps_exact_morphology(self):
+        self.assertGreater(
+            calculate_word2vec_proximity("chien", "chat"),
+            calculate_word2vec_proximity("voiture", "chat"),
+        )
+        self.assertEqual(calculate_word2vec_proximity("chat", "chats"), 100.0)
+        self.assertEqual(calculate_word2vec_proximity("motinconnuabc", "chat"), 0.0)
+
+    def test_word2vec_similarity_keeps_contextual_antonyms_close(self):
+        self.assertGreater(
+            calculate_word2vec_cosine("chaud", "froid"),
+            calculate_word2vec_cosine("voiture", "chat"),
+        )
+
     def test_embeddings_add_related_word_coverage(self):
         self.assertGreaterEqual(calculate_proximity("ordinateur", "écran"), 75.0)
         self.assertGreaterEqual(calculate_proximity("avion", "atterrir"), 85.0)

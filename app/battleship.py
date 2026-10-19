@@ -148,6 +148,8 @@ class BattleshipRoom:
     started_at: Optional[float] = None
     match_number: int = 1
     stats_recorded: bool = False
+    is_solo: bool = False
+    bot_difficulty: Optional[str] = None
 
     def _alive_ids(self) -> List[str]:
         return [
@@ -206,6 +208,8 @@ class BattleshipRoom:
             "status": self.status,
             "match_number": self.match_number,
             "difficulty": self.difficulty,
+            "is_solo": self.is_solo,
+            "bot_difficulty": self.bot_difficulty,
             "ship_lengths": self.ship_lengths,
             "host_player_id": self.host_player_id,
             "player_id": player_id,
@@ -263,9 +267,10 @@ class BattleshipRoom:
 
 
 class BattleshipManager:
-    def __init__(self):
+    def __init__(self, rng: Optional[random.Random] = None):
         self.rooms: Dict[str, BattleshipRoom] = {}
         self._lock = threading.RLock()
+        self.rng = rng or random.Random()
 
     @staticmethod
     def validate_fleet(
@@ -324,6 +329,155 @@ class BattleshipManager:
             )
             self.rooms[room_id] = room
             return room
+
+    def create_solo(
+        self, player_id: str, player_name: str, bot_difficulty: str = "moyen"
+    ) -> BattleshipRoom:
+        with self._lock:
+            bot_difficulty = self._validate_difficulty(bot_difficulty)
+            room_id = uuid.uuid4().hex[:6].upper()
+            while room_id in self.rooms:
+                room_id = uuid.uuid4().hex[:6].upper()
+            bot_id = f"bot-{room_id}"
+            room = BattleshipRoom(
+                room_id=room_id,
+                host_player_id=player_id,
+                difficulty=bot_difficulty,
+                ship_lengths=dict(SHIP_LENGTHS),
+                is_solo=True,
+                bot_difficulty=bot_difficulty,
+            )
+            player = BattleshipPlayer(
+                player_id, player_name, fleet=_generate_fleet(room.ship_lengths), ready=True
+            )
+            bot = BattleshipPlayer(
+                bot_id, f"Amiral {bot_difficulty}", fleet=_generate_fleet(room.ship_lengths), ready=True
+            )
+            room.players[player_id] = player
+            room.players[bot_id] = bot
+            room.status = "playing"
+            room.current_player_id = player_id
+            room.turn_number = 1
+            room.started_at = time.time()
+            self.rooms[room_id] = room
+            return room
+
+    def choose_bot_shot(self, room: BattleshipRoom) -> str:
+        bot_id = next(
+            player_id for player_id in room.players
+            if player_id != room.host_player_id
+        )
+        bot = room.players[bot_id]
+        prior_shots = {attack["coordinate"] for attack in bot.attacks}
+        candidates = [
+            f"{ROWS[row]}{column + 1}"
+            for row in range(BOARD_SIZE)
+            for column in range(BOARD_SIZE)
+            if f"{ROWS[row]}{column + 1}" not in prior_shots
+        ]
+        if not candidates:
+            raise ValueError("Le bot n’a plus de cases à viser.")
+
+        unresolved_hits = {
+            attack["coordinate"]
+            for attack in bot.attacks
+            if attack["hit"] and not attack["sunk_ship"]
+        }
+        known_sunk_cells = {
+            cell
+            for attack in bot.attacks
+            for cell in attack.get("sunk_ship_cells", [])
+        }
+        if room.bot_difficulty == "facile":
+            target_candidates = set()
+            for coordinate in unresolved_hits:
+                row, column = _coordinate_parts(coordinate)
+                for row_offset, column_offset in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    next_row, next_column = row + row_offset, column + column_offset
+                    if 0 <= next_row < BOARD_SIZE and 0 <= next_column < BOARD_SIZE:
+                        target_candidates.add(f"{ROWS[next_row]}{next_column + 1}")
+            target_candidates &= set(candidates)
+            if target_candidates and self.rng.random() < 0.7:
+                return self.rng.choice(sorted(target_candidates))
+            checkerboard = [
+                coordinate for coordinate in candidates
+                if sum(_coordinate_parts(coordinate)) % 2 == 0
+            ]
+            if checkerboard and self.rng.random() < 0.8:
+                return self.rng.choice(checkerboard)
+            return self.rng.choice(candidates)
+
+        target_candidates: Set[str] = set()
+        if unresolved_hits:
+            hit_parts = [_coordinate_parts(coordinate) for coordinate in unresolved_hits]
+            same_row = len({row for row, _ in hit_parts}) == 1
+            same_column = len({column for _, column in hit_parts}) == 1
+            if same_row and len(hit_parts) > 1:
+                row = hit_parts[0][0]
+                columns = sorted(column for _, column in hit_parts)
+                target_candidates.update(
+                    f"{ROWS[row]}{column + 1}"
+                    for column in (columns[0] - 1, columns[-1] + 1)
+                    if 0 <= column < BOARD_SIZE
+                )
+            elif same_column and len(hit_parts) > 1:
+                column = hit_parts[0][1]
+                rows = sorted(row for row, _ in hit_parts)
+                target_candidates.update(
+                    f"{ROWS[row]}{column + 1}"
+                    for row in (rows[0] - 1, rows[-1] + 1)
+                    if 0 <= row < BOARD_SIZE
+                )
+            else:
+                for row, column in hit_parts:
+                    for row_offset, column_offset in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                        next_row, next_column = row + row_offset, column + column_offset
+                        if 0 <= next_row < BOARD_SIZE and 0 <= next_column < BOARD_SIZE:
+                            target_candidates.add(f"{ROWS[next_row]}{next_column + 1}")
+            target_candidates &= set(candidates)
+            if target_candidates and room.bot_difficulty == "moyen":
+                return self.rng.choice(sorted(target_candidates))
+        if room.bot_difficulty == "moyen":
+            checkerboard = [
+                coordinate for coordinate in candidates
+                if sum(_coordinate_parts(coordinate)) % 2 == 0
+            ]
+            return self.rng.choice(checkerboard or candidates)
+
+        blocked_by_sunk_ships = set(known_sunk_cells)
+        for coordinate in known_sunk_cells:
+            blocked_by_sunk_ships.update(_adjacent_coordinates(coordinate))
+        misses = {
+            attack["coordinate"] for attack in bot.attacks if not attack["hit"]
+        }
+        remaining_lengths = [
+            length for ship_id, length in room.ship_lengths.items()
+            if not any(attack["sunk_ship"] == ship_id for attack in bot.attacks)
+        ]
+        weights = {coordinate: 0 for coordinate in candidates}
+        for length in remaining_lengths:
+            for vertical in (False, True):
+                for row in range(BOARD_SIZE - (length - 1 if vertical else 0)):
+                    for column in range(BOARD_SIZE - (0 if vertical else length - 1)):
+                        placement = {
+                            f"{ROWS[row + (offset if vertical else 0)]}"
+                            f"{column + (offset if not vertical else 0) + 1}"
+                            for offset in range(length)
+                        }
+                        if placement & misses or placement & blocked_by_sunk_ships:
+                            continue
+                        if unresolved_hits and not placement & unresolved_hits:
+                            continue
+                        for coordinate in placement & weights.keys():
+                            weights[coordinate] += 1
+        best_weight = max((weights[coordinate] for coordinate in candidates), default=0)
+        if best_weight:
+            most_likely = [
+                coordinate for coordinate in candidates
+                if weights[coordinate] == best_weight
+            ]
+            return self.rng.choice(most_likely)
+        return self.rng.choice(candidates)
 
     def join_room(self, room_id: str, player_id: str, player_name: str) -> BattleshipRoom:
         with self._lock:
@@ -432,10 +586,19 @@ class BattleshipManager:
                 player.incoming_shots.clear()
                 player.attacks.clear()
             room.match_number += 1
+            room.winner_player_id = None
+            if room.is_solo:
+                for player in room.players.values():
+                    player.ready = True
+                room.status = "playing"
+                room.current_player_id = room.host_player_id
+                room.turn_number = 1
+                room.started_at = time.time()
+                room.stats_recorded = False
+                return room
             room.status = "lobby"
             room.current_player_id = None
             room.turn_number = 0
-            room.winner_player_id = None
             room.started_at = None
             room.stats_recorded = False
             return room
@@ -471,6 +634,7 @@ class BattleshipManager:
                 "hit": hit,
                 "sunk_ship": sunk_ship,
                 "eliminated": eliminated,
+                "sunk_ship_cells": list(target.fleet[ship_id]) if sunk_ship else [],
             }
             room.players[player_id].attacks.append(attack)
 
@@ -486,6 +650,19 @@ class BattleshipManager:
                 room.current_player_id = room.next_alive(player_id)
                 room.turn_number += 1
 
+            bot_shots = []
+            if (
+                room.is_solo
+                and player_id == room.host_player_id
+                and room.current_player_id != room.host_player_id
+                and room.status == "playing"
+            ):
+                bot_id = room.current_player_id
+                while room.status == "playing" and room.current_player_id == bot_id:
+                    bot_coordinate = self.choose_bot_shot(room)
+                    room, bot_result = self.fire(room_id, bot_id, bot_coordinate)
+                    bot_shots.append(bot_result)
+
             return room, {
                 "target_id": target_id,
                 "coordinate": shot,
@@ -494,6 +671,7 @@ class BattleshipManager:
                 "eliminated": eliminated,
                 "winner_player_id": room.winner_player_id,
                 "next_player_id": room.current_player_id,
+                "bot_shots": bot_shots,
             }
 
 

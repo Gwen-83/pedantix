@@ -111,7 +111,7 @@ class GameProximityDisplayTests(unittest.TestCase):
             patch("app.game.record_game_start"),
             patch("app.game.record_guess"),
             patch("app.game.is_valid_french_word", return_value=True),
-            patch("app.game.calculate_proximity", return_value=proximity),
+            patch("app.game.calculate_word2vec_proximity", return_value=proximity),
         ):
             session = GameSession(
                 session_id="proximity-test",
@@ -129,20 +129,20 @@ class GameProximityDisplayTests(unittest.TestCase):
             result = session.submit_guess("autre")
         return result, session
 
-    def test_proximity_under_eighty_stays_close_without_greying_a_token(self):
-        result, session = self._submit_proximity_guess(79.9)
+    def test_temperature_at_floor_does_not_grey_a_token(self):
+        result, session = self._submit_proximity_guess(30.0)
 
-        self.assertEqual(result["status"], "close")
-        self.assertEqual(result["score"], 80)
+        self.assertEqual(result["status"], "miss")
+        self.assertEqual(result["score"], 0)
         self.assertEqual(result["close_tokens"], [])
         self.assertEqual(session.token_heat, {})
 
-    def test_proximity_at_eighty_greys_the_matching_token(self):
-        result, session = self._submit_proximity_guess(80.0)
+    def test_temperature_above_floor_greys_the_matching_token(self):
+        result, session = self._submit_proximity_guess(30.1)
 
         self.assertEqual(result["status"], "close")
-        self.assertEqual(result["close_tokens"][0]["score"], 80)
-        self.assertEqual(session.token_heat[next(iter(session.token_heat))], 80)
+        self.assertEqual(result["close_tokens"][0]["score"], 30.1)
+        self.assertEqual(session.token_heat[next(iter(session.token_heat))], 30.1)
 
 
 if __name__ == "__main__":

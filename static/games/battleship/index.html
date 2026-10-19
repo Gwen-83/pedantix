@@ -41,26 +41,35 @@
     </header>
 
     <section id="naval-home" class="naval-panel" aria-labelledby="naval-heading">
-      <p class="naval-eyebrow">Multijoueur uniquement</p>
+      <p class="naval-eyebrow">Tactique, mémoire et précision</p>
       <h1 id="naval-heading">Préparez vos navires.</h1>
-      <p class="naval-intro">Créez un salon et invitez au moins un adversaire. La flotte classique est placée au hasard ; chacun peut ensuite la déplacer avant le départ.</p>
-      <label class="naval-difficulty-label" for="naval-difficulty">Difficulté de la bataille</label>
+      <p class="naval-intro">Défiez l’amiral en solo ou invitez des adversaires dans un salon. En solo, choisissez le niveau tactique du bot : il ne voit jamais votre flotte et raisonne uniquement à partir des tirs qu’il a déjà effectués.</p>
+      <label id="naval-difficulty-label" class="naval-difficulty-label" for="naval-difficulty">Difficulté de la bataille</label>
       <select id="naval-difficulty" class="naval-difficulty-select">
-        <option value="facile">Facile · flotte réduite</option>
-        <option value="moyen" selected>Moyen · flotte classique</option>
-        <option value="difficile">Difficile · une frégate en plus</option>
+        <option value="facile">Facile · chasse simple</option>
+        <option value="moyen" selected>Moyen · tactiques de ciblage</option>
+        <option value="difficile">Difficile · probabilités avancées</option>
       </select>
       <div class="shared-mode-switch" role="group" aria-label="Mode de jeu">
-        <button type="button" class="active" data-shared-game-mode="multi" aria-pressed="true">🌐 Multijoueur</button>
+        <button type="button" data-naval-mode="solo" aria-pressed="false">🎯 Solo contre le bot</button>
+        <button type="button" class="active" data-naval-mode="multi" aria-pressed="true">🌐 Multijoueur</button>
       </div>
-      <div class="naval-mode-card">
+      <div id="naval-solo-actions" class="naval-mode-card" hidden>
+        <span class="naval-mode-icon" aria-hidden="true">🤖</span>
+        <span class="naval-mode-content">
+          <strong>Jouer contre l’amiral</strong>
+          <small>Le bot adapte sa stratégie au niveau choisi, sans connaître l’emplacement de vos navires.</small>
+        </span>
+        <button type="button" id="naval-solo-start" class="naval-primary-button">Lancer la partie</button>
+      </div>
+      <div id="naval-multi-actions" class="naval-mode-card" hidden>
         <span class="naval-mode-icon" aria-hidden="true">🌊</span>
         <span class="naval-mode-content">
           <strong>Jouer en multijoueur</strong>
           <small>À votre tour, tirez une fois sur le prochain joueur encore en lice. Le dernier capitaine restant gagne.</small>
         </span>
+        <button type="button" class="naval-primary-button" data-shared-open-rooms>Créer ou rejoindre un salon</button>
       </div>
-      <button type="button" class="naval-primary-button" data-shared-open-rooms>Créer ou rejoindre un salon</button>
       <p id="naval-home-error" class="naval-error" role="alert" hidden></p>
     </section>
 
@@ -109,6 +118,7 @@
       <section id="naval-battle" class="naval-battle" hidden>
         <p id="naval-turn-message" class="naval-turn-message" aria-live="polite"></p>
         <p id="naval-shot-result" class="naval-shot-result" aria-live="polite"></p>
+        <p id="naval-bot-result" class="naval-shot-result" aria-live="polite" hidden></p>
         <div class="naval-legend" aria-label="Légende des tirs">
           <span><i class="naval-legend-hit">×</i> Touché</span>
           <span><i class="naval-legend-miss">•</i> Dans l’eau</span>

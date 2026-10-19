@@ -14,21 +14,25 @@ from app.nlp import (
     CONCEPT_LOOKUP,
     FRENCH_DICTIONARY,
     FRENCH_SYNONYMS,
+    FRENCH_WORDNET_SYNSETS,
     FRENCH_VERB_LEMMA_CANDIDATES,
     FRENCH_VERB_LEMMAS,
     HARDCODED_SYNONYMS,
     NON_FLEXIBLE_WORDS,
-    PROPER_NOUNS,
     STOPWORDS_EXACT,
     THEMATIC_CLUSTERS,
     WORD_ASSOCIATIONS,
     WORD_EMBEDDING_INDEX,
     WORD_EMBEDDING_NORMS,
     WORD_EMBEDDINGS,
+    WORD2VEC_RANKING_VOCAB_SIZE,
     _get_embedding_index,
     calculate_proximity,
+    calculate_word2vec_cosine,
+    calculate_word2vec_rank,
     check_match,
     clean_guess,
+    get_word2vec_nearest_words,
     get_singular_forms,
     is_valid_french_word,
     normalize_text,
@@ -72,16 +76,15 @@ def _visible_hint_count(difficulty: str, attempts: int) -> int:
     return sum(threshold <= attempts for threshold in CEMANTIX_DIFFICULTIES[difficulty])
 
 
-def _is_canonical_target_word(word: str) -> bool:
+def _is_canonical_target_word(word: str, max_embedding_index: int = 25000) -> bool:
     if (
         word not in FRENCH_DICTIONARY
         or word in STOPWORDS_EXACT
-        or word in PROPER_NOUNS
         or not (3 <= len(word) <= 14 and re.fullmatch(r"[a-z]+", word))
     ):
         return False
     emb_idx = WORD_EMBEDDING_INDEX.get(word)
-    if emb_idx is None or emb_idx > 25000:
+    if emb_idx is None or emb_idx > max_embedding_index:
         return False
     # Exclude plural forms when their singular exists in the dictionary
     if word not in NON_FLEXIBLE_WORDS and word.endswith(("s", "x")):
@@ -103,7 +106,27 @@ def _default_answers() -> List[str]:
         | set(CONCEPT_LOOKUP)
         | set().union(*THEMATIC_CLUSTERS.values())
     )
-    return sorted(word for word in semantic_words if _is_canonical_target_word(word))
+    candidates = semantic_words | {
+        word
+        for word, index in WORD_EMBEDDING_INDEX.items()
+        if index < 25000
+        and any(
+            synset.rsplit("-", 1)[-1] in {"n", "a", "s"}
+            for synset in FRENCH_WORDNET_SYNSETS.get(word, ())
+        )
+    }
+    return sorted(
+        word
+        for word in candidates
+        if _is_canonical_target_word(word)
+        and (
+            not FRENCH_WORDNET_SYNSETS.get(word)
+            or any(
+                synset.rsplit("-", 1)[-1] in {"n", "a", "s"}
+                for synset in FRENCH_WORDNET_SYNSETS[word]
+            )
+        )
+    )
 
 
 _ASSOC_REVERSE: Dict[str, set[str]] = {}
@@ -255,6 +278,18 @@ def calculate_cemantix_proximity(word: str, target: str) -> float:
     return round(max(best_bridge, min(47.5, fallback)), 1)
 
 
+def calculate_cemantix_temperature(word: str, target: str) -> float:
+    """Return the Word2Vec cosine as a Celsius-like temperature, without heuristics."""
+    normalized_word = normalize_text(clean_guess(word))
+    normalized_target = normalize_text(target)
+    if not normalized_word or not normalized_target:
+        return 0.0
+    if normalized_word == normalized_target:
+        return 100.0
+    cosine = calculate_word2vec_cosine(word, target)
+    return round(cosine * 100.0, 2) if cosine is not None else 0.0
+
+
 @dataclass
 class CemantixGame:
     game_id: str
@@ -312,6 +347,7 @@ class CemantixPlayer:
 class CemantixSubmission:
     word: str
     score: float
+    rank: int
     solved: bool
     submitted_at: float
 
@@ -413,18 +449,6 @@ class CemantixManager:
         self._clock = clock
         self.solo_games: Dict[str, CemantixGame] = {}
         self.rooms: Dict[str, CemantixRoom] = {}
-        self._association_reverse: Dict[str, set[str]] = {}
-        for source, associations in WORD_ASSOCIATIONS.items():
-            for associated_word in associations:
-                self._association_reverse.setdefault(associated_word, set()).add(source)
-        self._synonym_reverse: Dict[str, set[str]] = {}
-        for source, synonyms in FRENCH_SYNONYMS.items():
-            for synonym in synonyms:
-                self._synonym_reverse.setdefault(synonym, set()).add(source)
-        self._hardcoded_synonym_reverse: Dict[str, set[str]] = {}
-        for source, synonyms in HARDCODED_SYNONYMS.items():
-            for synonym in synonyms:
-                self._hardcoded_synonym_reverse.setdefault(synonym, set()).add(source)
         self._lock = threading.RLock()
 
     def _pick_target(self) -> str:
@@ -437,38 +461,23 @@ class CemantixManager:
         return difficulty
 
     def _hint_words_with_scores(self, target: str) -> List[Tuple[str, float]]:
-        candidates = (
-            set(FRENCH_SYNONYMS.get(target, set()))
-            | self._synonym_reverse.get(target, set())
-            | set(HARDCODED_SYNONYMS.get(target, set()))
-            | self._hardcoded_synonym_reverse.get(target, set())
-            | set(WORD_ASSOCIATIONS.get(target, {}))
-            | self._association_reverse.get(target, set())
-        )
-        for concept, _role in CONCEPT_LOOKUP.get(target, []):
-            candidates.update(concept["core"])
-            candidates.update(concept["extended"])
-        for cluster in THEMATIC_CLUSTERS.values():
-            if target in cluster:
-                candidates.update(cluster)
-        scored = [
-            (round(min(calculate_proximity(candidate, target), 99.9), 1), candidate)
-            for candidate in candidates
-            if candidate != target
-            and candidate in self.dictionary
-            and candidate not in STOPWORDS_EXACT
-            and not check_match(candidate, target)
-        ]
-        scored = [(score, word) for score, word in scored if score >= 48.0]
-        if not scored:
-            scored = [
-                (self._score(candidate, target)[0], candidate)
-                for candidate in candidates
-                if candidate != target
-                and candidate in self.dictionary
-                and candidate not in STOPWORDS_EXACT
-            ]
-            scored = [(score, word) for score, word in scored if score >= 48.0]
+        scored = []
+        for candidate, cosine in get_word2vec_nearest_words(target):
+            if (
+                candidate == target
+                or candidate not in self.dictionary
+                or candidate in STOPWORDS_EXACT
+                or not _is_canonical_target_word(
+                    candidate, max_embedding_index=WORD2VEC_RANKING_VOCAB_SIZE
+                )
+                or not any(
+                    synset.rsplit("-", 1)[-1] in {"n", "a", "s"}
+                    for synset in FRENCH_WORDNET_SYNSETS.get(candidate, ())
+                )
+                or check_match(candidate, target)
+            ):
+                continue
+            scored.append((round(cosine * 100.0, 2), candidate))
 
         scored.sort(key=lambda item: (-item[0], item[1]))
         if len(scored) <= 8:
@@ -509,14 +518,17 @@ class CemantixManager:
                     raise ValueError("Ce mot n'est pas reconnu dans le dictionnaire français.")
         if word in STOPWORDS_EXACT and word not in CEMANTIX_ALLOWED_NOUN_HOMOGRAPHS:
             raise ValueError("Les mots outils ne peuvent pas être proposés.")
+        if _get_embedding_index(word) is None:
+            raise ValueError("Ce mot n'est pas présent dans le modèle sémantique.")
         return word
 
-    def _score(self, word: str, target: str) -> tuple[float, bool]:
+    def _score(self, word: str, target: str) -> tuple[float, bool, int]:
         solved = word == target
         if solved:
-            return 100.0, True
-        score = calculate_cemantix_proximity(word, target)
-        return round(min(score, 99.9), 1), False
+            return 100.0, True, 1000
+        score = calculate_cemantix_temperature(word, target)
+        rank = calculate_word2vec_rank(word, target)
+        return score, False, rank
 
     def create_solo(
         self, player_id: str, player_name: str, difficulty: str = "moyen"
@@ -555,11 +567,12 @@ class CemantixManager:
             if word in game.guessed_words:
                 raise ValueError("Vous avez déjà proposé ce mot.")
 
-            score, solved = self._score(word, game.target)
+            score, solved, rank = self._score(word, game.target)
             game.guessed_words.add(word)
             result = {
                 "word": word,
                 "score": score,
+                "rank": rank,
                 "solved": solved,
                 "attempt": len(game.guesses) + 1,
             }
@@ -652,6 +665,7 @@ class CemantixManager:
                         "round": room.round_number,
                         "word": submission.word,
                         "score": submission.score,
+                        "rank": submission.rank,
                         "solved": submission.solved,
                         "passed": False,
                     }
@@ -781,10 +795,11 @@ class CemantixManager:
             }:
                 raise ValueError("Vous avez déjà proposé ce mot.")
 
-            score, solved = self._score(word, room.target)
+            score, solved, rank = self._score(word, room.target)
             submission = CemantixSubmission(
                 word=word,
                 score=score,
+                rank=rank,
                 solved=solved,
                 submitted_at=self._clock(),
             )

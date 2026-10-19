@@ -11,7 +11,13 @@ from app.database import (
     get_recently_played_articles,
     DatabaseContext
 )
-from app.wiki import WikipediaClient, ALL_CURATED_TITLES
+from app.wiki import (
+    WikipediaClient,
+    ALL_CURATED_TITLES,
+    CURATED_BY_DIFFICULTY,
+    calculate_article_difficulty,
+    get_article_difficulty,
+)
 from app.room import RoomManager, Room
 
 
@@ -66,6 +72,88 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
         # But within 20 days it should be returned
         played_20d = get_recently_played_articles([user], days=20)
         self.assertIn("Ancienne Page", played_20d)
+
+    def test_default_history_window_is_21_days(self):
+        user = "test_player_21d"
+        now = datetime.datetime.now(datetime.timezone.utc)
+        with DatabaseContext() as db:
+            for title, age_days in (("Article récent", 20), ("Article expiré", 22)):
+                played_at = (now - datetime.timedelta(days=age_days)).strftime("%Y-%m-%d %H:%M:%S")
+                db.execute(
+                    "INSERT INTO user_played_articles (user_identifier, article_title, played_at) VALUES (?, ?, ?)",
+                    (user, title, played_at),
+                )
+
+        played = get_recently_played_articles([user])
+
+        self.assertIn("Article récent", played)
+        self.assertNotIn("Article expiré", played)
+
+    def test_history_lookup_failure_is_not_treated_as_empty_history(self):
+        with patch("app.database.DatabaseContext", side_effect=OSError("database unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "vérifier l'historique"):
+                get_recently_played_articles(["test_player_db_failure"])
+
+    def test_history_write_failure_is_reported(self):
+        with patch("app.database.DatabaseContext", side_effect=OSError("database unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "enregistrer l'historique"):
+                record_played_article(["test_player_db_write_failure"], "Article")
+
+    def test_article_with_257_languages_is_only_easy(self):
+        article = {
+            "title": "Mars (planète)",
+            "lang_count": 257,
+            "pageviews_90d": 1,
+            "difficulty": "moyen",
+        }
+
+        self.assertEqual(
+            calculate_article_difficulty(257, 1, title="Mars (planète)"),
+            "facile",
+        )
+        self.assertEqual(get_article_difficulty(article), "facile")
+        self.assertIn("Mars (planète)", CURATED_BY_DIFFICULTY["facile"])
+        self.assertNotIn("Mars (planète)", CURATED_BY_DIFFICULTY["moyen"])
+
+    def test_fetch_article_uses_real_language_count_over_curated_label(self):
+        client = WikipediaClient()
+        page = {
+            "title": "Mars (planète)",
+            "extract": f"<p>{'Mars est une planète du système solaire. ' * 20}</p>",
+            "langlinks": [{"lang": f"l{i}", "*": f"Mars {i}"} for i in range(257)],
+            "pageviews": {},
+            "pageprops": {},
+            "fullurl": "https://fr.wikipedia.org/wiki/Mars_(plan%C3%A8te)",
+        }
+        with patch.object(
+            client,
+            "_make_api_request",
+            return_value={"query": {"pages": {"1": page}}},
+        ):
+            article = client.fetch_article_by_title("Mars (planète)")
+
+        self.assertIsNotNone(article)
+        self.assertEqual(article["lang_count"], 257)
+        self.assertEqual(article["difficulty"], "facile")
+
+    def test_medium_pageviews_fallback_rejects_easy_article(self):
+        client = WikipediaClient()
+        mars = {
+            "title": "Mars (planète)",
+            "paragraphs": ["Mars " * 80],
+            "lang_count": 257,
+            "pageviews_90d": 1,
+            "difficulty": "moyen",
+        }
+        with (
+            patch.object(client, "_make_api_request", return_value={"query": {"pages": {}}}),
+            patch.object(client, "_get_pageviews_pool", return_value=["Mars (planète)"]),
+            patch.object(client, "fetch_article_by_title", return_value=mars),
+            patch.object(client, "fetch_curated_article", return_value=None),
+        ):
+            article = client.fetch_random_wikipedia_article("moyen", max_attempts=0)
+
+        self.assertIsNone(article)
 
     def test_wikipedia_client_curated_respects_exclude_titles(self):
         client = WikipediaClient()
@@ -190,11 +278,16 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
         user = "test_expiry_user"
         record_played_article([user], "Page Expiree")
 
-        # Manually backdate the in-memory timestamp to 16 days ago
+        expired_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=16)
         with _recent_played_lock:
             _recent_played_cache[user]["Page Expiree"] = time.time() - (16 * 86400)
+        with DatabaseContext() as db:
+            db.execute(
+                "UPDATE user_played_articles SET played_at = ? WHERE user_identifier = ? AND article_title = ?",
+                (expired_at.strftime("%Y-%m-%d %H:%M:%S"), user, "Page Expiree"),
+            )
 
-        # Calling get_recently_played_articles with 15 days should prune it and not return it
+        # The expired value in both the process cache and database must be pruned.
         played = get_recently_played_articles([user], days=15)
         self.assertNotIn("Page Expiree", played)
 
@@ -279,7 +372,7 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
 
     def test_rooms_use_live_fetch_before_database_cache(self):
         cached_article = {
-            "title": "Cached article",
+            "title": "Pompéi",
             "paragraphs": ["Cached article text with sufficient content."],
             "url": "https://fr.wikipedia.org/wiki/Cached_article",
         }
@@ -298,7 +391,7 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
             ):
                 article = manager._fetch_random_article()
 
-        self.assertEqual(article["title"], "Cached article")
+        self.assertEqual(article["title"], "Pompéi")
         self.assertEqual(events, ["online", "database"])
         live_fetch.assert_called_once()
         cache_lookup.assert_called_once()
@@ -318,6 +411,44 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(session.paragraphs)
         cache_write.assert_not_called()
 
+    def test_game_manager_never_reuses_excluded_article_as_fallback(self):
+        from app.game import GameManager
+
+        manager = GameManager()
+        manager.offline_curated = {}
+        with (
+            patch("app.game.CURATED_BY_DIFFICULTY", {"moyen": ["Tour Eiffel"]}),
+            patch.object(manager.wiki_client, "fetch_random_wikipedia_article", return_value=None),
+            patch("app.game.get_random_cached_article", return_value=None),
+        ):
+            with self.assertRaises(RuntimeError):
+                manager.create_game(difficulty="moyen", exclude_titles={"tour_eiffel"})
+
+    def test_game_manager_refuses_an_explicitly_requested_recent_article(self):
+        from app.game import GameManager
+
+        manager = GameManager()
+        article = {
+            "title": "Tour Eiffel",
+            "paragraphs": ["La tour Eiffel est un monument de Paris."],
+        }
+        with patch.object(manager.wiki_client, "search_and_fetch", return_value=article):
+            with self.assertRaisesRegex(ValueError, "21 derniers jours"):
+                manager.create_game(query="Tour Eiffel", exclude_titles={"tour_eiffel"})
+
+    def test_room_manager_never_reuses_excluded_article_as_fallback(self):
+        manager = RoomManager()
+        manager.game_manager.offline_curated = {}
+        with (
+            patch("app.room.CURATED_BY_DIFFICULTY", {"moyen": ["Tour Eiffel"]}),
+            patch.object(manager, "prefetch_articles"),
+            patch.object(manager.wiki_client, "fetch_random_wikipedia_article", return_value=None),
+            patch.object(manager.wiki_client, "fetch_curated_article", return_value=None),
+            patch("app.room.get_random_cached_article", return_value=None),
+        ):
+            with self.assertRaises(RuntimeError):
+                manager._fetch_random_article("moyen", exclude_titles={"tour_eiffel"})
+
     async def test_lobby_sync_sessions_when_article_replaced(self):
         from app.main import join_room, RoomJoinRequest
         from app.room import room_manager
@@ -325,7 +456,7 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
         p1 = "test_lobby_sync_p1"
         p2 = "test_lobby_sync_p2"
 
-        # P2 has played "Tour Eiffel" in the last 15 days
+        # P2 has played "Tour Eiffel" in the last 21 days
         record_played_article([p2], "Tour Eiffel")
 
         # P1 creates a room with Tour Eiffel forced as article

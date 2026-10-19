@@ -1,4 +1,5 @@
 import unittest
+import random
 
 from app.battleship import BattleshipManager, SHIP_LENGTHS
 
@@ -239,6 +240,102 @@ class BattleshipTests(unittest.TestCase):
         for player_id in room.players:
             self.manager.set_ready(room.room_id, player_id, True)
         self.assertEqual(self.manager.start_room(room.room_id, "p1").status, "playing")
+
+    def test_solo_game_starts_with_standard_fleets_and_keeps_bot_fleet_hidden(self):
+        room = self.manager.create_solo("human", "Capitaine", "difficile")
+        state = room.to_dict("human")
+
+        self.assertTrue(room.is_solo)
+        self.assertEqual(room.bot_difficulty, "difficile")
+        self.assertEqual(room.status, "playing")
+        self.assertEqual(room.current_player_id, "human")
+        self.assertEqual(room.ship_lengths, SHIP_LENGTHS)
+        self.assertEqual(len(room.players), 2)
+        self.assertNotIn("fleet", state["players"][1])
+        self.assertEqual(len(state["own_fleet"]), len(SHIP_LENGTHS))
+
+    def test_solo_bot_takes_a_turn_after_a_miss_and_never_repeats_a_shot(self):
+        room = self.manager.create_solo("human", "Capitaine", "moyen")
+        bot_id = next(player_id for player_id in room.players if player_id != "human")
+        room.players[bot_id].fleet = simple_fleet()
+        room, hit = self.manager.fire(room.room_id, "human", "A1")
+        self.assertTrue(hit["hit"])
+        self.assertEqual(hit["bot_shots"], [])
+        self.assertEqual(room.current_player_id, "human")
+
+        room, miss = self.manager.fire(room.room_id, "human", "B10")
+
+        self.assertFalse(miss["hit"])
+        self.assertTrue(miss["bot_shots"])
+        self.assertEqual(room.current_player_id, "human")
+        bot_shots = [shot["coordinate"] for shot in room.players[bot_id].attacks]
+        self.assertEqual(len(bot_shots), len(set(bot_shots)))
+        self.assertTrue(set(bot_shots) <= set(room.players["human"].incoming_shots))
+
+    def test_bot_difficulty_selects_only_unshot_cells(self):
+        for difficulty in ("facile", "moyen", "difficile"):
+            room = self.manager.create_solo("human", "Capitaine", difficulty)
+            bot_id = next(player_id for player_id in room.players if player_id != "human")
+            bot = room.players[bot_id]
+            bot.attacks.append({
+                "coordinate": "A1",
+                "hit": False,
+                "sunk_ship": None,
+                "sunk_ship_cells": [],
+            })
+
+            shot = self.manager.choose_bot_shot(room)
+
+            self.assertNotEqual(shot, "A1")
+            self.assertEqual(len(shot), 2)
+
+    def test_hard_bot_uses_only_public_shot_history_not_hidden_fleet_layout(self):
+        first_manager = BattleshipManager(rng=random.Random(31))
+        second_manager = BattleshipManager(rng=random.Random(31))
+        first = first_manager.create_solo("human", "Capitaine", "difficile")
+        second = second_manager.create_solo("human", "Capitaine", "difficile")
+        first_bot_id = next(player_id for player_id in first.players if player_id != "human")
+        second_bot_id = next(player_id for player_id in second.players if player_id != "human")
+        first_bot = first.players[first_bot_id]
+        second_bot = second.players[second_bot_id]
+        history = [
+            {"coordinate": "A1", "hit": False, "sunk_ship": None, "sunk_ship_cells": []},
+            {"coordinate": "B2", "hit": True, "sunk_ship": None, "sunk_ship_cells": []},
+        ]
+        first_bot.attacks = [dict(attack) for attack in history]
+        second_bot.attacks = [dict(attack) for attack in history]
+        first.players["human"].fleet = simple_fleet()
+        second.players["human"].fleet = {
+            "carrier": ["B1", "B2", "B3", "B4", "B5"],
+            "battleship": ["D1", "D2", "D3", "D4"],
+            "cruiser": ["F1", "F2", "F3"],
+            "submarine": ["H1", "H2", "H3"],
+            "destroyer": ["J1", "J2"],
+        }
+
+        first_shot = first_manager.choose_bot_shot(first)
+        second_shot = second_manager.choose_bot_shot(second)
+
+        self.assertEqual(first_shot, second_shot)
+        self.assertNotIn(first_shot, {attack["coordinate"] for attack in history})
+
+    def test_solo_restart_starts_a_fresh_game_against_the_same_bot_level(self):
+        room = self.manager.create_solo("human", "Capitaine", "difficile")
+        room.status = "finished"
+        room.winner_player_id = "human"
+        room.players["human"].attacks.append({"coordinate": "A1"})
+
+        restarted = self.manager.restart_room(room.room_id, "human")
+
+        self.assertIs(restarted, room)
+        self.assertTrue(room.is_solo)
+        self.assertEqual(room.bot_difficulty, "difficile")
+        self.assertEqual(room.status, "playing")
+        self.assertEqual(room.current_player_id, "human")
+        self.assertEqual(room.turn_number, 1)
+        self.assertIsNone(room.winner_player_id)
+        self.assertEqual(room.players["human"].attacks, [])
+        self.assertEqual(room.match_number, 2)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,8 @@
   let writeRevision = 0;
   let writeQueue = Promise.resolve();
   let selectedCell = [0, 0];
+  let notes = {};
+  let notesMode = false;
   let elapsedTimer = null;
 
   document.getElementById('sudoku-player-name').textContent = playerName;
@@ -175,6 +177,78 @@
     return state.puzzle[row][column] !== 0;
   }
 
+  function notesStorageKey() {
+    return gameType === 'solo'
+      ? `sudoku_notes_solo_${state.game_id}`
+      : `sudoku_notes_room_${state.room_id}_${playerId}`;
+  }
+
+  function loadNotes() {
+    const key = notesStorageKey();
+    const stored = localStorage.getItem(key);
+    if (!stored) {
+      notes = {};
+      return;
+    }
+    let saved;
+    try {
+      saved = JSON.parse(stored);
+    } catch {
+      localStorage.removeItem(key);
+      notes = {};
+      return;
+    }
+    notes = {};
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return;
+    for (const [cell, digits] of Object.entries(saved)) {
+      if (!/^[0-8]:[0-8]$/.test(cell) || !Array.isArray(digits)) continue;
+      const validDigits = [...new Set(digits.filter(
+        (digit) => Number.isInteger(digit) && digit >= 1 && digit <= 9,
+      ))].sort();
+      if (validDigits.length) notes[cell] = validDigits;
+    }
+  }
+
+  function saveNotes() {
+    localStorage.setItem(notesStorageKey(), JSON.stringify(notes));
+  }
+
+  function setNotesMode(enabled) {
+    notesMode = enabled;
+    const button = document.getElementById('sudoku-notes-toggle');
+    button.setAttribute('aria-pressed', String(notesMode));
+    button.textContent = `✎ Mode notes : ${notesMode ? 'activé' : 'désactivé'}`;
+    document.querySelectorAll('#sudoku-number-pad .sudoku-number-button').forEach((key) => {
+      key.setAttribute(
+        'aria-label',
+        `${notesMode ? 'Basculer la note' : 'Entrer'} ${key.textContent}`,
+      );
+    });
+  }
+
+  function toggleNotesMode() {
+    if (!canEdit()) return;
+    setNotesMode(!notesMode);
+  }
+
+  function toggleNote(digit) {
+    if (!canEdit()) return;
+    const [row, column] = selectedCell;
+    if (isFixed(row, column) || state.board[row][column]) {
+      showError(playError, 'Les notes sont disponibles uniquement dans une case vide.');
+      return;
+    }
+    hideError(playError);
+    const key = `${row}:${column}`;
+    const cellNotes = new Set(notes[key] || []);
+    if (cellNotes.has(digit)) cellNotes.delete(digit);
+    else cellNotes.add(digit);
+    if (cellNotes.size) notes[key] = [...cellNotes].sort();
+    else delete notes[key];
+    saveNotes();
+    renderGrid();
+  }
+
   function canEdit() {
     if (!state || state.status !== 'playing') return false;
     return !ownPlayer()?.is_spectator
@@ -203,8 +277,21 @@
         cell.dataset.row = String(row);
         cell.dataset.column = String(column);
         cell.setAttribute('role', 'gridcell');
-        cell.setAttribute('aria-label', `Ligne ${row + 1}, colonne ${column + 1}${value ? `, ${value}` : ', vide'}`);
-        cell.textContent = value || '';
+        const cellNotes = notes[`${row}:${column}`] || [];
+        cell.setAttribute('aria-label', `Ligne ${row + 1}, colonne ${column + 1}${value ? `, ${value}` : cellNotes.length ? `, notes ${cellNotes.join(', ')}` : ', vide'}`);
+        if (value) {
+          cell.textContent = value;
+        } else if (cellNotes.length) {
+          const noteGrid = document.createElement('span');
+          noteGrid.className = 'sudoku-cell-notes';
+          noteGrid.setAttribute('aria-hidden', 'true');
+          for (let digit = 1; digit <= 9; digit += 1) {
+            const note = document.createElement('span');
+            note.textContent = cellNotes.includes(digit) ? String(digit) : '';
+            noteGrid.append(note);
+          }
+          cell.append(noteGrid);
+        }
         if (isFixed(row, column) || state.status === 'finished') cell.classList.add('sudoku-fixed');
         if (row === selectedRow || column === selectedColumn
           || (Math.floor(row / 3) === Math.floor(selectedRow / 3)
@@ -236,7 +323,7 @@
       button.textContent = String(digit);
       button.setAttribute('aria-label', `Entrer ${digit}`);
       button.disabled = !canEdit();
-      button.addEventListener('click', () => setCell(digit));
+      button.addEventListener('click', () => notesMode ? toggleNote(digit) : setCell(digit));
       pad.append(button);
     }
     document.getElementById('sudoku-clear-cell').disabled = !canEdit();
@@ -324,6 +411,7 @@
       ? `Grille observée : ${state.observed_player?.name || 'un joueur actif'} · vous rejoindrez la prochaine partie.`
       : `Vies restantes : ${player.lives} / 3`;
     lives.classList.toggle('sudoku-eliminated', !isSpectator && player.eliminated);
+    document.getElementById('sudoku-notes-toggle').disabled = !canEdit();
     document.getElementById('sudoku-timer-panel').hidden = !room || !state.deadline_at;
     if (room && state.deadline_at && state.status === 'playing') updateCountdown();
     const message = document.getElementById('sudoku-round-message');
@@ -418,6 +506,8 @@
       localStorage.setItem('sudoku_active_game_mode', 'solo');
       localStorage.removeItem('sudoku_active_room_id');
       selectedCell = [0, 0];
+      loadNotes();
+      setNotesMode(false);
       updateView();
     } catch (error) {
       showError(homeError, error.message);
@@ -436,6 +526,8 @@
       localStorage.setItem('sudoku_active_game_mode', 'solo');
       localStorage.removeItem('sudoku_active_room_id');
       selectedCell = [0, 0];
+      loadNotes();
+      setNotesMode(false);
       difficultySelect.value = state.difficulty;
       updateView();
     } catch (error) {
@@ -486,6 +578,8 @@
     difficultySelect.value = state.difficulty;
     roomDifficultySelect.value = state.difficulty;
     selectedCell = [0, 0];
+    loadNotes();
+    setNotesMode(false);
     localStorage.setItem('sudoku_active_game_mode', 'room');
     localStorage.setItem('sudoku_active_room_id', state.room_id);
     history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
@@ -516,6 +610,9 @@
     try {
       state = await post('/api/sudoku/room/restart', roomPayload());
       selectedCell = [0, 0];
+      notes = {};
+      saveNotes();
+      setNotesMode(false);
       updateView();
     } catch (error) {
       showError(playError, error.message);
@@ -528,6 +625,10 @@
 
   function setCell(value) {
     if (!canEdit()) return;
+    if (notesMode && value !== 0) {
+      toggleNote(value);
+      return;
+    }
     const [row, column] = selectedCell;
     if (isFixed(row, column)) {
       showError(playError, 'Sélectionnez une case vide de la grille de départ.');
@@ -553,7 +654,9 @@
             room_id: gameSnapshot, player_id: playerId, player_name: playerName, row, column, value,
           });
         if (revision === writeRevision) {
-          state = updated;
+            delete notes[`${row}:${column}`];
+            saveNotes();
+            state = updated;
           if (writeGameType === 'solo' && state.status === 'finished') {
             localStorage.removeItem('sudoku_solo_game_id');
           }
@@ -600,7 +703,13 @@
     const [row, column] = selectedCell;
     if (/^[1-9]$/.test(event.key)) {
       event.preventDefault();
-      setCell(Number(event.key));
+      if (notesMode) toggleNote(Number(event.key));
+      else setCell(Number(event.key));
+      return;
+    }
+    if (event.key.toLowerCase() === 'n') {
+      event.preventDefault();
+      toggleNotesMode();
       return;
     }
     if (event.key === 'Backspace' || event.key === 'Delete' || event.key === '0') {
@@ -652,6 +761,7 @@
     }
   });
   document.getElementById('sudoku-clear-cell').addEventListener('click', () => setCell(0));
+  document.getElementById('sudoku-notes-toggle').addEventListener('click', toggleNotesMode);
   document.addEventListener('keydown', handleKeydown);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !play.hidden) showHome();

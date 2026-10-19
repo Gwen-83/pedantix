@@ -1,6 +1,11 @@
 import unittest
 
-from app.cemantix import CemantixManager, _visible_hint_count, calculate_cemantix_proximity
+from app.cemantix import (
+    CemantixManager,
+    _visible_hint_count,
+    calculate_cemantix_temperature,
+)
+from app.nlp import calculate_word2vec_rank
 
 
 class CemantixTests(unittest.TestCase):
@@ -17,36 +22,41 @@ class CemantixTests(unittest.TestCase):
         self.assertIsNone(game.to_dict()["target"])
 
         game, result = self.manager.guess_solo(game.game_id, "player-1", "chien")
-        self.assertEqual(result["score"], 89.4)
+        self.assertEqual(result["score"], calculate_cemantix_temperature("chien", "chat"))
+        self.assertEqual(result["rank"], calculate_word2vec_rank("chien", "chat"))
         self.assertFalse(result["solved"])
         self.assertIsNone(game.to_dict()["target"])
 
         game, result = self.manager.guess_solo(game.game_id, "player-1", "chat")
         self.assertEqual(result["score"], 100.0)
+        self.assertEqual(result["rank"], 1000)
         self.assertTrue(result["solved"])
         self.assertEqual(game.to_dict()["target"], "chat")
 
     def test_default_answer_pool_has_a_broad_set_of_supported_words(self):
         manager = CemantixManager()
-        self.assertGreaterEqual(len(manager.answers), 1_000)
+        self.assertGreaterEqual(len(manager.answers), 6_000)
         self.assertIn("arbre", manager.answers)
+        self.assertNotIn("aboyer", manager.answers)
         self.assertNotIn("zzqxxyz", manager.answers)
-        self.assertGreaterEqual(
-            sum(bool(manager._hint_words(target)) for target in manager.answers),
-            len(manager.answers) * 0.99,
+        for target in ("arbre", "maison", "animal", "chat", "voiture"):
+            with self.subTest(target=target):
+                hints = manager._hint_words_with_scores(target)
+                self.assertTrue(hints)
+                scores = [score for _, score in hints]
+                self.assertEqual(scores, sorted(scores))
+
+    def test_temperature_and_rank_follow_the_word2vec_model(self):
+        distant_score = calculate_cemantix_temperature("voiture", "chat")
+        warm_score = calculate_cemantix_temperature("animal", "chat")
+        hot_score = calculate_cemantix_temperature("chien", "chat")
+        self.assertLess(distant_score, warm_score)
+        self.assertLess(warm_score, hot_score)
+        self.assertGreater(
+            calculate_word2vec_rank("chien", "chat"),
+            calculate_word2vec_rank("voiture", "chat"),
         )
-
-    def test_continuous_proximity_never_returns_zero_and_orders_semantic_closeness(self):
-        # Distant words still receive a positive graduated score instead of 0.0
-        distant_score = calculate_cemantix_proximity("voiture", "chat")
-        self.assertGreater(distant_score, 0.0)
-        self.assertLess(distant_score, 48.0)
-
-        # Related words against the same target ("chat") are ordered by semantic closeness
-        warm_score = calculate_cemantix_proximity("animal", "chat")
-        hot_score = calculate_cemantix_proximity("chien", "chat")
-        self.assertGreaterEqual(warm_score, 55.0)
-        self.assertGreater(hot_score, warm_score)
+        self.assertEqual(calculate_word2vec_rank("chat", "chat"), 1000)
 
     def test_solo_manual_hint_and_give_up(self):
         game = self.manager.create_solo("player-1", "Joueur", difficulty="moyen")
@@ -128,7 +138,11 @@ class CemantixTests(unittest.TestCase):
 
         self.assertEqual(state["round_number"], 2)
         self.assertEqual(state["submitted_count"], 0)
-        self.assertEqual(state["players"][0]["guesses"][0]["score"], 89.4)
+        self.assertEqual(
+            state["players"][0]["guesses"][0]["score"],
+            calculate_cemantix_temperature("chien", "chat"),
+        )
+        self.assertIn("rank", state["players"][0]["guesses"][0])
         self.assertTrue(state["players"][1]["guesses"][0]["passed"])
         self.assertEqual(state["time_left"], 60)
 

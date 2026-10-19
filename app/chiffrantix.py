@@ -261,7 +261,29 @@ class ChiffrantixBoard:
                         continue
                     c_prox = calculate_cemantix_proximity(clean_word, target_norm)
                     if c_prox > fallback_max:
-                        fallback_max = round(min(47.8, c_prox), 1)
+                        fallback_max = round(c_prox, 1)
+                    if c_prox >= 48.0:
+                        score_val = round(c_prox, 1)
+                        for tid in self.word_to_token_ids.get(target_norm, []):
+                            tok = self.tokens_by_id[tid]
+                            if tok["revealed"]:
+                                continue
+                            current_heat = self.token_heat.get(tid, 0.0)
+                            if score_val > current_heat:
+                                self.token_heat[tid] = score_val
+                                self.token_close_words[tid] = {
+                                    "score": score_val,
+                                    "word": clean_word,
+                                }
+                                close_tokens.append(
+                                    {
+                                        "id": tid,
+                                        "score": score_val,
+                                        "word": clean_word,
+                                    }
+                                )
+                if fallback_max >= 48.0:
+                    status = "close"
             display_score = fallback_max
 
         # Check win condition: all significant words revealed

@@ -23,6 +23,7 @@
     frigate: 'frigate.svg',
   };
   const difficultySelect = document.getElementById('naval-difficulty');
+  const difficultyLabel = document.getElementById('naval-difficulty-label');
   const roomDirectory = document.getElementById('naval-room-directory');
   const rows = 'ABCDEFGHIJ';
   let playerId = localStorage.getItem('battleship_player_id');
@@ -96,6 +97,9 @@
 
   function showHome() {
     stopPolling();
+    if (state?.is_solo) {
+      localStorage.removeItem('battleship_solo_room_id');
+    }
     state = null;
     home.hidden = false;
     play.hidden = true;
@@ -378,6 +382,7 @@
     const current = state.players.find((player) => player.player_id === state.current_player_id);
     const turnMessage = document.getElementById('naval-turn-message');
     const shotMessage = document.getElementById('naval-shot-result');
+    const botShots = lastShotResult?.bot_shots || [];
     shotMessage.className = 'naval-shot-result';
     if (lastShotResult) {
       const targetName = state.players.find(
@@ -395,13 +400,20 @@
           `Touché sur ${targetName} en ${lastShotResult.coordinate}.${sunk}${eliminated}${extraShot}`;
         shotMessage.classList.add('naval-shot-hit');
       } else {
-        shotMessage.textContent =
-          `Dans l’eau en ${lastShotResult.coordinate}. Le tour passe à ${current?.name || 'l’adversaire'}.`;
+        shotMessage.textContent = state.is_solo && botShots.length
+          ? `Dans l’eau en ${lastShotResult.coordinate}. Le bot a joué ; vous reprenez la main.`
+          : `Dans l’eau en ${lastShotResult.coordinate}. Le tour passe à ${current?.name || 'l’adversaire'}.`;
         shotMessage.classList.add('naval-shot-miss');
       }
     } else {
       shotMessage.textContent = '';
     }
+    const botMessage = document.getElementById('naval-bot-result');
+    botMessage.hidden = !state.is_solo || botShots.length === 0;
+    botMessage.textContent = botShots.length
+      ? `${state.players.find((player) => player.player_id !== playerId)?.name || 'Le bot'} a tiré ${botShots.length} fois : `
+        + botShots.map((shot) => `${shot.coordinate} (${shot.hit ? 'touché' : 'dans l’eau'})`).join(', ')
+      : '';
     if (lastShotResult?.sunk_ship && Date.now() < sinkingAnnouncementExpiresAt) {
       const sinkingScene = document.createElement('span');
       sinkingScene.className = 'naval-sink-scene';
@@ -427,7 +439,11 @@
         ? `C’est votre tour. Choisissez une case sur le plateau de ${target.name}.`
         : 'C’est votre tour.';
     } else {
-      turnMessage.textContent = current ? `Au tour de ${current.name} de tirer.` : 'En attente du prochain tir…';
+      turnMessage.textContent = current
+        ? state.is_solo && current.player_id !== playerId
+          ? `${current.name} réfléchit à son prochain tir…`
+          : `Au tour de ${current.name} de tirer.`
+        : 'En attente du prochain tir…';
     }
 
     const viewedPlayer = state.players.find(
@@ -491,6 +507,23 @@
     restartButton.disabled = roomBusy;
   }
 
+  function setMode(mode) {
+    document.querySelectorAll('[data-naval-mode]').forEach((button) => {
+      const selected = button.dataset.navalMode === mode;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+    document.getElementById('naval-solo-actions').hidden = mode !== 'solo';
+    document.getElementById('naval-multi-actions').hidden = mode !== 'multi';
+    difficultyLabel.textContent = mode === 'solo' ? 'Niveau tactique du bot' : 'Difficulté de la bataille';
+    const labels = mode === 'solo'
+      ? ['Facile · tirs ciblés après un coup au but', 'Moyen · traque et orientation des navires', 'Difficile · calcul de probabilités des flottes']
+      : ['Facile · flotte réduite', 'Moyen · flotte classique', 'Difficile · une frégate en plus'];
+    [...difficultySelect.options].forEach((option, index) => {
+      option.textContent = labels[index];
+    });
+  }
+
   function revealedTargetShips() {
     const shipsById = new Map();
     for (const shot of state.target_shots) {
@@ -531,6 +564,24 @@
     }
   }
 
+  async function createSoloGame() {
+    const button = document.getElementById('naval-solo-start');
+    setBusy(button, true, 'Lancement…');
+    hideError(homeError);
+    try {
+      state = await post('/api/battleship/solo/new', {
+        player_id: playerId,
+        player_name: playerName,
+        difficulty: difficultySelect.value,
+      });
+      enterRoom();
+    } catch (error) {
+      showError(homeError, error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
   async function joinRoom(roomId) {
     const cleanRoomId = roomId.trim().toUpperCase();
     if (!cleanRoomId) {
@@ -552,9 +603,20 @@
   }
 
   function enterRoom() {
-    localStorage.setItem('battleship_active_room_id', state.room_id);
-    history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
+    const query = state.is_solo
+      ? new URLSearchParams({ solo: state.room_id })
+      : new URLSearchParams({ room: state.room_id });
+    localStorage.removeItem(
+      state.is_solo ? 'battleship_active_room_id' : 'battleship_solo_room_id',
+    );
+    localStorage.setItem(
+      state.is_solo ? 'battleship_solo_room_id' : 'battleship_active_room_id',
+      state.room_id,
+    );
+    history.replaceState(null, '', `${window.location.pathname}?${query}`);
     draftFleet = {};
+    lastShotResult = null;
+    sinkingAnnouncementExpiresAt = 0;
     knownSunkShips = new Set(
       (state.incoming_shots || [])
         .filter((shot) => shot.sunk_ship)
@@ -701,6 +763,7 @@
   }
 
   document.getElementById('naval-create-room').addEventListener('click', createRoom);
+  document.getElementById('naval-solo-start').addEventListener('click', createSoloGame);
   document.getElementById('naval-refresh-rooms').addEventListener('click', refreshRoomDirectory);
   document.getElementById('naval-join-room').addEventListener('click', () => joinRoom(roomInput.value));
   roomInput.addEventListener('keydown', (event) => {
@@ -742,14 +805,32 @@
   });
   document.getElementById('naval-start-button').addEventListener('click', startGame);
   document.getElementById('naval-restart-button').addEventListener('click', restartGame);
+  document.querySelectorAll('[data-naval-mode]').forEach((button) => {
+    button.addEventListener('click', () => setMode(button.dataset.navalMode));
+  });
 
   const roomId = params.get('room');
+  const soloRoomId = params.get('solo') || localStorage.getItem('battleship_solo_room_id');
   if (roomId) {
+    setMode('multi');
     roomInput.value = roomId;
     joinRoom(roomId);
+  } else if (soloRoomId) {
+    setMode('solo');
+    request(`/api/battleship/room/${encodeURIComponent(soloRoomId)}?player_id=${encodeURIComponent(playerId)}`)
+      .then((room) => {
+        state = room;
+        enterRoom();
+      })
+      .catch((error) => {
+        localStorage.removeItem('battleship_solo_room_id');
+        showError(homeError, error.message);
+      });
   } else if (localStorage.getItem('battleship_active_room_id')) {
+    setMode('multi');
     joinRoom(localStorage.getItem('battleship_active_room_id'));
   } else {
+    setMode('multi');
     refreshRoomDirectory();
   }
 })();

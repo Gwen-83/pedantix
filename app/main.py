@@ -26,9 +26,16 @@ from app.database import (
     get_top_player_scores,
     get_db_status,
     get_game_catalog,
+    get_stats_overview,
     user_exists,
+    verify_user_token,
     create_user,
     authenticate_user,
+    get_store_chat_messages,
+    create_store_chat_message,
+    create_store_invitation,
+    get_store_invitations,
+    update_store_invitation_status,
     record_user_guess_word,
     record_user_game_finish,
     record_multigame_session_start,
@@ -197,6 +204,20 @@ class PresenceRequest(BaseModel):
         "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship", "geoguessr",
         "undercover", "bitoguessr", "plongee", "store"
     ]
+
+class StoreChatMessageRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=500)
+
+class StoreInvitationRequest(BaseModel):
+    recipient_username: str = Field(min_length=2, max_length=24)
+    game_id: Literal[
+        "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
+        "geoguessr", "undercover", "bitoguessr", "plongee"
+    ]
+    room_id: str = Field(min_length=1, max_length=80)
+
+class StoreInvitationActionRequest(BaseModel):
+    action: Literal["accepted", "dismissed"]
 
 class AuthRegisterRequest(BaseModel):
     username: str
@@ -727,6 +748,153 @@ async def list_online_presence():
     players.sort(key=lambda player: player["username"].casefold())
     return {"players": players}
 
+
+def _require_store_user(username: Optional[str], token: Optional[str]) -> str:
+    if not username or not token or not verify_user_token(username, token):
+        raise HTTPException(status_code=401, detail="Connectez-vous pour utiliser le chat.")
+    return username.strip()
+
+
+def _store_room_managers():
+    return (
+        ("pedantix", "Pédantix", room_manager),
+        ("motus", "Motus", motus_manager),
+        ("cemantix", "Cémantix", cemantix_manager),
+        ("chiffrantix", "Chiffrantix", chiffrantix_manager),
+        ("sudoku", "Sudoku", sudoku_manager),
+        ("battleship", "Bataille navale", battleship_manager),
+        ("geoguessr", "GeoGuessr", geoguessr_manager),
+        ("undercover", "Undercover", undercover_manager),
+        ("bitoguessr", "Bitoguessr", bitoguessr_manager),
+        ("plongee", "Plongée", plongee_manager),
+    )
+
+
+def _active_store_rooms(username: str) -> List[Dict[str, str]]:
+    active_rooms = []
+    for game_id, game_name, manager in _store_room_managers():
+        for room in manager.rooms.values():
+            if room.status not in {"lobby", "playing"}:
+                continue
+            if game_id == "pedantix" and room.room_id.startswith("solo-"):
+                continue
+            players = getattr(room, "players", {}).values()
+            if not any(
+                player.name.strip().casefold() == username.casefold()
+                and not getattr(player, "is_spectator", False)
+                for player in players
+            ):
+                continue
+            active_rooms.append(
+                {
+                    "game_id": game_id,
+                    "game_name": game_name,
+                    "room_id": room.room_id,
+                    "status": room.status,
+                }
+            )
+    active_rooms.sort(key=lambda room: (room["game_name"], room["room_id"]))
+    return active_rooms
+
+
+@app.get("/api/social/chat")
+async def get_store_chat(
+    after_id: int = Query(0, ge=0),
+):
+    return {"messages": get_store_chat_messages(after_id=after_id)}
+
+
+@app.post("/api/social/chat")
+async def post_store_chat(
+    req: StoreChatMessageRequest,
+    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
+    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+):
+    username = _require_store_user(x_auth_user, x_auth_token)
+    message = req.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Le message ne peut pas être vide.")
+    try:
+        return create_store_chat_message(username, message)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/social/rooms")
+async def get_store_social_rooms(
+    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
+    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+):
+    username = _require_store_user(x_auth_user, x_auth_token)
+    return {"rooms": _active_store_rooms(username)}
+
+
+@app.post("/api/social/invitations")
+async def post_store_invitation(
+    req: StoreInvitationRequest,
+    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
+    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+):
+    username = _require_store_user(x_auth_user, x_auth_token)
+    recipient = req.recipient_username.strip()
+    if recipient.casefold() == username.casefold():
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas vous inviter vous-même.")
+    now = time.time()
+    with online_presence_lock:
+        is_online = any(
+            presence["username"].casefold() == recipient.casefold()
+            and now - presence["last_seen"] <= ONLINE_PRESENCE_TTL_SECONDS
+            for presence in online_presence.values()
+        )
+    if not is_online:
+        raise HTTPException(status_code=409, detail="Ce joueur n'est plus en ligne.")
+
+    room = next(
+        (
+            room for game_id, _game_name, manager in _store_room_managers()
+            if game_id == req.game_id
+            for room in manager.rooms.values()
+            if room.room_id.casefold() == req.room_id.strip().casefold()
+            and room.status in {"lobby", "playing"}
+        ),
+        None,
+    )
+    if room is None:
+        raise HTTPException(status_code=404, detail="Ce salon n'est plus disponible.")
+    if not any(
+        player.name.strip().casefold() == username.casefold()
+        and not getattr(player, "is_spectator", False)
+        for player in getattr(room, "players", {}).values()
+    ):
+        raise HTTPException(status_code=403, detail="Vous ne participez pas à ce salon.")
+    try:
+        return create_store_invitation(username, recipient, req.game_id, room.room_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/social/invitations")
+async def get_store_social_invitations(
+    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
+    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+):
+    username = _require_store_user(x_auth_user, x_auth_token)
+    return {"invitations": get_store_invitations(username)}
+
+
+@app.post("/api/social/invitations/{invitation_id}")
+async def update_store_social_invitation(
+    invitation_id: int,
+    req: StoreInvitationActionRequest,
+    x_auth_user: Optional[str] = Header(None, alias="X-Auth-User"),
+    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+):
+    username = _require_store_user(x_auth_user, x_auth_token)
+    if not update_store_invitation_status(invitation_id, username, req.action):
+        raise HTTPException(status_code=404, detail="Cette invitation est introuvable ou déjà traitée.")
+    return {"status": req.action}
+
+
 @app.get("/api/network-info")
 async def get_network_info():
     lan_ip = detect_lan_ip()
@@ -769,7 +937,7 @@ async def create_room(req: RoomCreateRequest):
     host_idents = [req.host_player_id.strip().lower()]
     if is_valid_user_identifier(host_name):
         host_idents.append(host_name.strip().lower())
-    excluded = get_recently_played_articles(host_idents, days=15)
+    excluded = get_recently_played_articles(host_idents, days=21)
 
     room = await room_manager.create_new_room_async(
         req.host_player_id,
@@ -815,7 +983,7 @@ async def join_room(req: RoomJoinRequest):
         )
     is_reconnect = req.player_id in room.players
     if not req.assist_token and not is_reconnect and req.room_id.startswith("solo-") and req.difficulty and req.difficulty != room.difficulty:
-        excluded = room.get_recently_played_titles(days=15)
+        excluded = room.get_recently_played_titles(days=21)
         new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty, exclude_titles=excluded)
         room.set_difficulty(req.difficulty, new_article=new_art)
     player = room.get_or_create_player(req.player_id, req.player_name)
@@ -828,9 +996,9 @@ async def join_room(req: RoomJoinRequest):
     if room.room_id.startswith("solo-"):
         room.start_word_hint_timer()
 
-    # In multiplayer lobby, verify if current article was played in last 15 days by any player in room
+    # In multiplayer lobby, verify whether any player saw the article in the last 21 days.
     if not is_reconnect and not room.room_id.startswith("solo-") and room.status == "lobby":
-        excluded_titles = room.get_recently_played_titles(days=15)
+        excluded_titles = room.get_recently_played_titles(days=21)
         exclude_norm = {normalize_wiki_title(t) for t in excluded_titles if t}
         curr_title = room.article_data.get("title", "")
         if curr_title in excluded_titles or normalize_wiki_title(curr_title) in exclude_norm:
@@ -1063,7 +1231,7 @@ async def set_room_difficulty(req: RoomDifficultyRequest):
     if not room.room_id.startswith("solo-") and room.status != "lobby":
         raise HTTPException(status_code=400, detail="Impossible de modifier la difficulté en cours de partie.")
 
-    excluded_titles = room.get_recently_played_titles(days=15)
+    excluded_titles = room.get_recently_played_titles(days=21)
     new_art = await asyncio.to_thread(room_manager._fetch_random_article, req.difficulty, exclude_titles=excluded_titles)
     success = room.set_difficulty(req.difficulty, new_article=new_art)
     if not success:
@@ -1122,7 +1290,7 @@ async def next_round_room(req: RoomNextRoundRequest):
         raise HTTPException(status_code=403, detail="Seul l'Host peut lancer la manche suivante.")
     diff = req.difficulty if req.difficulty in ("facile", "moyen", "difficile") else room.difficulty
     room.difficulty = diff
-    excluded_titles = room.get_recently_played_titles(days=15)
+    excluded_titles = room.get_recently_played_titles(days=21)
     new_article = await asyncio.to_thread(room_manager._fetch_random_article, diff, exclude_titles=excluded_titles)
     seed_num = random.randint(1000, 9999)
     new_seed = f"P-{seed_num}"
@@ -2182,6 +2350,24 @@ async def create_battleship_room(req: BattleshipPlayerRequest):
     return room.to_dict(req.player_id)
 
 
+@app.post("/api/battleship/solo/new")
+async def new_battleship_solo(req: BattleshipPlayerRequest):
+    try:
+        room = battleship_manager.create_solo(
+            req.player_id, req.player_name, req.difficulty
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"battleship:{room.room_id}:{room.match_number}",
+        "battleship",
+        "solo",
+        "Bataille navale contre l’IA",
+        room.bot_difficulty,
+    )
+    return room.to_dict(req.player_id)
+
+
 @app.post("/api/battleship/room/join")
 async def join_battleship_room(req: BattleshipRoomPlayerRequest):
     try:
@@ -2965,6 +3151,14 @@ async def restart_battleship_room(req: BattleshipRoomPlayerRequest):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if room.is_solo:
+        record_multigame_session_start(
+            f"battleship:{room.room_id}:{room.match_number}",
+            "battleship",
+            "solo",
+            "Bataille navale contre l’IA",
+            room.bot_difficulty,
+        )
     return room.to_dict(req.player_id)
 
 
@@ -2979,6 +3173,32 @@ async def fire_battleship_shot(req: BattleshipFireRequest):
     if room.status == "finished" and not room.stats_recorded:
         room.stats_recorded = True
         duration = max(0, int(time.time() - (room.started_at or time.time())))
+        if room.is_solo:
+            player = room.players[req.player_id]
+            attacks = player.attacks
+            won = player.player_id == room.winner_player_id
+            points = 3 if won else 0
+            if points:
+                increment_player_score(player.name, points, "battleship")
+            record_user_game_finish(
+                player.name,
+                won=won,
+                attempts=len(attacks),
+                points=points,
+                session_id=f"battleship:{room.room_id}:{room.match_number}",
+                mode="solo",
+                title="Bataille navale contre l’IA",
+                duration_seconds=duration,
+                game_id="battleship",
+                difficulty=room.bot_difficulty,
+                metrics={
+                    "attacks": len(attacks),
+                    "hits": sum(attack["hit"] for attack in attacks),
+                    "ships_sunk": sum(bool(attack["sunk_ship"]) for attack in attacks),
+                    "turns": room.turn_number,
+                },
+            )
+            return {"result": result, **room.to_dict(req.player_id)}
         for player in room.players.values():
             if player.is_spectator:
                 continue
@@ -3016,8 +3236,18 @@ async def new_game(
         idents.append(player_id.strip().lower())
     if player_name and is_valid_user_identifier(player_name):
         idents.append(player_name.strip().lower())
-    excluded = get_recently_played_articles(idents, days=15) if idents else None
-    session = game_manager.create_game(mode=mode, query=query, difficulty=difficulty, exclude_titles=excluded)
+    excluded = get_recently_played_articles(idents, days=21) if idents else None
+    try:
+        session = game_manager.create_game(
+            mode=mode,
+            query=query,
+            difficulty=difficulty,
+            exclude_titles=excluded,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if idents:
         record_played_article(idents, session.title)
     state = session.get_public_state()
@@ -3203,6 +3433,14 @@ async def player_stats(game_id: str = Query("pedantix")):
 async def stats_game_catalog():
     try:
         return {"games": get_game_catalog()}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/stats/overview")
+async def stats_overview():
+    try:
+        return get_stats_overview()
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

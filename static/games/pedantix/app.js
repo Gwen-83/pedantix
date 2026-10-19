@@ -1121,17 +1121,20 @@ class PedantixApp {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
+  getHeatChannel(score) {
+    const similarity = Math.max(0.001, Math.min(100, Number(score) || 0) - 30);
+    return Math.max(0, Math.min(255, Math.round(
+      255 * Math.log10(similarity) / 2,
+    )));
+  }
+
   getGreyColor(score) {
-    const clamped = Math.max(45, Math.min(99, Number(score) || 50));
-    const t = (clamped - 45) / 54;
-    const v = Math.round(95 + Math.pow(t, 0.85) * 140);
+    const v = this.getHeatChannel(score);
     return `rgb(${v}, ${v}, ${v})`;
   }
 
   getFlashColor(score) {
-    const clamped = Math.max(45, Math.min(99, Number(score) || 50));
-    const t = (clamped - 45) / 54;
-    const g = Math.round(90 + t * 150);
+    const g = this.getHeatChannel(score);
     return `rgb(255, ${g}, 0)`;
   }
 
@@ -3803,7 +3806,7 @@ class PedantixApp {
     if (!closeTokens || closeTokens.length === 0) return;
     closeTokens.forEach(item => {
       const score = Number(item.score || 50);
-      if (score < 80) return;
+      if (score <= 30) return;
       const closeWord = item.word || fallbackWord;
       const token = this.tokensById[item.id];
       if (token && token.hint_revealed) return;
@@ -4182,7 +4185,7 @@ class PedantixApp {
       span.title = 'Mot dévoilé automatiquement comme indice';
       delete span.dataset.heat;
       delete span.dataset.word;
-    } else if (token.close_word && token.heat >= 80) {
+    } else if (token.close_word && token.heat > 30) {
       span.dataset.heat = token.heat;
       span.dataset.word = token.close_word;
       span.classList.add('close-heat-grey');

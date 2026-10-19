@@ -177,6 +177,18 @@ button.sudoku-mode-card:hover { transform: translateY(-2px); border-color: rgba(
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+.sudoku-cell-notes {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  align-items: center;
+  justify-items: center;
+  color: #a5b4fc;
+  font-size: clamp(0.42rem, 1vw, 0.68rem);
+  font-weight: 600;
+  line-height: 1;
+}
 .sudoku-cell:nth-child(3n) { border-right: 2px solid #8da1b8; }
 .sudoku-cell:nth-child(9n) { border-right: 0; }
 .sudoku-cell:nth-child(n+19):nth-child(-n+27),
@@ -198,6 +210,7 @@ button.sudoku-mode-card:hover { transform: translateY(-2px); border-color: rgba(
 .sudoku-number-button, .sudoku-clear-button { min-height: 43px; border: 1px solid rgba(255, 255, 255, 0.13); border-radius: 9px; background: rgba(255, 255, 255, 0.055); color: #dbeafe; font-size: 1rem; font-weight: 800; }
 .sudoku-number-button:hover:not(:disabled), .sudoku-clear-button:hover:not(:disabled) { border-color: #38bdf8; background: rgba(56, 189, 248, 0.13); }
 .sudoku-clear-button { font-size: 0.8rem; }
+.sudoku-clear-button[aria-pressed="true"] { border-color: #38bdf8; background: rgba(56, 189, 248, 0.2); color: #e0f2fe; }
 .sudoku-scoreboard { padding: 12px; border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; background: rgba(56, 189, 248, 0.07); color: #dbeafe; font-size: 0.82rem; line-height: 1.5; }
 .sudoku-ranking-section { margin-top: 20px; }
 .sudoku-ranking-section h2 { margin: 0 0 10px; font-size: 0.96rem; }

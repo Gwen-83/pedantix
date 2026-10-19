@@ -66,7 +66,23 @@
     <section class="store-hero" aria-labelledby="store-title">
       <p class="store-eyebrow">Une collection de jeux pour faire travailler les méninges</p>
       <h1 id="store-title">À quoi joue-t-on ?</h1>
-      <p>Choisissez un jeu et lancez une partie. D’autres jeux arrivent bientôt.</p>
+      <p>Culture, logique et stratégie : choisissez votre défi, en solo ou entre amis.</p>
+    </section>
+
+    <section class="store-overview" aria-label="Statistiques de la ludothèque">
+      <div class="store-overview-card">
+        <span>Jeux à découvrir</span>
+        <strong id="store-stat-games">—</strong>
+      </div>
+      <div class="store-overview-card">
+        <span>Parties lancées</span>
+        <strong id="store-stat-started">—</strong>
+      </div>
+      <div class="store-overview-card">
+        <span>Parties terminées</span>
+        <strong id="store-stat-finished">—</strong>
+      </div>
+      <p id="store-stats-status" class="store-stats-status" aria-live="polite">Chargement des statistiques…</p>
     </section>
 
     <div class="store-content-grid">
@@ -74,13 +90,29 @@
         <div class="store-section-heading">
           <div>
             <h2 id="store-library-title">La collection</h2>
-            <p>Choisissez une tuile pour ouvrir le jeu.</p>
+            <p>Recherchez un jeu ou parcourez les catégories.</p>
           </div>
-          <span class="store-game-count">9 jeux · 9 disponibles</span>
+          <span class="store-game-count" id="store-game-count">9 jeux</span>
+        </div>
+
+        <div class="store-library-tools">
+          <label class="store-search">
+            <span aria-hidden="true">⌕</span>
+            <span class="visually-hidden">Rechercher un jeu</span>
+            <input id="store-game-search" type="search" placeholder="Rechercher un jeu…" autocomplete="off">
+          </label>
+          <div class="store-filters" role="group" aria-label="Filtrer les jeux par catégorie">
+            <button type="button" class="store-filter is-active" data-store-filter="all" aria-pressed="true">Tout</button>
+            <button type="button" class="store-filter" data-store-filter="culture" aria-pressed="false">Culture & mots</button>
+            <button type="button" class="store-filter" data-store-filter="logic" aria-pressed="false">Logique</button>
+            <button type="button" class="store-filter" data-store-filter="strategy" aria-pressed="false">Stratégie</button>
+            <button type="button" class="store-filter" data-store-filter="geography" aria-pressed="false">Géographie</button>
+            <button type="button" class="store-filter" data-store-filter="party" aria-pressed="false">Entre amis</button>
+          </div>
         </div>
 
         <div class="store-game-grid">
-        <a class="store-game-card store-game-card-available" href="/games/pedantix/">
+        <a class="store-game-card store-game-card-available" href="/games/pedantix/" data-categories="culture">
           <span class="store-game-icon store-pedantix-icon" aria-hidden="true">📖</span>
           <span class="store-game-info">
             <span class="store-game-title">Pédantix</span>
@@ -90,7 +122,7 @@
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
 
-        <a class="store-game-card store-game-card-available" href="/games/chiffrantix/">
+        <a class="store-game-card store-game-card-available" href="/games/chiffrantix/" data-categories="culture">
           <span class="store-game-icon store-chiffrantix-icon" aria-hidden="true">🔢</span>
           <span class="store-game-info">
             <span class="store-game-title">Chiffrantix</span>
@@ -100,7 +132,7 @@
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
 
-        <a class="store-game-card store-game-card-available" href="/games/cemantix/">
+        <a class="store-game-card store-game-card-available" href="/games/cemantix/" data-categories="culture">
           <span class="store-game-icon store-cemantix-icon" aria-hidden="true">🧠</span>
           <span class="store-game-info">
             <span class="store-game-title">Cémantix</span>
@@ -110,7 +142,7 @@
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
 
-        <a class="store-game-card store-game-card-available" href="/games/motus/">
+        <a class="store-game-card store-game-card-available" href="/games/motus/" data-categories="culture">
           <span class="store-game-icon store-motus-icon" aria-hidden="true">🔴</span>
           <span class="store-game-info">
             <span class="store-game-title">Motus</span>
@@ -120,7 +152,7 @@
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
 
-        <a class="store-game-card store-game-card-available" href="/games/sudoku/">
+        <a class="store-game-card store-game-card-available" href="/games/sudoku/" data-categories="logic">
           <span class="store-game-icon store-sudoku-icon" aria-hidden="true">🔢</span>
           <span class="store-game-info">
             <span class="store-game-title">Sudoku</span>
@@ -130,7 +162,7 @@
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
 
-        <a class="store-game-card store-game-card-available" href="/games/battleship/">
+        <a class="store-game-card store-game-card-available" href="/games/battleship/" data-categories="strategy">
           <span class="store-game-icon store-battleship-icon" aria-hidden="true">🚢</span>
           <span class="store-game-info">
             <span class="store-game-title">Bataille navale</span>
@@ -139,7 +171,7 @@
           </span>
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
-        <a class="store-game-card store-game-card-available" href="/games/undercover/">
+        <a class="store-game-card store-game-card-available" href="/games/undercover/" data-categories="party">
           <span class="store-game-icon" aria-hidden="true">🕵️</span>
           <span class="store-game-info">
             <span class="store-game-title">Undercover</span>
@@ -148,7 +180,7 @@
           </span>
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
-        <a class="store-game-card store-game-card-available" href="/games/geoguessr/">
+        <a class="store-game-card store-game-card-available" href="/games/geoguessr/" data-categories="geography">
           <span class="store-game-icon" aria-hidden="true">🌍</span>
           <span class="store-game-info">
             <span class="store-game-title">GeoGuessr</span>
@@ -157,7 +189,7 @@
           </span>
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
-        <a class="store-game-card store-game-card-available" href="/games/plongee/">
+        <a class="store-game-card store-game-card-available" href="/games/plongee/" data-categories="culture">
           <span class="store-game-icon" aria-hidden="true">🌊</span>
           <span class="store-game-info">
             <span class="store-game-title">Plongée</span>
@@ -167,6 +199,7 @@
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
         </div>
+        <p id="store-no-games" class="store-no-games" role="status" hidden>Aucun jeu ne correspond à votre recherche.</p>
       </section>
 
       <aside class="store-online-panel" aria-labelledby="store-online-title">
@@ -180,6 +213,33 @@
         <ul id="store-online-list" class="store-online-list" aria-live="polite">
           <li class="store-online-empty">Chargement des joueurs…</li>
         </ul>
+        <section class="store-social-section" aria-labelledby="store-chat-title">
+          <div class="store-social-heading">
+            <div>
+              <h2 id="store-chat-title">Chat général</h2>
+              <p>Échangez avec les joueurs de la ludothèque.</p>
+            </div>
+          </div>
+          <ol id="store-chat-list" class="store-chat-list" aria-live="polite" aria-relevant="additions"></ol>
+          <p id="store-chat-status" class="store-social-status" role="status"></p>
+          <form id="store-chat-form" class="store-chat-form">
+            <label class="visually-hidden" for="store-chat-input">Votre message</label>
+            <input id="store-chat-input" maxlength="500" autocomplete="off" placeholder="Écrire un message…" required>
+            <button type="submit" class="store-social-button">Envoyer</button>
+          </form>
+          <button type="button" id="store-chat-login" class="store-chat-login" hidden>Connectez-vous pour participer au chat</button>
+        </section>
+        <section class="store-social-section" aria-labelledby="store-invitations-title">
+          <div class="store-social-heading">
+            <div>
+              <h2 id="store-invitations-title">Invitations reçues</h2>
+              <p>Les invitations vers vos salons apparaissent ici.</p>
+            </div>
+          </div>
+          <ul id="store-invitation-list" class="store-invitation-list" aria-live="polite">
+            <li class="store-social-empty">Aucune invitation reçue.</li>
+          </ul>
+        </section>
       </aside>
     </div>
 
@@ -203,6 +263,20 @@
           <button type="button" id="store-auth-back" class="store-auth-back">Changer de nom d’utilisateur</button>
         </form>
         <p id="store-auth-error" class="store-auth-error" role="alert" hidden></p>
+      </section>
+    </div>
+    <div id="store-invite-overlay" class="store-auth-overlay" hidden>
+      <section class="store-auth-dialog store-invite-dialog" role="dialog" aria-modal="true" aria-labelledby="store-invite-title">
+        <button type="button" id="store-invite-close" class="store-auth-close" aria-label="Fermer">×</button>
+        <span class="store-auth-icon" aria-hidden="true">✉️</span>
+        <h2 id="store-invite-title">Inviter un joueur</h2>
+        <p id="store-invite-description"></p>
+        <form id="store-invite-form" class="store-auth-form">
+          <label for="store-invite-room">Choisir l’un de vos salons</label>
+          <select id="store-invite-room" required></select>
+          <button type="submit" id="store-invite-submit" class="store-auth-submit">Envoyer l’invitation</button>
+        </form>
+        <p id="store-invite-status" class="store-social-status" role="status"></p>
       </section>
     </div>
   </main>

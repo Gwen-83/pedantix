@@ -626,12 +626,17 @@
       }
       guessInput.value = '';
       updateView();
-      if (!state.player.solved && state.status !== 'finished') guessInput.focus();
     } catch (error) {
       showError(playError, error.message);
     } finally {
       roomBusy = false;
       setBusy(submitButton, false);
+      const canGuess = !!state
+        && state.status !== 'finished'
+        && !state.player.solved
+        && (gameType !== 'room' || !state.player.is_spectator);
+      for (const element of guessForm.elements) element.disabled = !canGuess;
+      if (canGuess) guessInput.focus();
     }
   }
 

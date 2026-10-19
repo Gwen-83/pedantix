@@ -182,7 +182,7 @@ CURATED_BY_DIFFICULTY: Dict[str, List[str]] = {
         "Internet", "Ordinateur", "Football", "Jeux vidéo", "Téléphone mobile", "Automobile", "Avion",
         "Jeux olympiques", "Tennis", "Nintendo", "France", "Italie", "Japon", "États-Unis", "Chine",
         "Royaume-Uni", "Espagne", "Brésil", "Paris", "New York", "Londres", "Rome", "Soleil",
-        "Terre", "Lune", "Seconde Guerre mondiale", "Première Guerre mondiale", "Révolution française",
+        "Terre", "Lune", "Mars (planète)", "Seconde Guerre mondiale", "Première Guerre mondiale", "Révolution française",
         "Empire romain", "Moyen Âge", "Les Misérables", "Le Petit Prince", "Échecs"
     ],
     "moyen": [
@@ -196,7 +196,7 @@ CURATED_BY_DIFFICULTY: Dict[str, List[str]] = {
         "Claude Monet", "Jules Verne", "Voltaire", "Sigmund Freud", "Martin Luther King", "Nelson Mandela",
         "Louis Pasteur", "Jean Moulin", "Coluche", "Édith Piaf", "Jacques Brel", "Louis de Funès",
         "Simone Veil", "Antoine de Saint-Exupéry", "Jean de La Fontaine", "Alexandre Dumas",
-        "Système solaire", "Trou noir", "Voie lactée", "Mars (planète)", "Big Bang", "Atome",
+        "Système solaire", "Trou noir", "Voie lactée", "Big Bang", "Atome",
         "Gravitation", "Radioactivité", "Tableau périodique des éléments", "Jupiter (planète)", "Génétique",
         "Vaccin", "Pénicilline", "Énergie nucléaire", "Tectonique des plaques", "Astéroïde", "Comète",
         "Électron", "Laser", "Abeille", "Loup gris", "Grand requin blanc", "Manchot empereur",
@@ -400,12 +400,10 @@ def calculate_article_difficulty(
     title: str = ""
 ) -> str:
     """
-    Classifies a Wikipedia article into a difficulty level: 'facile', 'moyen', or 'difficile'.
-    - Facile: highly famous, ubiquitous subjects (>= 45 langs or >= 20 000 views / 90d, or curated iconic).
-    - Moyen: classic general knowledge (>= 25 langs or >= 3 500 views / 90d).
-    - Difficile: more specific or specialized (fewer translations/views, but still sufficiently notable).
+    Classifies an article into one difficulty tier, with measured statistics taking
+    precedence over curation. Curated labels are only used when both metrics are absent.
     """
-    if title and title in CURATED_DIFFICULTY_MAP:
+    if lang_count <= 0 and pageviews_90d <= 0 and title in CURATED_DIFFICULTY_MAP:
         return CURATED_DIFFICULTY_MAP[title]
 
     if is_person:
@@ -422,6 +420,28 @@ def calculate_article_difficulty(
             return "moyen"
         else:
             return "difficile"
+
+
+def get_article_difficulty(article: Dict[str, Any]) -> Optional[str]:
+    """Returns metric-based difficulty, using curation only when metrics are unavailable."""
+    title = article.get("title", "")
+    lang_count = int(article.get("lang_count") or 0)
+    pageviews_90d = int(
+        article.get("pageviews_90d")
+        or (float(article.get("pageviews_60d") or 0) * 1.5)
+    )
+    if lang_count or pageviews_90d:
+        return calculate_article_difficulty(
+            lang_count,
+            pageviews_90d,
+            bool(article.get("is_person", False)),
+            title,
+        )
+    return article.get("difficulty") or CURATED_DIFFICULTY_MAP.get(title)
+
+
+def article_matches_difficulty(article: Dict[str, Any], difficulty: str) -> bool:
+    return get_article_difficulty(article) == difficulty
 
 
 class WikipediaClient:
@@ -536,8 +556,7 @@ class WikipediaClient:
         total_pviews = sum(v for v in pviews.values() if v is not None) if pviews else 0
         pageviews_90d = int(total_pviews * 1.5)
         is_person = is_person_article(real_title, page.get("pageprops", {}), html_extract)
-        curated_diff = CURATED_DIFFICULTY_MAP.get(title) or CURATED_DIFFICULTY_MAP.get(real_title)
-        difficulty = curated_diff or calculate_article_difficulty(lang_count, pageviews_90d, is_person, real_title)
+        difficulty = calculate_article_difficulty(lang_count, pageviews_90d, is_person, real_title)
 
         return {
             "title": real_title,
@@ -683,10 +702,8 @@ class WikipediaClient:
         """
         Fetches a random article from French Wikipedia (fr.wikipedia.org) tailored to the requested difficulty level.
         Never returns articles present in exclude_titles.
-        - Difficulty levels:
-          * 'facile': min 45 languages, min 20,000 views / 90d, high chance of iconic curated subjects, min 90 words.
-          * 'moyen': min 28 languages, min 4,000 views / 90d, balanced pool, min 65 words.
-          * 'difficile': min 18 languages, min 1,500 views / 90d, random Wikipedia topics, min 50 words.
+        - Articles must match exactly the requested tier after metric-based classification.
+        - Minimum article lengths are 80, 60, and 50 words for easy, medium, and hard.
         """
         diff_key = difficulty.lower() if difficulty and difficulty.lower() in DIFFICULTY_LEVELS else "moyen"
         cfg = DIFFICULTY_LEVELS[diff_key]
@@ -724,8 +741,13 @@ class WikipediaClient:
                 sample_candidates = random.sample(valid_curated, min(5, len(valid_curated)))
                 for candidate in sample_candidates:
                     art = self.fetch_article_by_title(candidate)
-                    if art and not is_title_excluded(art.get("title", "")) and count_article_words(art.get("paragraphs", [])) >= min_words:
-                        art["difficulty"] = diff_key
+                    if (
+                        art
+                        and not is_title_excluded(art.get("title", ""))
+                        and count_article_words(art.get("paragraphs", [])) >= min_words
+                        and article_matches_difficulty(art, diff_key)
+                    ):
+                        art["difficulty"] = get_article_difficulty(art)
                         if not art.get("lang_count"):
                             art["lang_count"] = 75 if diff_key == "facile" else (35 if diff_key == "moyen" else 22)
                         if not art.get("pageviews_90d"):
@@ -832,14 +854,9 @@ class WikipediaClient:
                         continue
                     if count_article_words(art.get("paragraphs", [])) < min_words:
                         continue
-                    art_diff = art.get("difficulty") or calculate_article_difficulty(
-                        art.get("lang_count", 0),
-                        art.get("pageviews_90d", 0),
-                        art.get("is_person", False),
-                        art.get("title", "")
-                    )
-                    if art_diff == diff_key or diff_key == "moyen":
-                        art["difficulty"] = diff_key
+                    art_diff = get_article_difficulty(art)
+                    if art_diff == diff_key:
+                        art["difficulty"] = art_diff
                         logger.info(
                             f"Accepted notable article from pageviews pool for difficulty '{diff_key}': '{art['title']}' "
                             f"({art.get('lang_count', 0)} languages)"
@@ -893,9 +910,14 @@ class WikipediaClient:
             chosen_titles = random.sample(valid_pool, min(6, len(valid_pool)))
             for title in chosen_titles:
                 article = self.fetch_article_by_title(title)
-                if article and not is_title_excluded(article.get("title", "")) and count_article_words(article.get("paragraphs", [])) >= 50:
+                if (
+                    article
+                    and not is_title_excluded(article.get("title", ""))
+                    and count_article_words(article.get("paragraphs", [])) >= 50
+                    and (not diff_key or article_matches_difficulty(article, diff_key))
+                ):
                     if diff_key:
-                        article["difficulty"] = diff_key
+                        article["difficulty"] = get_article_difficulty(article)
                         if not article.get("lang_count"):
                             article["lang_count"] = 75 if diff_key == "facile" else (35 if diff_key == "moyen" else 22)
                         if not article.get("pageviews_90d"):
@@ -911,13 +933,16 @@ class WikipediaClient:
                     if local_curated:
                         candidates = [c for c in local_curated.values() if not is_title_excluded(c.get("title", ""))]
                         if diff_key:
-                            filtered = [c for c in candidates if CURATED_DIFFICULTY_MAP.get(c.get("title", "")) == diff_key]
-                            if filtered:
-                                candidates = filtered
+                            candidates = [
+                                c for c in candidates
+                                if article_matches_difficulty(c, diff_key)
+                            ]
                         if candidates:
                             chosen = dict(random.choice(candidates))
                             if count_article_words(chosen.get("paragraphs", [])) >= 50:
-                                chosen_diff = diff_key or CURATED_DIFFICULTY_MAP.get(chosen.get("title", ""), "moyen")
+                                chosen_diff = get_article_difficulty(chosen) or "moyen"
+                                if diff_key and chosen_diff != diff_key:
+                                    return None
                                 chosen["difficulty"] = chosen_diff
                                 chosen["lang_count"] = chosen.get("lang_count") or (75 if chosen_diff == "facile" else (35 if chosen_diff == "moyen" else 22))
                                 chosen["pageviews_90d"] = chosen.get("pageviews_90d") or (35000 if chosen_diff == "facile" else (8000 if chosen_diff == "moyen" else 2200))

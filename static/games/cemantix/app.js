@@ -208,7 +208,7 @@
       const hintScore = scoreByWord.get(word);
       if (typeof hintScore === 'number') {
         const badge = document.createElement('small');
-        badge.textContent = `${hintScore.toFixed(0)}°`;
+        badge.textContent = `${hintScore.toFixed(1)}°C`;
         item.appendChild(badge);
       }
       item.title = `Proposer « ${word} »`;
@@ -222,21 +222,20 @@
     hintsContainer.append(title, list);
   }
 
-  function scoreLabel(score) {
-    if (score >= 100) return 'Trouvé 🎯';
-    if (score >= 80) return 'Brûlant 🔥';
-    if (score >= 60) return 'Très chaud 🌶️';
-    if (score >= 48) return 'Chaud ☀️';
-    if (score >= 25) return 'Tiède 🌤️';
-    if (score >= 12) return 'Frais 💧';
+  function scoreLabel(rank) {
+    if (rank >= 1000) return 'Trouvé 🎯';
+    if (rank >= 999) return 'Brûlant 🔥';
+    if (rank >= 990) return 'Très chaud 🌶️';
+    if (rank >= 900) return 'Chaud ☀️';
+    if (rank > 0) return 'Tiède 🌤️';
     return 'Froid ❄️';
   }
 
-  function scoreClass(score, solved) {
+  function scoreClass(rank, solved) {
     if (solved) return 'cemantix-score-solved';
-    if (score >= 80) return 'cemantix-score-hot';
-    if (score >= 48) return 'cemantix-score-warm';
-    if (score >= 25) return 'cemantix-score-lukewarm';
+    if (rank >= 990) return 'cemantix-score-hot';
+    if (rank >= 900) return 'cemantix-score-warm';
+    if (rank > 0) return 'cemantix-score-lukewarm';
     return '';
   }
 
@@ -263,12 +262,14 @@
     word.append(document.createTextNode(guess.word));
     const score = document.createElement('span');
     score.className = 'cemantix-guess-score';
-    score.textContent = `${Number(guess.score).toFixed(1)} · ${scoreLabel(guess.score)}`;
+    const rank = Number.isInteger(guess.rank) ? guess.rank : 0;
+    score.textContent =
+      `${Number(guess.score).toFixed(1)}°C · ${rank}‰ · ${scoreLabel(rank)}`;
     const track = document.createElement('span');
     track.className = 'cemantix-score-track';
     const bar = document.createElement('span');
-    bar.className = scoreClass(guess.score, guess.solved);
-    bar.style.width = `${Math.max(4, Math.min(100, guess.score))}%`;
+    bar.className = scoreClass(rank, guess.solved);
+    bar.style.width = `${Math.max(4, Math.min(100, rank / 10))}%`;
     track.appendChild(bar);
     row.append(word, score, track);
     list.appendChild(row);
@@ -310,7 +311,7 @@
     list.className = 'cemantix-guess-list';
     const ordered = [...guesses];
     if (sortMode === 'score') {
-      ordered.sort((a, b) => (b.score - a.score) || ((b.attempt || 0) - (a.attempt || 0)));
+      ordered.sort((a, b) => (b.rank - a.rank) || (b.score - a.score) || ((b.attempt || 0) - (a.attempt || 0)));
     } else {
       ordered.reverse();
     }

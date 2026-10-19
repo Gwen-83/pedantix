@@ -10,7 +10,12 @@ from typing import Dict, List, Optional, Set, Any
 from fastapi import WebSocket
 
 from app.game import GameSession, GameManager
-from app.wiki import ALL_CURATED_TITLES, WikipediaClient, CURATED_DIFFICULTY_MAP
+from app.wiki import (
+    ALL_CURATED_TITLES,
+    CURATED_BY_DIFFICULTY,
+    WikipediaClient,
+    article_matches_difficulty,
+)
 from app.database import (
     get_player_score, increment_player_score, record_game_finish, record_user_game_finish, record_user_guess_word,
     record_played_article, get_recently_played_articles, is_valid_user_identifier,
@@ -140,8 +145,8 @@ class Room:
             idents.add(self.room_id[5:].strip().lower())
         return list(idents)
 
-    def get_recently_played_titles(self, days: int = 15) -> Set[str]:
-        """Retourne les titres d'articles apparus à TOUS les joueurs du salon durant les 15 derniers jours."""
+    def get_recently_played_titles(self, days: int = 21) -> Set[str]:
+        """Retourne les articles apparus à l'un des joueurs du salon durant la période donnée."""
         idents = self.get_all_player_identifiers()
         return get_recently_played_articles(idents, days=days)
 
@@ -342,7 +347,7 @@ class Room:
         if self.room_id.startswith("solo-"):
             # Solo mode: immediately load a fresh article with the requested difficulty
             try:
-                excluded = self.get_recently_played_titles(days=15)
+                excluded = self.get_recently_played_titles(days=21)
                 new_art = new_article or room_manager._fetch_random_article(difficulty=difficulty, exclude_titles=excluded)
                 if new_art:
                     new_art["difficulty"] = difficulty
@@ -395,7 +400,7 @@ class Room:
         elif self.status == "lobby":
             # Multiplayer lobby: pre-fetch/update article for the new difficulty
             try:
-                excluded = self.get_recently_played_titles(days=15)
+                excluded = self.get_recently_played_titles(days=21)
                 new_art = new_article or room_manager._fetch_random_article(difficulty=difficulty, exclude_titles=excluded)
                 if new_art:
                     new_art["difficulty"] = difficulty
@@ -650,7 +655,7 @@ class Room:
             return await self.start_new_round(player_id)
 
         # Collect 15-day played articles for ALL players in the room
-        excluded_titles = self.get_recently_played_titles(days=15)
+        excluded_titles = self.get_recently_played_titles(days=21)
         exclude_norm = {normalize_wiki_title(t) for t in excluded_titles if t}
         curr_title = self.article_data.get("title", "")
 
@@ -1159,13 +1164,14 @@ class Room:
         self.hinted_word_ids.clear()
         self.next_word_hint_time = None
 
-        excluded_titles = self.get_recently_played_titles(days=15)
+        excluded_titles = self.get_recently_played_titles(days=21)
         exclude_norm = {normalize_wiki_title(t) for t in excluded_titles if t}
 
         if (
             not new_article or
             new_article.get("title", "") in excluded_titles or
-            normalize_wiki_title(new_article.get("title", "")) in exclude_norm
+            normalize_wiki_title(new_article.get("title", "")) in exclude_norm or
+            not article_matches_difficulty(new_article, self.difficulty)
         ):
             new_article = await asyncio.to_thread(
                 room_manager._fetch_notable_article,
@@ -1174,6 +1180,12 @@ class Room:
             )
         if not new_article:
             new_article = room_manager._fetch_random_article(self.difficulty, exclude_titles=excluded_titles)
+        if (
+            not new_article
+            or normalize_wiki_title(new_article.get("title", "")) in exclude_norm
+            or not article_matches_difficulty(new_article, self.difficulty)
+        ):
+            raise RuntimeError("Aucun nouvel article correspondant à la difficulté et à l'historique des joueurs.")
         if not new_seed:
             new_seed = f"P-{random.randint(1000, 9999)}"
 
@@ -1761,11 +1773,11 @@ class RoomManager:
                         if not art and self.game_manager.offline_curated:
                             candidates = [
                                 dict(a) for a in self.game_manager.offline_curated.values()
-                                if CURATED_DIFFICULTY_MAP.get(a.get("title", "")) == d
+                                if article_matches_difficulty(a, d)
                             ]
                             if candidates:
                                 art = random.choice(candidates)
-                        if art:
+                        if art and article_matches_difficulty(art, d):
                             art["difficulty"] = d
                             with self._pool_lock:
                                 self._article_pools[d].append(art)
@@ -1781,13 +1793,16 @@ class RoomManager:
     def _pop_pooled_article(self, difficulty: str = "moyen", exclude_titles: Optional[Set[str]] = None) -> Optional[Dict[str, Any]]:
         diff_key = difficulty.lower() if difficulty and difficulty.lower() in ("facile", "moyen", "difficile") else "moyen"
         exclude_set = set(exclude_titles) if exclude_titles else set()
-        exclude_norm = {t.replace("_", " ").strip().lower() for t in exclude_set if t}
+        exclude_norm = {normalize_wiki_title(t) for t in exclude_set if t}
         with self._pool_lock:
             pool = self._article_pools.get(diff_key, [])
             art = None
             for i, cand in enumerate(pool):
                 cand_title = cand.get("title", "")
-                if cand_title not in exclude_set and cand_title.replace("_", " ").strip().lower() not in exclude_norm:
+                if (
+                    normalize_wiki_title(cand_title) not in exclude_norm
+                    and article_matches_difficulty(cand, diff_key)
+                ):
                     art = pool.pop(i)
                     break
         self.prefetch_articles()
@@ -1845,11 +1860,11 @@ class RoomManager:
             if not art and self.game_manager.offline_curated:
                 candidates = [
                     dict(a) for a in self.game_manager.offline_curated.values()
-                    if CURATED_DIFFICULTY_MAP.get(a.get("title", "")) == diff_key
+                    if article_matches_difficulty(a, diff_key)
                 ]
                 if candidates:
                     art = random.choice(candidates)
-            if art:
+            if art and article_matches_difficulty(art, diff_key):
                 art["difficulty"] = diff_key
                 with self._pool_lock:
                     self._article_pools[diff_key].append(art)
@@ -1866,7 +1881,10 @@ class RoomManager:
             pool = self._article_pools.get(diff_key, [])
             for i, cand in enumerate(pool):
                 cand_title = cand.get("title", "")
-                if cand_title not in exclude_set and normalize_wiki_title(cand_title) not in exclude_norm:
+                if (
+                    normalize_wiki_title(cand_title) not in exclude_norm
+                    and article_matches_difficulty(cand, diff_key)
+                ):
                     article = pool.pop(i)
                     break
 
@@ -1877,43 +1895,41 @@ class RoomManager:
                 article = self.wiki_client.fetch_random_wikipedia_article(difficulty=diff_key, exclude_titles=exclude_set)
             except Exception as e:
                 logger.error(f"Error fetching random article: {e}")
+        if article and not article_matches_difficulty(article, diff_key):
+            article = None
 
         if not article:
             article = self.wiki_client.fetch_curated_article(difficulty=diff_key, exclude_titles=exclude_set)
+        if article and not article_matches_difficulty(article, diff_key):
+            article = None
 
         if not article and self.game_manager.offline_curated:
             candidates = [
                 dict(c) for c in self.game_manager.offline_curated.values()
-                if CURATED_DIFFICULTY_MAP.get(c.get("title", "")) == diff_key
+                if article_matches_difficulty(c, diff_key)
                 and c.get("title", "") not in exclude_set
                 and normalize_wiki_title(c.get("title", "")) not in exclude_norm
             ]
-            if not candidates:
-                candidates = [
-                    dict(c) for c in self.game_manager.offline_curated.values()
-                    if c.get("title", "") not in exclude_set
-                    and normalize_wiki_title(c.get("title", "")) not in exclude_norm
-                ]
             if candidates:
                 article = random.choice(candidates)
 
         if not article:
-            article = get_random_cached_article(exclude_titles=exclude_set)
+            cached_article = get_random_cached_article(exclude_titles=exclude_set)
+            if cached_article and article_matches_difficulty(cached_article, diff_key):
+                article = cached_article
 
         cacheable_article = bool(article)
         if not article:
-            fallback_candidates = [
-                "Tour Eiffel", "Colisée", "Musée du Louvre", "Statue de la Liberté",
-                "Pyramides de Gizeh", "Pont du Gard", "Château de Versailles",
-                "Alhambra (Grenade)", "Mont Blanc", "Taj Mahal", "Acropole d'Athènes",
-                "Grande Muraille", "Stonehenge", "Sagrada Família", "Machu Picchu",
-                "Système solaire", "Voie lactée", "Lune", "Soleil", "Mars (planète)",
-                "Océan Atlantique", "Amazonie", "Sahara", "Everest", "Nil",
-                "Révolution française", "Renaissance", "Moyen Âge", "Empire romain",
-                "Antiquité", "Albert Einstein", "Léonard de Vinci", "Marie Curie"
+            fallback_candidates = CURATED_BY_DIFFICULTY.get(diff_key, [])
+            valid_fallbacks = [
+                title for title in fallback_candidates
+                if normalize_wiki_title(title) not in exclude_norm
             ]
-            valid_fallbacks = [t for t in fallback_candidates if t not in exclude_set and normalize_wiki_title(t) not in exclude_norm]
-            cand_title = random.choice(valid_fallbacks) if valid_fallbacks else random.choice(fallback_candidates)
+            if not valid_fallbacks:
+                raise RuntimeError(
+                    f"Aucun article {diff_key} disponible hors des articles joués récemment."
+                )
+            cand_title = random.choice(valid_fallbacks)
             article = {
                 "title": cand_title,
                 "paragraphs": [
@@ -1928,6 +1944,10 @@ class RoomManager:
                 "lang_count": 80 if diff_key == "facile" else (35 if diff_key == "moyen" else 20),
                 "pageviews_90d": 40000 if diff_key == "facile" else (8000 if diff_key == "moyen" else 1500)
             }
+        if normalize_wiki_title(article.get("title", "")) in exclude_norm:
+            raise RuntimeError("La sélection d'article a réintroduit un article déjà joué.")
+        if not article_matches_difficulty(article, diff_key):
+            raise RuntimeError("La sélection d'article ne correspond pas à la difficulté demandée.")
         article["difficulty"] = diff_key
         if cacheable_article:
             cache_article(
@@ -1962,7 +1982,7 @@ class RoomManager:
                     if cn and not cn.startswith("joueur ") and cn != "host":
                         idents.append(cn)
                 if idents:
-                    exclude_titles = get_recently_played_articles(idents, days=15)
+                    exclude_titles = get_recently_played_articles(idents, days=21)
 
             article = self._fetch_notable_article(difficulty=difficulty, exclude_titles=exclude_titles)
             seed_num = random.randint(1000, 9999)
@@ -2004,7 +2024,7 @@ class RoomManager:
                 hn = host_name.strip().lower()
                 if hn and not hn.startswith("joueur ") and hn != "host":
                     host_idents.append(hn)
-            exclude_titles = get_recently_played_articles(host_idents, days=15)
+            exclude_titles = get_recently_played_articles(host_idents, days=21)
 
         article = self._fetch_notable_article(difficulty=difficulty, exclude_titles=exclude_titles)
         seed_num = random.randint(1000, 9999)

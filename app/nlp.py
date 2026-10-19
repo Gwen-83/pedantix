@@ -1169,6 +1169,9 @@ def _load_french_embeddings() -> Tuple[Dict[str, int], np.ndarray, np.ndarray]:
 
 
 WORD_EMBEDDING_INDEX, WORD_EMBEDDINGS, WORD_EMBEDDING_NORMS = _load_french_embeddings()
+WORD_EMBEDDING_WORDS = tuple(WORD_EMBEDDING_INDEX)
+# The build script appends curated terms after this frequency-ranked prefix.
+WORD2VEC_RANKING_VOCAB_SIZE = min(65000, len(WORD_EMBEDDING_INDEX))
 
 
 def _load_french_wordnet() -> Dict[str, Set[str]]:
@@ -1828,6 +1831,118 @@ def _embedding_proximity(g_norm: str, t_norm: str) -> float:
             fraction = (cosine - lower_cosine) / (upper_cosine - lower_cosine)
             return round(lower_score + fraction * (upper_score - lower_score), 1)
     return score_points[-1][1]
+
+
+def calculate_word2vec_cosine(guess: str, target: str) -> Optional[float]:
+    """Return the model's cosine similarity without dictionary or curated boosts."""
+    if not guess or not target:
+        return None
+
+    guess_norm = normalize_text(clean_guess(guess))
+    target_norm = normalize_text(target)
+    if not guess_norm or not target_norm:
+        return None
+
+    guess_index = _get_embedding_index(guess_norm)
+    target_index = _get_embedding_index(target_norm)
+    if guess_index is None or target_index is None:
+        return None
+
+    denominator = WORD_EMBEDDING_NORMS[guess_index] * WORD_EMBEDDING_NORMS[target_index]
+    if denominator == 0:
+        return None
+
+    cosine = float(
+        np.dot(
+            WORD_EMBEDDINGS[guess_index].astype(np.int32),
+            WORD_EMBEDDINGS[target_index].astype(np.int32),
+        )
+        / denominator
+    )
+    return min(1.0, max(-1.0, cosine))
+
+
+def calculate_word2vec_proximity(guess: str, target: str) -> float:
+    """Return the model's cosine temperature for Pedantix, or 0 below its heat floor."""
+    clean_word = clean_guess(guess)
+    guess_norm = normalize_text(clean_word)
+    target_norm = normalize_text(target)
+    if not guess_norm or not target_norm:
+        return 0.0
+    if check_match(clean_word, target):
+        return 100.0
+    if guess_norm.isdigit() and target_norm.isdigit():
+        return calculate_numeric_proximity(int(guess_norm), int(target_norm))
+    if guess_norm.isdigit() or target_norm.isdigit():
+        return 0.0
+    if guess_norm in STOPWORDS_EXACT or target_norm in STOPWORDS_EXACT:
+        return 0.0
+
+    cosine = calculate_word2vec_cosine(guess_norm, target_norm)
+    if cosine is None or cosine <= 0.30:
+        return 0.0
+
+    return round(cosine * 100.0, 2)
+
+
+@functools.lru_cache(maxsize=16)
+def _sorted_word2vec_similarities(target_index: int) -> np.ndarray:
+    target_vector = (
+        WORD_EMBEDDINGS[target_index].astype(np.float32)
+        / WORD_EMBEDDING_NORMS[target_index]
+    )
+    similarities = (
+        WORD_EMBEDDINGS[:WORD2VEC_RANKING_VOCAB_SIZE] @ target_vector
+    ) / WORD_EMBEDDING_NORMS[:WORD2VEC_RANKING_VOCAB_SIZE]
+    return np.sort(similarities)
+
+
+def calculate_word2vec_rank(guess: str, target: str) -> int:
+    """Return the guess's nearest-word percentile in the available model vocabulary."""
+    guess_norm = normalize_text(clean_guess(guess))
+    target_norm = normalize_text(target)
+    if not guess_norm or not target_norm:
+        return 0
+    if guess_norm == target_norm:
+        return 1000
+    cosine = calculate_word2vec_cosine(guess, target)
+    target_index = _get_embedding_index(target_norm)
+    if cosine is None or target_index is None:
+        return 0
+
+    distribution = _sorted_word2vec_similarities(target_index)
+    position = int(np.searchsorted(distribution, cosine, side="right"))
+    return min(1000, position * 1000 // len(distribution))
+
+
+@functools.lru_cache(maxsize=512)
+def get_word2vec_nearest_words(
+    target: str, limit: int = 512
+) -> Tuple[Tuple[str, float], ...]:
+    """Return nearest terms from the frequency-ranked portion of the local model."""
+    if limit <= 0:
+        return ()
+    target_index = _get_embedding_index(normalize_text(target))
+    if target_index is None:
+        return ()
+
+    target_vector = (
+        WORD_EMBEDDINGS[target_index].astype(np.float32)
+        / WORD_EMBEDDING_NORMS[target_index]
+    )
+    similarities = (
+        WORD_EMBEDDINGS[:WORD2VEC_RANKING_VOCAB_SIZE] @ target_vector
+    ) / WORD_EMBEDDING_NORMS[:WORD2VEC_RANKING_VOCAB_SIZE]
+    count = min(limit, len(similarities))
+    indices = np.argpartition(similarities, len(similarities) - count)[-count:]
+    nearest = sorted(
+        (
+            (WORD_EMBEDDING_WORDS[int(index)], float(similarities[index]))
+            for index in indices
+        ),
+        key=lambda item: (-item[1], item[0]),
+    )
+    return tuple(nearest)
 
 
 @functools.lru_cache(maxsize=65536)

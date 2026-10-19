@@ -245,6 +245,40 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
             },
         )
 
+    def test_stats_overview_counts_started_and_finished_sessions_once(self):
+        baseline = database.get_stats_overview()
+        database._record_multigame_session_start_sync(
+            "sudoku:overview-room", "sudoku", "multiplayer", "Sudoku", "moyen"
+        )
+        for username, won in (("Alice", True), ("Bob", False)):
+            database._record_user_game_finish_sync(
+                username,
+                won,
+                2,
+                1,
+                "sudoku:overview-room",
+                "multiplayer",
+                "Sudoku",
+                False,
+                120,
+                0,
+                0,
+                "sudoku",
+                "moyen",
+                {"mistakes": 2},
+            )
+        database._record_multigame_session_start_sync(
+            "sudoku:overview-unfinished", "sudoku", "solo", "Sudoku", "facile"
+        )
+
+        overview = database.get_stats_overview()
+        sudoku = next(game for game in overview["games"] if game["game_id"] == "sudoku")
+
+        self.assertEqual(sudoku["started_games"], 2)
+        self.assertEqual(sudoku["finished_games"], 1)
+        self.assertEqual(overview["started_games"], baseline["started_games"] + 2)
+        self.assertEqual(overview["finished_games"], baseline["finished_games"] + 1)
+
     def test_started_but_unfinished_session_is_counted_separately(self):
         database._record_multigame_session_start_sync(
             "sudoku:unfinished", "sudoku", "solo", "Sudoku", "facile"
