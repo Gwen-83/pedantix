@@ -99,7 +99,7 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(RuntimeError, "enregistrer l'historique"):
                 record_played_article(["test_player_db_write_failure"], "Article")
 
-    def test_article_with_257_languages_is_only_easy(self):
+    def test_article_must_meet_both_difficulty_metrics(self):
         article = {
             "title": "Mars (planète)",
             "lang_count": 257,
@@ -107,13 +107,36 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
             "difficulty": "moyen",
         }
 
-        self.assertEqual(
-            calculate_article_difficulty(257, 1, title="Mars (planète)"),
-            "facile",
-        )
-        self.assertEqual(get_article_difficulty(article), "facile")
+        self.assertIsNone(calculate_article_difficulty(257, 1))
+        self.assertIsNone(get_article_difficulty(article))
         self.assertIn("Mars (planète)", CURATED_BY_DIFFICULTY["facile"])
         self.assertNotIn("Mars (planète)", CURATED_BY_DIFFICULTY["moyen"])
+
+    def test_difficulty_tiers_require_both_metrics_at_their_thresholds(self):
+        self.assertEqual(calculate_article_difficulty(45, 20000), "facile")
+        self.assertEqual(calculate_article_difficulty(44, 20000), "moyen")
+        self.assertEqual(calculate_article_difficulty(45, 19999), "moyen")
+        self.assertEqual(calculate_article_difficulty(25, 3500), "moyen")
+        self.assertEqual(calculate_article_difficulty(24, 3500), "difficile")
+        self.assertEqual(calculate_article_difficulty(25, 3499), "difficile")
+        self.assertEqual(calculate_article_difficulty(16, 1000), "difficile")
+        self.assertIsNone(calculate_article_difficulty(15, 100000))
+        self.assertIsNone(calculate_article_difficulty(100, 999))
+
+    def test_person_difficulty_also_requires_language_and_pageview_thresholds(self):
+        self.assertEqual(calculate_article_difficulty(60, 30000, is_person=True), "facile")
+        self.assertEqual(calculate_article_difficulty(59, 30000, is_person=True), "moyen")
+        self.assertEqual(calculate_article_difficulty(60, 29999, is_person=True), "moyen")
+        self.assertEqual(calculate_article_difficulty(32, 4000, is_person=True), "moyen")
+        self.assertEqual(calculate_article_difficulty(31, 4000, is_person=True), "difficile")
+        self.assertEqual(calculate_article_difficulty(32, 3999, is_person=True), "difficile")
+        self.assertEqual(calculate_article_difficulty(18, 1200, is_person=True), "difficile")
+        self.assertIsNone(calculate_article_difficulty(100, 1199, is_person=True))
+
+    def test_article_without_measured_metrics_does_not_use_curated_label_as_proof(self):
+        article = {"title": "Mars (planète)", "difficulty": "facile"}
+
+        self.assertIsNone(get_article_difficulty(article))
 
     def test_fetch_article_uses_real_language_count_over_curated_label(self):
         client = WikipediaClient()
@@ -121,7 +144,7 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
             "title": "Mars (planète)",
             "extract": f"<p>{'Mars est une planète du système solaire. ' * 20}</p>",
             "langlinks": [{"lang": f"l{i}", "*": f"Mars {i}"} for i in range(257)],
-            "pageviews": {},
+            "pageviews": {"20261018": 14000},
             "pageprops": {},
             "fullurl": "https://fr.wikipedia.org/wiki/Mars_(plan%C3%A8te)",
         }
@@ -375,6 +398,8 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
             "title": "Pompéi",
             "paragraphs": ["Cached article text with sufficient content."],
             "url": "https://fr.wikipedia.org/wiki/Cached_article",
+            "lang_count": 30,
+            "pageviews_90d": 5000,
         }
         events = []
         with (

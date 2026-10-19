@@ -2473,7 +2473,7 @@ class PedantixApp {
       }
 
       // Cooperative guess update for teammates
-      if (this.gameMode === 'team' && msg.team === this.myTeam && msg.team_guess) {
+      if (this.gameMode === 'team' && msg.team_guess && !msg.team_guess.redacted) {
         const tg = msg.team_guess;
         const isTeammate = (tg.player_id !== this.playerId);
 
@@ -3916,39 +3916,41 @@ class PedantixApp {
       const closeWord = item.word || fallbackWord;
       const token = this.tokensById[item.id];
       if (token && token.hint_revealed) return;
-      if (token && !token.revealed) {
-        const currentHeat = Number(token.heat || 0);
-        if (score >= currentHeat) {
-          token.heat = score;
-          token.close_word = closeWord;
-        }
-      }
-
       const el = document.getElementById(`token-${item.id}`);
-      if (el && !el.classList.contains('revealed')) {
-        const currentHeat = Number(el.dataset.heat || 0);
-        if (score >= currentHeat) {
-          el.dataset.heat = score;
-          el.dataset.word = closeWord;
-          el.innerHTML = `&nbsp;${this.escapeHtml(closeWord)}&nbsp;`;
-          el.classList.remove('close-heat');
-          el.classList.add('close-heat-grey');
-          el.style.backgroundColor = '#222222';
-          el.title = `Proximité : ${score}% (proche de « ${closeWord} »)`;
+      if (token && token.revealed) return;
 
-          const grey = this.getGreyColor(score);
-          const flash = this.getFlashColor(score);
+      const currentHeat = Math.max(
+        Number(token?.heat || 0),
+        Number(el?.dataset.heat || 0),
+      );
+      if (score <= currentHeat) return;
 
-          el.classList.add('heat-flash');
-          el.style.color = flash;
-          setTimeout(() => {
-            if (!el.classList.contains('revealed') && !el.classList.contains('showing-len')) {
-              el.classList.remove('heat-flash');
-              el.style.color = grey;
-            }
-          }, 1200);
-        }
+      if (token) {
+        token.heat = score;
+        token.close_word = closeWord;
       }
+      if (!el || el.classList.contains('revealed')) return;
+
+      el.dataset.heat = score;
+      el.dataset.word = closeWord;
+      el.innerHTML = `&nbsp;${this.escapeHtml(closeWord)}&nbsp;`;
+      el.classList.remove('close-heat');
+      el.classList.add('close-heat-grey', 'heat-flash');
+      el.style.backgroundColor = '#222222';
+      el.title = `Proximité : ${score}% (proche de « ${closeWord} »)`;
+
+      const grey = this.getGreyColor(score);
+      el.style.color = this.getFlashColor(score);
+      setTimeout(() => {
+        if (
+          Number(el.dataset.heat) === score
+          && !el.classList.contains('revealed')
+          && !el.classList.contains('showing-len')
+        ) {
+          el.classList.remove('heat-flash');
+          el.style.color = grey;
+        }
+      }, 1200);
     });
   }
 

@@ -39,7 +39,7 @@ DIFFICULTY_LEVELS = {
         "min_person_pageviews_60d": 20000,
         "min_words": 80,
         "curated_pool_prob": 0.85,
-        "description": "Sujets très célèbres et incontournables (≥ 45 langues, ≥ 20k vues)"
+        "description": "Sujets très célèbres et incontournables (≥ 45 langues et ≥ 20k vues)"
     },
     "moyen": {
         "id": "moyen",
@@ -54,7 +54,7 @@ DIFFICULTY_LEVELS = {
         "min_person_pageviews_60d": 2700,
         "min_words": 60,
         "curated_pool_prob": 0.50,
-        "description": "Culture générale classique (≥ 25 langues, ≥ 3.5k vues)"
+        "description": "Culture générale classique (≥ 25 langues et ≥ 3.5k vues)"
     },
     "difficile": {
         "id": "difficile",
@@ -69,7 +69,7 @@ DIFFICULTY_LEVELS = {
         "min_person_pageviews_60d": 800,
         "min_words": 50,
         "curated_pool_prob": 0.50,
-        "description": "Sujets plus pointus ou spécialisés (≥ 16 langues, ≥ 1k vues)"
+        "description": "Sujets plus pointus ou spécialisés (≥ 16 langues et ≥ 1k vues)"
     }
 }
 DIFFICULTY_CONFIGS = DIFFICULTY_LEVELS
@@ -397,47 +397,34 @@ def calculate_article_difficulty(
     lang_count: int,
     pageviews_90d: int,
     is_person: bool = False,
-    title: str = ""
-) -> str:
+) -> Optional[str]:
     """
-    Classifies an article into one difficulty tier, with measured statistics taking
-    precedence over curation. Curated labels are only used when both metrics are absent.
+    Classifies an article only when both language and readership criteria match a tier.
     """
-    if lang_count <= 0 and pageviews_90d <= 0 and title in CURATED_DIFFICULTY_MAP:
-        return CURATED_DIFFICULTY_MAP[title]
-
-    if is_person:
-        if lang_count >= 60 or (lang_count >= 35 and pageviews_90d >= 30000):
-            return "facile"
-        elif lang_count >= 30 or (lang_count >= 20 and pageviews_90d >= 4000):
-            return "moyen"
-        else:
-            return "difficile"
-    else:
-        if lang_count >= 45 or pageviews_90d >= 20000:
-            return "facile"
-        elif lang_count >= 25 or pageviews_90d >= 3500:
-            return "moyen"
-        else:
-            return "difficile"
+    language_key = "min_person_languages" if is_person else "min_languages"
+    pageviews_key = "min_person_pageviews_90d" if is_person else "min_pageviews_90d"
+    for difficulty in ("facile", "moyen", "difficile"):
+        config = DIFFICULTY_LEVELS[difficulty]
+        if (
+            lang_count >= config[language_key]
+            and pageviews_90d >= config[pageviews_key]
+        ):
+            return difficulty
+    return None
 
 
 def get_article_difficulty(article: Dict[str, Any]) -> Optional[str]:
-    """Returns metric-based difficulty, using curation only when metrics are unavailable."""
-    title = article.get("title", "")
+    """Returns a difficulty only when both required article metrics are available."""
     lang_count = int(article.get("lang_count") or 0)
     pageviews_90d = int(
         article.get("pageviews_90d")
         or (float(article.get("pageviews_60d") or 0) * 1.5)
     )
-    if lang_count or pageviews_90d:
-        return calculate_article_difficulty(
-            lang_count,
-            pageviews_90d,
-            bool(article.get("is_person", False)),
-            title,
-        )
-    return article.get("difficulty") or CURATED_DIFFICULTY_MAP.get(title)
+    return calculate_article_difficulty(
+        lang_count,
+        pageviews_90d,
+        bool(article.get("is_person", False)),
+    )
 
 
 def article_matches_difficulty(article: Dict[str, Any], difficulty: str) -> bool:
@@ -556,7 +543,7 @@ class WikipediaClient:
         total_pviews = sum(v for v in pviews.values() if v is not None) if pviews else 0
         pageviews_90d = int(total_pviews * 1.5)
         is_person = is_person_article(real_title, page.get("pageprops", {}), html_extract)
-        difficulty = calculate_article_difficulty(lang_count, pageviews_90d, is_person, real_title)
+        difficulty = calculate_article_difficulty(lang_count, pageviews_90d, is_person)
 
         return {
             "title": real_title,
@@ -811,7 +798,7 @@ class WikipediaClient:
                 pageviews_90d = int(total_pviews * 1.5)
 
                 is_person = is_person_article(title, page.get("pageprops", {}), raw_extract)
-                candidate_diff = calculate_article_difficulty(langs_count, pageviews_90d, is_person, title)
+                candidate_diff = calculate_article_difficulty(langs_count, pageviews_90d, is_person)
                 if candidate_diff != diff_key:
                     continue
 

@@ -1752,6 +1752,7 @@ class Room:
                             "player_id": raw_team_guess.get("player_id"),
                             "player_name": raw_team_guess.get("player_name"),
                             "team": raw_team_guess.get("team"),
+                            "redacted": True,
                             "word": "••••",
                             "status": raw_team_guess.get("status"),
                             "matches_count": raw_team_guess.get("matches_count", 0),
