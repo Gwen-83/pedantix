@@ -374,6 +374,7 @@ _GAME_CATALOG = (
     ("geoguessr", "GeoGuessr"),
     ("undercover", "Undercover"),
     ("bitoguessr", "Bitoguessr"),
+    ("plongee", "Plongée"),
 )
 
 

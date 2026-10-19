@@ -1,0 +1,93 @@
+[
+  {
+    "id": "animal",
+    "prompt": "Citez un animal qui vit dans l’océan.",
+    "answers": [
+      {"answer": "dauphin", "aliases": ["dauphins"], "score": 25},
+      {"answer": "requin", "aliases": ["requins"], "score": 32},
+      {"answer": "baleine", "aliases": ["baleines"], "score": 40},
+      {"answer": "méduse", "aliases": ["meduse", "méduses"], "score": 48},
+      {"answer": "narval", "aliases": ["narvals"], "score": 72},
+      {"answer": "poisson-lune", "aliases": ["poisson lune"], "score": 82},
+      {"answer": "rémora", "aliases": ["remora"], "score": 88}
+    ]
+  },
+  {
+    "id": "pays",
+    "prompt": "Citez un pays qui commence par la lettre M.",
+    "answers": [
+      {"answer": "Maroc", "score": 25},
+      {"answer": "Mexique", "score": 32},
+      {"answer": "Madagascar", "score": 42},
+      {"answer": "Mali", "score": 52},
+      {"answer": "Moldavie", "aliases": ["Moldova"], "score": 67},
+      {"answer": "Mauritanie", "score": 75},
+      {"answer": "Micronésie", "aliases": ["Micronesie", "États fédérés de Micronésie"], "score": 88}
+    ]
+  },
+  {
+    "id": "fruit",
+    "prompt": "Citez un fruit qui pousse dans un climat tropical.",
+    "answers": [
+      {"answer": "banane", "aliases": ["bananes"], "score": 24},
+      {"answer": "ananas", "score": 31},
+      {"answer": "mangue", "aliases": ["mangues"], "score": 39},
+      {"answer": "papaye", "score": 51},
+      {"answer": "fruit du jacquier", "aliases": ["jacquier"], "score": 69},
+      {"answer": "carambole", "score": 79},
+      {"answer": "salak", "aliases": ["fruit du serpent"], "score": 90}
+    ]
+  },
+  {
+    "id": "instrument",
+    "prompt": "Citez un instrument de musique à cordes.",
+    "answers": [
+      {"answer": "guitare", "aliases": ["guitare classique"], "score": 20},
+      {"answer": "violon", "score": 28},
+      {"answer": "harpe", "score": 39},
+      {"answer": "mandoline", "score": 53},
+      {"answer": "théorbe", "aliases": ["theorbe"], "score": 73},
+      {"answer": "nyckelharpa", "score": 84},
+      {"answer": "octobasse", "score": 92}
+    ]
+  },
+  {
+    "id": "espace",
+    "prompt": "Citez une planète ou un satellite naturel du système solaire.",
+    "answers": [
+      {"answer": "Mars", "score": 22},
+      {"answer": "Jupiter", "score": 30},
+      {"answer": "Vénus", "aliases": ["Venus"], "score": 38},
+      {"answer": "Titan", "score": 55},
+      {"answer": "Europe", "aliases": ["Europa"], "score": 63},
+      {"answer": "Encelade", "score": 78},
+      {"answer": "Néréide", "aliases": ["Nereide"], "score": 88}
+    ]
+  },
+  {
+    "id": "oiseau",
+    "prompt": "Citez un oiseau qui ne peut pas voler.",
+    "answers": [
+      {"answer": "autruche", "aliases": ["autruches"], "score": 25},
+      {"answer": "pingouin", "aliases": ["pingouins"], "score": 34},
+      {"answer": "kiwi", "score": 43},
+      {"answer": "émeu", "aliases": ["emeu"], "score": 55},
+      {"answer": "casoar", "score": 71},
+      {"answer": "kakapo", "score": 83},
+      {"answer": "weka", "score": 91}
+    ]
+  },
+  {
+    "id": "metier",
+    "prompt": "Citez un métier qui se pratique principalement en extérieur.",
+    "answers": [
+      {"answer": "jardinier", "aliases": ["jardinière", "paysagiste"], "score": 24},
+      {"answer": "facteur", "aliases": ["factrice"], "score": 31},
+      {"answer": "pompier", "aliases": ["pompière"], "score": 38},
+      {"answer": "archéologue", "aliases": ["archeologue"], "score": 52},
+      {"answer": "garde forestier", "aliases": ["garde forestière"], "score": 68},
+      {"answer": "cordiste", "score": 81},
+      {"answer": "glaciologue", "score": 90}
+    ]
+  }
+]

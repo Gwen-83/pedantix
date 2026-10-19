@@ -62,6 +62,7 @@ from app.bitoguessr import (
     DATA_SOURCE_URL as BITOGUESSR_DATA_SOURCE_URL,
     bitoguessr_manager,
 )
+from app.plongee import plongee_manager
 from app.game import GameManager, GameSession
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
@@ -194,7 +195,7 @@ class PresenceRequest(BaseModel):
     username: str = Field(min_length=1, max_length=24)
     game_id: Literal[
         "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship", "geoguessr",
-        "undercover", "bitoguessr", "store"
+        "undercover", "bitoguessr", "plongee", "store"
     ]
 
 class AuthRegisterRequest(BaseModel):
@@ -424,6 +425,23 @@ class BitoguessrSoloNextRequest(BitoguessrPlayerRequest):
 class BitoguessrRoomGuessRequest(BitoguessrRoomPlayerRequest):
     guess: str = Field(min_length=1, max_length=48)
 
+class PlongeePlayerRequest(BaseModel):
+    player_id: str = Field(min_length=1, max_length=100)
+    player_name: str = Field(min_length=1, max_length=24)
+
+class PlongeeSoloGuessRequest(PlongeePlayerRequest):
+    game_id: str = Field(min_length=1, max_length=64)
+    answer: str = Field(min_length=1, max_length=160)
+
+class PlongeeSoloActionRequest(PlongeePlayerRequest):
+    game_id: str = Field(min_length=1, max_length=64)
+
+class PlongeeRoomRequest(PlongeePlayerRequest):
+    room_id: str = Field(min_length=1, max_length=5)
+
+class PlongeeRoomGuessRequest(PlongeeRoomRequest):
+    answer: str = Field(min_length=1, max_length=160)
+
 class GateGuessRequest(BaseModel):
     player_id: str = Field(min_length=1, max_length=100)
     guess: str = Field(min_length=1, max_length=120)
@@ -531,6 +549,13 @@ async def undercover_page():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page Undercover est introuvable.")
+
+@app.get("/games/plongee/")
+async def plongee_page():
+    index_path = os.path.join(STATIC_DIR, "games", "plongee", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Plongée est introuvable.")
 
 def _is_bitoguessr_authorized(request: Request, player_id: Optional[str] = None) -> bool:
     token = (
@@ -3201,3 +3226,169 @@ async def unmask_game(req: GameUnmaskRequest):
     if "error" in res:
         raise HTTPException(status_code=403, detail=res["error"])
     return res
+
+
+def _record_plongee_solo_result(game) -> None:
+    if game.status != "finished" or game.stats_recorded:
+        return
+    game.stats_recorded = True
+    player = game.player
+    if player.score:
+        increment_player_score(player.name, player.score, "plongee")
+    record_user_game_finish(
+        player.name,
+        won=player.score > 0,
+        attempts=len(player.results),
+        points=player.score,
+        session_id=f"plongee:solo:{game.game_id}",
+        mode="solo",
+        title="Plongée",
+        duration_seconds=max(0, int(time.time() - game.created_at)),
+        game_id="plongee",
+        difficulty="classique",
+        metrics={"score": player.score, "rounds": len(player.results)},
+    )
+
+
+def _record_plongee_room_result(room) -> None:
+    if room.status != "finished" or room.stats_recorded:
+        return
+    room.stats_recorded = True
+    top_score = max((player.score for player in room.players.values()), default=0)
+    duration = max(0, int(time.time() - room.created_at))
+    for player in room.players.values():
+        if player.score:
+            increment_player_score(player.name, player.score, "plongee")
+        record_user_game_finish(
+            player.name,
+            won=player.score == top_score,
+            attempts=len(player.results),
+            points=player.score,
+            session_id=f"plongee:room:{room.room_id}",
+            mode="multiplayer",
+            title="Plongée",
+            duration_seconds=duration,
+            game_id="plongee",
+            difficulty="classique",
+            metrics={"score": player.score, "rounds": len(player.results)},
+        )
+
+
+@app.post("/api/plongee/solo/new")
+async def new_plongee_solo(req: PlongeePlayerRequest):
+    try:
+        game = plongee_manager.create_solo(req.player_id, req.player_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"plongee:solo:{game.game_id}", "plongee", "solo", "Plongée", "classique"
+    )
+    return plongee_manager.solo_state(game)
+
+
+@app.get("/api/plongee/solo/{game_id}")
+async def get_plongee_solo(game_id: str, player_id: str = Query(...)):
+    try:
+        game = plongee_manager.get_solo(game_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_plongee_solo_result(game)
+    return plongee_manager.solo_state(game)
+
+
+@app.post("/api/plongee/solo/guess")
+async def guess_plongee_solo(req: PlongeeSoloGuessRequest):
+    try:
+        game, result = plongee_manager.guess_solo(req.game_id, req.player_id, req.answer)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"result": result, **plongee_manager.solo_state(game)}
+
+
+@app.post("/api/plongee/solo/next")
+async def next_plongee_solo(req: PlongeeSoloActionRequest):
+    try:
+        game = plongee_manager.next_solo(req.game_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_plongee_solo_result(game)
+    return plongee_manager.solo_state(game)
+
+
+@app.get("/api/plongee/rooms")
+async def list_plongee_rooms(player_id: Optional[str] = Query(None)):
+    return {"rooms": plongee_manager.list_rooms(player_id)}
+
+
+@app.post("/api/plongee/room/create")
+async def create_plongee_room(req: PlongeePlayerRequest):
+    try:
+        room = plongee_manager.create_room(req.player_id, req.player_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return plongee_manager.room_state(room, req.player_id)
+
+
+@app.post("/api/plongee/room/join")
+async def join_plongee_room(req: PlongeeRoomRequest):
+    try:
+        room = plongee_manager.join_room(req.room_id, req.player_id, req.player_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return plongee_manager.room_state(room, req.player_id)
+
+
+@app.post("/api/plongee/room/start")
+async def start_plongee_room(req: PlongeeRoomRequest):
+    try:
+        room = plongee_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"plongee:room:{room.room_id}", "plongee", "multiplayer", "Plongée", "classique"
+    )
+    return plongee_manager.room_state(room, req.player_id)
+
+
+@app.post("/api/plongee/room/guess")
+async def guess_plongee_room(req: PlongeeRoomGuessRequest):
+    try:
+        room = plongee_manager.guess_room(req.room_id, req.player_id, req.answer)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return plongee_manager.room_state(room, req.player_id)
+
+
+@app.post("/api/plongee/room/next")
+async def next_plongee_room(req: PlongeeRoomRequest):
+    try:
+        room = plongee_manager.next_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_plongee_room_result(room)
+    return plongee_manager.room_state(room, req.player_id)
+
+
+@app.get("/api/plongee/room/{room_id}")
+async def get_plongee_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = plongee_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return plongee_manager.room_state(room, player_id)

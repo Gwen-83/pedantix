@@ -11,6 +11,7 @@
       const requestedGame = params.get('game');
       const legacyGamePath = {
         pedantix: '/games/pedantix/',
+        plongee: '/games/plongee/',
         motus: '/games/motus/',
         cemantix: '/games/cemantix/',
         chiffrantix: '/games/chiffrantix/',
@@ -75,7 +76,7 @@
             <h2 id="store-library-title">La collection</h2>
             <p>Choisissez une tuile pour ouvrir le jeu.</p>
           </div>
-          <span class="store-game-count">8 jeux · 8 disponibles</span>
+          <span class="store-game-count">9 jeux · 9 disponibles</span>
         </div>
 
         <div class="store-game-grid">
@@ -153,6 +154,15 @@
             <span class="store-game-title">GeoGuessr</span>
             <span class="store-game-description">Placez les villes sur la carte ou explorez des photos de rue navigables.</span>
             <span class="store-game-tags"><span>Géographie</span><span>Solo & multijoueur</span></span>
+          </span>
+          <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
+        </a>
+        <a class="store-game-card store-game-card-available" href="/games/plongee/">
+          <span class="store-game-icon" aria-hidden="true">🌊</span>
+          <span class="store-game-info">
+            <span class="store-game-title">Plongée</span>
+            <span class="store-game-description">Répondez à sept questions ouvertes : les réponses rares vous font descendre plus profond.</span>
+            <span class="store-game-tags"><span>Culture & rareté</span><span>Solo & multijoueur</span></span>
           </span>
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>

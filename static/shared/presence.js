@@ -10,6 +10,7 @@
     geoguessr: 'GeoGuessr',
     undercover: 'Undercover',
     bitoguessr: 'Bitoguessr',
+    plongee: 'Plongée',
     store: 'La ludothèque',
   };
   const gameId = document.documentElement.dataset.presenceGame

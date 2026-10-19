@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr" data-presence-game="plongee">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#102a35">
+  <title>Plongée — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/games/plongee/style.css">
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+</head>
+<body>
+  <main class="plongee-shell">
+    <header class="plongee-header">
+      <a class="plongee-back" href="/">← Ludothèque</a>
+      <p class="plongee-logo"><span aria-hidden="true">◉</span> PLONGÉE</p>
+      <div class="plongee-account">
+        <span id="plongee-player-name"></span>
+        <label class="shared-theme-control" for="shared-theme-select">
+          <span aria-hidden="true">🎨</span><span>Thème</span>
+          <select id="shared-theme-select" aria-label="Thème de l’interface">
+            <option value="dark-colorful">Coloré sombre</option>
+            <option value="midnight">Nuit étoilée</option>
+            <option value="light-colorful">Coloré clair</option>
+            <option value="light-grey">Gris clair</option>
+            <option value="dark-grey">Charbon sombre</option>
+            <option value="parchment">Parchemin</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <section id="plongee-home" class="plongee-panel">
+      <p class="plongee-eyebrow">7 questions · 25 secondes chacune</p>
+      <h1>La réponse la plus rare<br>vous emmène au fond.</h1>
+      <p class="plongee-intro">Répondez librement à sept questions. Chaque réponse vaut des points selon sa rareté : plus elle est inattendue, plus vous plongez profond.</p>
+      <div class="plongee-how">
+        <span><b>01</b><span>Une question ouverte</span></span>
+        <span><b>02</b><span>Une réponse en 25 secondes</span></span>
+        <span><b>03</b><span>Les réponses rares rapportent plus</span></span>
+      </div>
+      <div class="plongee-mode-switch" role="group" aria-label="Mode de jeu">
+        <button type="button" class="active" data-mode="solo" aria-pressed="true">Solo</button>
+        <button type="button" data-mode="multi" aria-pressed="false">Multijoueur</button>
+      </div>
+      <div id="plongee-solo-actions" class="plongee-home-actions">
+        <button type="button" id="plongee-solo-start" class="plongee-primary">Commencer la plongée <span>→</span></button>
+        <button type="button" id="plongee-solo-resume" class="plongee-secondary" hidden>Reprendre ma partie</button>
+      </div>
+      <div id="plongee-multi-actions" class="plongee-multi-actions" hidden>
+        <button type="button" id="plongee-room-create" class="plongee-primary">Créer un salon <span>→</span></button>
+        <form id="plongee-room-join-form" class="plongee-join-form">
+          <label class="sr-only" for="plongee-room-code">Code du salon</label>
+          <input id="plongee-room-code" maxlength="5" autocomplete="off" placeholder="CODE" aria-label="Code du salon">
+          <button type="submit" class="plongee-secondary">Rejoindre</button>
+        </form>
+        <div class="plongee-room-list">
+          <div class="plongee-room-list-heading"><strong>Salons en attente</strong><button id="plongee-room-refresh" type="button">Actualiser</button></div>
+          <div id="plongee-room-directory" aria-live="polite">Chargement…</div>
+        </div>
+      </div>
+      <p class="plongee-rules"><strong>Comment sont jugées les réponses ?</strong> Toute réponse textuelle non vide (80 caractères maximum) est acceptée. Les accents, la casse et la ponctuation sont ignorés ; les variantes connues partagent le même barème. Les niveaux de rareté sur 100 sont indicatifs, pas des statistiques d’audience. Une réponse absente du barème reçoit la valeur neutre (50/100), pas un bonus arbitraire. En multijoueur, une réponse partagée coûte 15 points par personne supplémentaire.</p>
+      <p id="plongee-home-error" class="plongee-error" role="alert" hidden></p>
+    </section>
+
+    <section id="plongee-game" class="plongee-panel" hidden>
+      <div class="plongee-game-top">
+        <div><p id="plongee-game-mode" class="plongee-eyebrow"></p><h1 id="plongee-round-label"></h1></div>
+        <button id="plongee-exit" class="plongee-secondary" type="button">Quitter</button>
+      </div>
+      <div id="plongee-lobby" class="plongee-lobby" hidden>
+        <p class="plongee-eyebrow">Salon multijoueur</p>
+        <h2>Prêts à plonger ?</h2>
+        <p>Partagez le code et attendez au moins un autre joueur.</p>
+        <div class="plongee-code-row"><code id="plongee-invite-code"></code><button id="plongee-copy-link" class="plongee-secondary" type="button">Copier le lien</button></div>
+        <ul id="plongee-player-list"></ul>
+        <p id="plongee-lobby-status" aria-live="polite"></p>
+        <button id="plongee-start-room" class="plongee-primary" type="button" hidden>Démarrer la partie →</button>
+      </div>
+      <div id="plongee-round" hidden>
+        <div class="plongee-stats">
+          <div><span>PROFONDEUR</span><strong id="plongee-depth">0 m</strong></div>
+          <div class="plongee-meter"><span id="plongee-depth-bar"></span></div>
+          <div><span>POINTS</span><strong id="plongee-score">0</strong></div>
+          <div class="plongee-timer"><span id="plongee-timer">25</span><small>s</small></div>
+        </div>
+        <div class="plongee-question-card">
+          <p id="plongee-round-number"></p>
+          <h2 id="plongee-prompt"></h2>
+          <form id="plongee-answer-form" class="plongee-answer-form">
+            <label class="sr-only" for="plongee-answer">Votre réponse</label>
+            <input id="plongee-answer" name="answer" maxlength="160" autocomplete="off" placeholder="Votre réponse…" required>
+            <button type="submit" class="plongee-primary">Valider</button>
+          </form>
+          <p id="plongee-answer-feedback" aria-live="polite"></p>
+        </div>
+        <div id="plongee-results" class="plongee-results" hidden></div>
+        <div id="plongee-scoreboard" class="plongee-scoreboard"></div>
+        <button id="plongee-next" type="button" class="plongee-primary" hidden>Manche suivante →</button>
+      </div>
+      <p id="plongee-game-error" class="plongee-error" role="alert" hidden></p>
+    </section>
+    <footer>Une partie de <a href="/">la ludothèque</a></footer>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
+  <script src="/static/games/plongee/app.js"></script>
+</body>
+</html>
