@@ -121,8 +121,13 @@
   function isWaitingForNextRound() {
     const round = currentRoundResult();
     const signature = roundResultSignature(round);
+    if (!signature) return false;
+    if (gameType === 'room') {
+      return state?.status === 'playing'
+        && state.awaiting_next_round === true
+        && round.round_number === state.round_number;
+    }
     return state?.status === 'playing'
-      && !!signature
       && round.round_number === state.round_number - 1
       && localStorage.getItem(roundResultStorageKey()) !== signature;
   }
@@ -637,9 +642,11 @@
       name.textContent = `${player.name}${player.player_id === state.host_player_id ? ' (hôte)' : ''}`;
       const status = document.createElement('small');
       status.textContent = state.status === 'lobby'
-        ? 'Dans le salon'
+        ? player.ready ? 'Prêt pour démarrer' : 'En attente de confirmation'
         : player.is_spectator
           ? 'Spectateur · rejoindra la prochaine manche'
+        : state.awaiting_next_round
+          ? player.ready ? 'Prêt pour la prochaine manche' : 'En attente de confirmation'
         : player.submitted ? 'Estimation validée' : `${player.total_score.toLocaleString('fr-FR')} points`;
       item.append(name, status);
       return item;
@@ -652,10 +659,16 @@
     const inviteUrl = new URL(window.location.href);
     inviteUrl.search = new URLSearchParams({ room: state.room_id }).toString();
     document.getElementById('geo-lobby-status').textContent =
-      `${state.player_count} joueurs + ${state.spectator_count} spectateurs / ${state.max_players} places · ${state.round_count} manches · ${regionLabel(state.region)}. Il faut au moins deux joueurs pour démarrer.`;
+      `${state.player_count} joueurs + ${state.spectator_count} spectateurs / ${state.max_players} places · ${state.round_count} manches · ${regionLabel(state.region)}. Chaque joueur doit confirmer sa présence avant le lancement.`;
     document.getElementById('geo-invite-code').textContent = `Code : ${state.room_id}`;
     document.getElementById('geo-copy-invite').dataset.inviteUrl = inviteUrl.href;
     renderPlayers();
+    const readyButton = document.getElementById('geo-lobby-ready');
+    readyButton.hidden = !!state.player?.is_spectator;
+    readyButton.disabled = roomBusy;
+    readyButton.textContent = state.player?.ready
+      ? 'Présence confirmée · annuler'
+      : 'Confirmer ma présence';
     const startButton = document.getElementById('geo-start-game');
     startButton.hidden = playerId !== state.host_player_id;
     startButton.disabled = !state.can_start || roomBusy;
@@ -674,8 +687,6 @@
     if (!round?.target) return;
     const signature = roundResultSignature(round);
     const waitingForNextRound = isWaitingForNextRound();
-    const isSpectator = isRoom && !!state.player?.is_spectator;
-    if (signature === lastResultSignature && waitingForNextRound) return;
     if (!waitingForNextRound && state?.status !== 'finished') {
       roundResult.hidden = true;
       roundResult.replaceChildren();
@@ -715,15 +726,17 @@
       const continueButton = document.createElement('button');
       continueButton.type = 'button';
       continueButton.className = 'geo-primary-button';
-      continueButton.textContent = 'Ville suivante';
-      continueButton.addEventListener('click', () => {
-        localStorage.setItem(roundResultStorageKey(), signature);
-        clearMapMarkers();
-        const view = mapView(state.region);
-        map.setView(view.center, view.zoom);
-        renderView();
-      });
+      continueButton.textContent = state.player?.ready
+        ? `Prêt · en attente des autres (${state.ready_count}/${state.player_count})`
+        : `Confirmer pour la manche suivante (${state.ready_count}/${state.player_count})`;
+      continueButton.disabled = !!state.player?.ready || roomBusy;
+      continueButton.addEventListener('click', () => confirmRoomReady(true));
       roundResult.append(continueButton);
+      const waiting = document.createElement('p');
+      waiting.textContent = state.all_ready
+        ? 'Tout le monde est prêt, la manche suivante démarre…'
+        : `La manche suivante démarre quand les ${state.player_count} joueurs auront confirmé.`;
+      roundResult.append(waiting);
     }
   }
 
@@ -1066,6 +1079,28 @@
     }
   }
 
+  async function confirmRoomReady(ready = true) {
+    if (!state || gameType !== 'room' || roomBusy) return;
+    roomBusy = true;
+    hideError(playError);
+    try {
+      state = await post('/api/geoguessr/room/ready', {
+        room_id: state.room_id,
+        player_id: playerId,
+        player_name: playerName,
+        ready,
+      });
+      if (state.status === 'lobby') renderLobby();
+      else renderView();
+    } catch (error) {
+      showError(playError, error.message);
+    } finally {
+      roomBusy = false;
+      if (state?.status === 'lobby') renderLobby();
+      else if (state?.awaiting_next_round) renderView();
+    }
+  }
+
   async function restartRoom() {
     if (!state || roomBusy) return;
     roomBusy = true;
@@ -1124,6 +1159,9 @@
     }
   });
   document.getElementById('geo-start-game').addEventListener('click', startRoom);
+  document.getElementById('geo-lobby-ready').addEventListener('click', () => {
+  confirmRoomReady(!state?.player?.ready);
+  });
   document.getElementById('geo-submit-guess').addEventListener('click', submitGuess);
   document.getElementById('geo-home-button').addEventListener('click', () => showHome());
   document.getElementById('geo-copy-invite').addEventListener('click', async (event) => {

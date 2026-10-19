@@ -479,6 +479,9 @@ class GeoGuessrRoomPlayerRequest(BaseModel):
     player_id: str
     player_name: str
 
+class GeoGuessrRoomReadyRequest(GeoGuessrRoomPlayerRequest):
+    ready: bool = True
+
 class GeoGuessrRoomCreateRequest(GeoGuessrPlayerRequest):
     round_count: int = Field(default=5, ge=1, le=20)
 
@@ -2970,6 +2973,19 @@ async def start_geoguessr_room(req: GeoGuessrRoomPlayerRequest):
         "GeoGuessr — Photos immersives" if room.variant == "panorama" else "GeoGuessr",
         room.region,
     )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/geoguessr/room/ready")
+async def confirm_geoguessr_room_ready(req: GeoGuessrRoomReadyRequest):
+    try:
+        room = geoguessr_manager.confirm_room_ready(
+            req.room_id, req.player_id, req.ready
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return room.to_dict(req.player_id)
 
 

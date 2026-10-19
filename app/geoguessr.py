@@ -726,6 +726,7 @@ class GeoGuessrRoomPlayer:
     results: List[Dict[str, Any]] = field(default_factory=list)
     connected: bool = True
     is_spectator: bool = False
+    ready: bool = False
 
     def public_state(self) -> Dict[str, Any]:
         return {
@@ -733,6 +734,7 @@ class GeoGuessrRoomPlayer:
             "name": self.name,
             "total_score": self.total_score,
             "is_spectator": self.is_spectator,
+            "ready": self.ready,
             "submitted": self.guess is not None,
             "guess": (
                 {"latitude": self.guess["latitude"], "longitude": self.guess["longitude"]}
@@ -757,6 +759,7 @@ class GeoGuessrRoom:
     status: str = "lobby"
     round_index: int = 0
     last_round: Optional[Dict[str, Any]] = None
+    awaiting_next_round: bool = False
     round_deadline: Optional[float] = None
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
@@ -788,9 +791,22 @@ class GeoGuessrRoom:
             "round_deadline": self.round_deadline,
             "round_time_limit_seconds": ROOM_ROUND_TIME_LIMIT_SECONDS,
             "max_players": MAX_PLAYERS,
+            "awaiting_next_round": self.awaiting_next_round,
+            "ready_count": sum(
+                item.ready for item in self.players.values() if not item.is_spectator
+            ),
+            "all_ready": (
+                sum(not item.is_spectator for item in self.players.values()) >= 2
+                and all(
+                    item.ready for item in self.players.values() if not item.is_spectator
+                )
+            ),
             "can_start": (
                 self.status == "lobby"
                 and sum(not item.is_spectator for item in self.players.values()) >= 2
+                and all(
+                    item.ready for item in self.players.values() if not item.is_spectator
+                )
             ),
             "player_count": sum(not item.is_spectator for item in self.players.values()),
             "spectator_count": sum(item.is_spectator for item in self.players.values()),
@@ -1159,6 +1175,9 @@ class GeoGuessrManager:
                 return room
             if len(room.players) >= MAX_PLAYERS:
                 raise ValueError("Ce salon est complet.")
+            if room.status == "lobby":
+                for player in room.players.values():
+                    player.ready = False
             room.players[player_id] = GeoGuessrRoomPlayer(
                 player_id,
                 player_name.strip()[:24],
@@ -1175,6 +1194,10 @@ class GeoGuessrManager:
                 raise ValueError("Cette partie a déjà commencé.")
             if sum(not player.is_spectator for player in room.players.values()) < 2:
                 raise ValueError("Il faut au moins deux joueurs pour démarrer.")
+            if not all(
+                player.ready for player in room.players.values() if not player.is_spectator
+            ):
+                raise ValueError("Tous les joueurs doivent confirmer qu'ils sont prêts.")
             room.cities, room.image_ids, room.panorama_provider = (
                 self._prepare_room_panorama_views(
                     room.region,
@@ -1188,6 +1211,8 @@ class GeoGuessrManager:
             room.status = "playing"
             room.round_deadline = None
             room.started_at = time.time()
+            for player in room.players.values():
+                player.ready = False
             return room
 
     def restart_room(self, room_id: str, player_id: str) -> GeoGuessrRoom:
@@ -1223,6 +1248,7 @@ class GeoGuessrManager:
             room.google_viewed_rounds.clear()
             room.round_index = 0
             room.last_round = None
+            room.awaiting_next_round = False
             room.round_deadline = None
             room.status = "playing"
             room.started_at = time.time()
@@ -1231,6 +1257,7 @@ class GeoGuessrManager:
             for player in room.players.values():
                 player.total_score = 0
                 player.guess = None
+                player.ready = False
                 player.results.clear()
                 player.is_spectator = False
             return room
@@ -1318,6 +1345,8 @@ class GeoGuessrManager:
             ):
                 self._finish_room_round(room)
                 return room, room.last_round
+            if room.awaiting_next_round:
+                raise ValueError("Confirmez d'abord la manche précédente.")
             if room.status != "playing":
                 raise ValueError("La partie n'accepte pas de réponse pour le moment.")
             if player.guess is not None:
@@ -1340,6 +1369,35 @@ class GeoGuessrManager:
             if room.round_deadline is not None and time.time() >= room.round_deadline:
                 self._finish_room_round(room)
             return room
+
+    def confirm_room_ready(
+        self, room_id: str, player_id: str, ready: bool = True,
+    ) -> GeoGuessrRoom:
+        with self.lock:
+            room = self._get_room(room_id, player_id)
+            player = room.players[player_id]
+            if player.is_spectator:
+                raise ValueError("Les spectateurs ne peuvent pas confirmer leur préparation.")
+            if room.status == "lobby":
+                player.ready = ready
+                return room
+            if room.status != "playing" or not room.awaiting_next_round:
+                raise ValueError("Aucune confirmation de manche n'est attendue.")
+
+            player.ready = ready
+            active_players = [item for item in room.players.values() if not item.is_spectator]
+            if all(item.ready for item in active_players):
+                self._advance_room_round(room)
+            return room
+
+    def _advance_room_round(self, room: GeoGuessrRoom) -> None:
+        room.round_index += 1
+        room.awaiting_next_round = False
+        room.last_round = None
+        for player in room.players.values():
+            player.guess = None
+            player.ready = False
+            player.is_spectator = False
 
     def _finish_room_round(self, room: GeoGuessrRoom) -> None:
         guesses = []
@@ -1364,14 +1422,14 @@ class GeoGuessrManager:
             "guesses": guesses,
             "missed_players": missed_players,
         }
-        room.round_index += 1
         room.round_deadline = None
-        if room.round_index == room.round_count:
+        for player in room.players.values():
+            player.ready = False
+        if room.round_index + 1 == room.round_count:
+            room.round_index += 1
             room.status = "finished"
         else:
-            for player in room.players.values():
-                player.guess = None
-                player.is_spectator = False
+            room.awaiting_next_round = True
 
     def list_rooms(self, player_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self.lock:

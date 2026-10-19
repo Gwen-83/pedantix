@@ -3,7 +3,10 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
+from fastapi.testclient import TestClient
+
 import app.database as database
+from app import main as main_app
 from app.geoguessr import (
     CITY_ADDITIONS,
     CITY_LOCATIONS,
@@ -17,11 +20,28 @@ from app.geoguessr import (
     distance_km,
     score_distance_km,
 )
+from app.main import app
 
 
 class GeoGuessrTests(unittest.TestCase):
     def setUp(self):
         self.manager = GeoGuessrManager()
+
+    def _ready_and_start(self, manager, room):
+        for player_id, player in room.players.items():
+            if not player.is_spectator:
+                manager.confirm_room_ready(room.room_id, player_id)
+        manager.start_room(room.room_id, room.host_player_id)
+
+    def _confirm_next_round(self, manager, room):
+        active_players = [
+            player_id for player_id, player in room.players.items()
+            if not player.is_spectator
+        ]
+        for player_id in active_players[:-1]:
+            manager.confirm_room_ready(room.room_id, player_id)
+            self.assertTrue(room.awaiting_next_round)
+        manager.confirm_room_ready(room.room_id, active_players[-1])
 
     def test_distance_scoring_rewards_closer_guesses(self):
         self.assertEqual(distance_km(48.8566, 2.3522, 48.8566, 2.3522), 0)
@@ -119,28 +139,38 @@ class GeoGuessrTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "deux joueurs"):
             self.manager.start_room(room.room_id, "host")
         self.manager.join_room(room.room_id, "guest", "Invité")
+        self.assertFalse(room.to_dict("host")["can_start"])
+        with self.assertRaisesRegex(ValueError, "prêts"):
+            self.manager.start_room(room.room_id, "host")
+        self.manager.confirm_room_ready(room.room_id, "host")
+        self.assertFalse(room.to_dict("host")["can_start"])
+        self.manager.confirm_room_ready(room.room_id, "guest")
+        self.assertTrue(room.to_dict("host")["can_start"])
         self.manager.start_room(room.room_id, "host")
 
-        previous_round_number = 0
-        for _ in range(ROUND_COUNT):
+        for round_number in range(ROUND_COUNT):
             target = room.target
             room, partial_result = self.manager.guess_room(
                 room.room_id, "host", target[3], target[4]
             )
             self.assertIsNone(partial_result)
-            last_round = room.to_dict("host")["last_round"]
-            self.assertEqual(
-                last_round["round_number"] if last_round else 0,
-                previous_round_number,
-            )
+            self.assertIsNone(room.to_dict("host")["last_round"])
             self.assertTrue(room.to_dict("host")["player"]["submitted"])
             room, completed_result = self.manager.guess_room(
                 room.room_id, "guest", target[3], target[4]
             )
             self.assertEqual(completed_result["target"]["city"], target[0])
+            self.assertEqual(completed_result["round_number"], round_number + 1)
             self.assertEqual(len(completed_result["guesses"]), 2)
             self.assertIsNone(room.round_deadline)
-            previous_round_number += 1
+            self.assertEqual(room.awaiting_next_round, round_number < ROUND_COUNT - 1)
+            if round_number < ROUND_COUNT - 1:
+                self.assertEqual(room.round_index, round_number)
+                with self.assertRaisesRegex(ValueError, "manche précédente"):
+                    self.manager.guess_room(
+                        room.room_id, "host", target[3], target[4]
+                    )
+                self._confirm_next_round(self.manager, room)
 
         self.assertEqual(room.status, "finished")
         self.assertEqual(room.players["host"].total_score, ROUND_COUNT * MAX_SCORE_PER_ROUND)
@@ -148,10 +178,74 @@ class GeoGuessrTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "n'accepte pas"):
             self.manager.guess_room(room.room_id, "host", 0, 0)
 
+    def test_multiplayer_readiness_and_round_confirmation_api(self):
+        with (
+            patch.object(main_app, "geoguessr_manager", self.manager),
+            patch.object(main_app, "record_multigame_session_start"),
+        ):
+            client = TestClient(app)
+            created = client.post("/api/geoguessr/room/create", json={
+                "player_id": "host",
+                "player_name": "Hôte",
+                "region": "france",
+                "variant": "cities",
+                "round_count": 2,
+            })
+            self.assertEqual(created.status_code, 200)
+            room_id = created.json()["room_id"]
+            joined = client.post("/api/geoguessr/room/join", json={
+                "room_id": room_id,
+                "player_id": "guest",
+                "player_name": "Invité",
+            })
+            self.assertEqual(joined.status_code, 200)
+
+            start = client.post("/api/geoguessr/room/start", json={
+                "room_id": room_id, "player_id": "host", "player_name": "Hôte",
+            })
+            self.assertEqual(start.status_code, 400)
+
+            ready_path = "/api/geoguessr/room/ready"
+            for player_id, player_name in (("host", "Hôte"), ("guest", "Invité")):
+                ready = client.post(ready_path, json={
+                    "room_id": room_id, "player_id": player_id,
+                    "player_name": player_name,
+                })
+                self.assertEqual(ready.status_code, 200)
+            started = client.post("/api/geoguessr/room/start", json={
+                "room_id": room_id, "player_id": "host", "player_name": "Hôte",
+            })
+            self.assertEqual(started.status_code, 200)
+
+            target = self.manager.rooms[room_id].target
+            for player_id, player_name in (("host", "Hôte"), ("guest", "Invité")):
+                guess = client.post("/api/geoguessr/room/guess", json={
+                    "room_id": room_id,
+                    "player_id": player_id,
+                    "player_name": player_name,
+                    "latitude": target[3],
+                    "longitude": target[4],
+                })
+                self.assertEqual(guess.status_code, 200)
+            result = guess.json()
+            self.assertTrue(result["awaiting_next_round"])
+            self.assertEqual(len(result["last_round"]["guesses"]), 2)
+            self.assertTrue(all("distance_km" in item for item in result["last_round"]["guesses"]))
+
+            first_ready = client.post(ready_path, json={
+                "room_id": room_id, "player_id": "host", "player_name": "Hôte",
+            })
+            self.assertTrue(first_ready.json()["awaiting_next_round"])
+            second_ready = client.post(ready_path, json={
+                "room_id": room_id, "player_id": "guest", "player_name": "Invité",
+            })
+            self.assertFalse(second_ready.json()["awaiting_next_round"])
+            self.assertEqual(second_ready.json()["round_number"], 2)
+
     def test_joining_during_a_round_spectates_until_the_next_round(self):
         room = self.manager.create_room("host", "Hôte", "france", round_count=2)
         self.manager.join_room(room.room_id, "guest", "Invité")
-        self.manager.start_room(room.room_id, "host")
+        self._ready_and_start(self.manager, room)
         spectator = self.manager.join_room(room.room_id, "viewer", "Observateur")
 
         state = spectator.to_dict("viewer")
@@ -165,6 +259,9 @@ class GeoGuessrTests(unittest.TestCase):
         for player_id in ("host", "guest"):
             self.manager.guess_room(room.room_id, player_id, target[3], target[4])
 
+        self.assertTrue(room.awaiting_next_round)
+        self.assertTrue(room.players["viewer"].is_spectator)
+        self._confirm_next_round(self.manager, room)
         self.assertFalse(room.players["viewer"].is_spectator)
         self.assertEqual(room.round_index, 1)
         self.assertIsNone(room.players["viewer"].guess)
@@ -180,7 +277,7 @@ class GeoGuessrTests(unittest.TestCase):
     def test_spectator_in_final_round_is_promoted_when_host_restarts(self):
         room = self.manager.create_room("host", "Hôte", "france", round_count=1)
         self.manager.join_room(room.room_id, "guest", "Invité")
-        self.manager.start_room(room.room_id, "host")
+        self._ready_and_start(self.manager, room)
         self.manager.join_room(room.room_id, "viewer", "Observateur")
         target = room.target
         for player_id in ("host", "guest"):
@@ -210,7 +307,7 @@ class GeoGuessrTests(unittest.TestCase):
         with patch("app.geoguessr.time.time", return_value=100):
             room = self.manager.create_room("host", "Hôte", "france", round_count=2)
             self.manager.join_room(room.room_id, "guest", "Invité")
-            self.manager.start_room(room.room_id, "host")
+            self._ready_and_start(self.manager, room)
             target = room.target
             room, result = self.manager.guess_room(
                 room.room_id, "host", target[3], target[4]
@@ -228,24 +325,29 @@ class GeoGuessrTests(unittest.TestCase):
 
         with patch("app.geoguessr.time.time", return_value=121):
             self.manager.get_room(room.room_id, "guest")
-        self.assertEqual(room.round_index, 1)
+        self.assertEqual(room.round_index, 0)
+        self.assertTrue(room.awaiting_next_round)
         self.assertEqual(room.status, "playing")
         self.assertIsNone(room.round_deadline)
         self.assertEqual(room.last_round["missed_players"], ["Invité"])
         self.assertEqual([guess["name"] for guess in room.last_round["guesses"]], ["Hôte"])
         self.assertEqual(room.players["host"].results[0]["score"], MAX_SCORE_PER_ROUND)
         self.assertEqual(room.players["guest"].total_score, 0)
+        self._confirm_next_round(self.manager, room)
+        self.assertEqual(room.round_index, 1)
 
     def test_finished_room_can_be_replayed_by_host_with_a_fresh_scoreboard(self):
         room = self.manager.create_room("host", "Hôte", "france")
         self.manager.join_room(room.room_id, "guest", "Invité")
-        self.manager.start_room(room.room_id, "host")
-        for _ in range(ROUND_COUNT):
+        self._ready_and_start(self.manager, room)
+        for round_index in range(ROUND_COUNT):
             target = room.target
             for player_id in ("host", "guest"):
                 room, _ = self.manager.guess_room(
                     room.room_id, player_id, target[3], target[4]
                 )
+            if round_index < ROUND_COUNT - 1:
+                self._confirm_next_round(self.manager, room)
 
         self.assertEqual(room.status, "finished")
         with self.assertRaises(PermissionError):
@@ -336,7 +438,7 @@ class GeoGuessrTests(unittest.TestCase):
         self.assertEqual(room.to_dict("host")["variant"], "panorama")
         self.assertIsNone(room.to_dict("host")["image_id"])
         manager.join_room(room.room_id, "guest", "Invité")
-        manager.start_room(room.room_id, "host")
+        self._ready_and_start(manager, room)
         self.assertIn(room.to_dict("host")["image_id"], room.image_ids)
         self.assertEqual(room.to_dict("host")["image_id"], room.to_dict("guest")["image_id"])
 
@@ -459,7 +561,7 @@ class GeoGuessrTests(unittest.TestCase):
         ]
         room = manager.create_room("host", "Hôte", "france", "panorama")
         manager.join_room(room.room_id, "guest", "Invité")
-        manager.start_room(room.room_id, "host")
+        self._ready_and_start(manager, room)
 
         self.assertEqual(
             manager.google_usage_reserver.call_args.args,
