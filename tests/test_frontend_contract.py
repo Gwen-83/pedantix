@@ -1,3 +1,4 @@
+import ast
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -217,6 +218,41 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Top 5 des meilleurs scores sur une partie.", page)
         self.assertIn("request('/api/geoguessr/leaderboard')", source)
         self.assertIn("refreshLeaderboardAfterFinishedGame();", source)
+
+    def test_guess_routes_run_synchronous_game_processing_off_the_event_loop(self):
+        source = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+        tree = ast.parse(source)
+        routes = {
+            node.name: node
+            for node in tree.body
+            if isinstance(node, ast.AsyncFunctionDef)
+        }
+        guess_routes = (
+            "guess_motus_solo",
+            "guess_motus_room",
+            "undercover_guess",
+            "guess_cemantix_solo",
+            "guess_cemantix_room",
+            "guess_chiffrantix_solo",
+            "guess_chiffrantix_room",
+            "guess_geoguessr_solo",
+            "guess_geoguessr_room",
+            "guess_bitoguessr_solo",
+            "guess_bitoguessr_room",
+            "guess_plongee_solo",
+            "guess_plongee_room",
+        )
+
+        for route_name in guess_routes:
+            with self.subTest(route=route_name):
+                calls = [
+                    node
+                    for node in ast.walk(routes[route_name])
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "to_thread"
+                ]
+                self.assertTrue(calls, f"{route_name} must offload synchronous game processing")
 
     def test_geoguessr_maps_use_keyless_tiles_and_city_map_stays_within_native_zoom(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"

@@ -493,6 +493,7 @@ def strip_prefix(w: str) -> str:
             return w[len(p):]
     return w
 
+@functools.lru_cache(maxsize=32768)
 def clean_guess(word: str) -> str:
     """Cleans a guess word, removing quotes, punctuation and trailing/leading French elisions."""
     if not word:

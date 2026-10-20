@@ -1,5 +1,9 @@
+import threading
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from app import main
 from app.cemantix import (
     CemantixManager,
     _visible_hint_count,
@@ -236,6 +240,33 @@ class CemantixTests(unittest.TestCase):
         self.assertFalse(state["player"]["is_spectator"])
         self.assertEqual(state["player_count"], 3)
         self.assertFalse(state["restart_available"])
+
+
+class CemantixRouteAsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_guess_scoring_runs_in_a_worker_thread(self):
+        caller_thread = threading.get_ident()
+        processing_threads = []
+        processing_args = []
+        game = SimpleNamespace(status="playing", to_dict=lambda: {"status": "playing"})
+
+        def process_guess(game_id, player_id, guess):
+            processing_threads.append(threading.get_ident())
+            processing_args.append((game_id, player_id))
+            return game, {"word": guess, "score": 20}
+
+        request = main.CemantixSoloGuessRequest(
+            player_id="test-player",
+            player_name="Test",
+            game_id="test-game",
+            guess="chien",
+        )
+        with patch.object(main.cemantix_manager, "guess_solo", side_effect=process_guess):
+            response = await main.guess_cemantix_solo(request)
+
+        self.assertNotEqual(processing_threads, [caller_thread])
+        self.assertEqual(processing_args, [("test-game", "test-player")])
+        self.assertEqual(response["result"]["word"], "chien")
+        self.assertEqual(response["status"], "playing")
 
 
 if __name__ == "__main__":

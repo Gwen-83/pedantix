@@ -2055,7 +2055,9 @@ async def get_motus_solo(game_id: str, player_id: str = Query(...)):
 @app.post("/api/motus/solo/guess")
 async def guess_motus_solo(req: MotusSoloGuessRequest):
     try:
-        game, result = motus_manager.guess_solo(req.game_id, req.player_id, req.guess)
+        game, result = await asyncio.to_thread(
+            motus_manager.guess_solo, req.game_id, req.player_id, req.guess
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2149,7 +2151,9 @@ async def restart_motus_room(req: MotusRoomPlayerRequest):
 @app.post("/api/motus/room/guess")
 async def guess_motus_room(req: MotusRoomGuessRequest):
     try:
-        room, result = motus_manager.guess_room(req.room_id, req.player_id, req.guess)
+        room, result = await asyncio.to_thread(
+            motus_manager.guess_room, req.room_id, req.player_id, req.guess
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2317,7 +2321,9 @@ async def undercover_vote(req: UndercoverVoteRequest):
 @app.post("/api/undercover/room/guess")
 async def undercover_guess(req: UndercoverGuessRequest):
     try:
-        room = undercover_manager.guess_word(req.room_id, req.player_id, req.guess)
+        room = await asyncio.to_thread(
+            undercover_manager.guess_word, req.room_id, req.player_id, req.guess
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2380,7 +2386,9 @@ async def get_cemantix_solo(game_id: str, player_id: str = Query(...)):
 @app.post("/api/cemantix/solo/guess")
 async def guess_cemantix_solo(req: CemantixSoloGuessRequest):
     try:
-        game, result = cemantix_manager.guess_solo(req.game_id, req.player_id, req.guess)
+        game, result = await asyncio.to_thread(
+            cemantix_manager.guess_solo, req.game_id, req.player_id, req.guess
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2532,8 +2540,11 @@ def _record_cemantix_room_results(room) -> None:
 @app.post("/api/cemantix/room/guess")
 async def guess_cemantix_room(req: CemantixRoomGuessRequest):
     try:
-        room, result = cemantix_manager.submit_room_guess(
-            req.room_id, req.player_id, req.guess
+        room, result = await asyncio.to_thread(
+            cemantix_manager.submit_room_guess,
+            req.room_id,
+            req.player_id,
+            req.guess,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -2591,8 +2602,11 @@ async def get_chiffrantix_solo(game_id: str, player_id: str = Query(...)):
 @app.post("/api/chiffrantix/solo/guess")
 async def guess_chiffrantix_solo(req: ChiffrantixSoloGuessRequest):
     try:
-        game, result = chiffrantix_manager.guess_solo(
-            req.game_id, req.player_id, req.guess
+        game, result = await asyncio.to_thread(
+            chiffrantix_manager.guess_solo,
+            req.game_id,
+            req.player_id,
+            req.guess,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -2733,8 +2747,11 @@ def _record_chiffrantix_room_results(room) -> None:
 @app.post("/api/chiffrantix/room/guess")
 async def guess_chiffrantix_room(req: ChiffrantixRoomGuessRequest):
     try:
-        room, result = chiffrantix_manager.guess_room(
-            req.room_id, req.player_id, req.guess
+        room, result = await asyncio.to_thread(
+            chiffrantix_manager.guess_room,
+            req.room_id,
+            req.player_id,
+            req.guess,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -3149,8 +3166,12 @@ async def next_geoguessr_solo_round(req: GeoGuessrSoloNextRequest):
 @app.post("/api/geoguessr/solo/guess")
 async def guess_geoguessr_solo(req: GeoGuessrSoloGuessRequest):
     try:
-        game, result = geoguessr_manager.guess_solo(
-            req.game_id, req.player_id, req.latitude, req.longitude
+        game, result = await asyncio.to_thread(
+            geoguessr_manager.guess_solo,
+            req.game_id,
+            req.player_id,
+            req.latitude,
+            req.longitude,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -3261,8 +3282,12 @@ async def restart_geoguessr_room(req: GeoGuessrRoomPlayerRequest):
 @app.post("/api/geoguessr/room/guess")
 async def guess_geoguessr_room(req: GeoGuessrRoomGuessRequest):
     try:
-        room, result = geoguessr_manager.guess_room(
-            req.room_id, req.player_id, req.latitude, req.longitude
+        room, result = await asyncio.to_thread(
+            geoguessr_manager.guess_room,
+            req.room_id,
+            req.player_id,
+            req.latitude,
+            req.longitude,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -3659,8 +3684,11 @@ async def get_bitoguessr_solo(game_id: str, request: Request, player_id: str = Q
 async def guess_bitoguessr_solo(req: BitoguessrSoloGuessRequest, request: Request):
     _require_bitoguessr_access(request, req.player_id)
     try:
-        game, result = bitoguessr_manager.guess_solo(
-            req.game_id, req.player_id, req.guess
+        game, result = await asyncio.to_thread(
+            bitoguessr_manager.guess_solo,
+            req.game_id,
+            req.player_id,
+            req.guess,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -3739,8 +3767,11 @@ async def start_bitoguessr_room(req: BitoguessrRoomPlayerRequest, request: Reque
 async def guess_bitoguessr_room(req: BitoguessrRoomGuessRequest, request: Request):
     _require_bitoguessr_access(request, req.player_id)
     try:
-        room, result = bitoguessr_manager.guess_room(
-            req.room_id, req.player_id, req.guess
+        room, result = await asyncio.to_thread(
+            bitoguessr_manager.guess_room,
+            req.room_id,
+            req.player_id,
+            req.guess,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -4284,7 +4315,9 @@ async def get_plongee_solo(game_id: str, player_id: str = Query(...)):
 @app.post("/api/plongee/solo/guess")
 async def guess_plongee_solo(req: PlongeeSoloGuessRequest):
     try:
-        game, result = plongee_manager.guess_solo(req.game_id, req.player_id, req.answer)
+        game, result = await asyncio.to_thread(
+            plongee_manager.guess_solo, req.game_id, req.player_id, req.answer
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -4353,7 +4386,9 @@ async def start_plongee_room(req: PlongeeRoomRequest):
 @app.post("/api/plongee/room/guess")
 async def guess_plongee_room(req: PlongeeRoomGuessRequest):
     try:
-        room = plongee_manager.guess_room(req.room_id, req.player_id, req.answer)
+        room = await asyncio.to_thread(
+            plongee_manager.guess_room, req.room_id, req.player_id, req.answer
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
