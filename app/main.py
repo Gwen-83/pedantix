@@ -2781,13 +2781,6 @@ async def new_battleship_solo(req: BattleshipPlayerRequest):
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    record_multigame_session_start(
-        f"battleship:{room.room_id}:{room.match_number}",
-        "battleship",
-        "solo",
-        "Bataille navale contre l’IA",
-        room.bot_difficulty,
-    )
     return room.to_dict(req.player_id)
 
 
@@ -3822,9 +3815,9 @@ async def start_battleship_room(req: BattleshipRoomPlayerRequest):
     record_multigame_session_start(
         f"battleship:{room.room_id}:{room.match_number}",
         "battleship",
-        "multiplayer",
-        "Bataille navale",
-        room.difficulty,
+        "solo" if room.is_solo else "multiplayer",
+        "Bataille navale contre l’IA" if room.is_solo else "Bataille navale",
+        room.bot_difficulty if room.is_solo else room.difficulty,
     )
     return room.to_dict(req.player_id)
 
@@ -3839,14 +3832,6 @@ async def restart_battleship_room(req: BattleshipRoomPlayerRequest):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if room.is_solo:
-        record_multigame_session_start(
-            f"battleship:{room.room_id}:{room.match_number}",
-            "battleship",
-            "solo",
-            "Bataille navale contre l’IA",
-            room.bot_difficulty,
-        )
     return room.to_dict(req.player_id)
 
 

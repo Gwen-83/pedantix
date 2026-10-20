@@ -341,14 +341,21 @@
   function renderLobby() {
     const players = state.players;
     const ownPlayer = myPlayer();
-    document.getElementById('naval-status-label').textContent = 'Salon de préparation';
-    document.getElementById('naval-title').textContent = `Salon ${state.room_id}`;
+    const solo = state.is_solo === true;
+    document.getElementById('naval-status-label').textContent =
+      solo ? 'Préparation de la flotte' : 'Salon de préparation';
+    document.getElementById('naval-title').textContent =
+      solo ? 'Placez vos navires' : `Salon ${state.room_id}`;
     document.getElementById('naval-lobby').hidden = false;
     document.getElementById('naval-battle').hidden = true;
     const activeCount = players.filter((player) => !player.is_spectator).length;
     const spectatorCount = players.length - activeCount;
     document.getElementById('naval-lobby-status').textContent =
-      `${activeCount} joueur${activeCount === 1 ? '' : 's'}${spectatorCount ? ` · ${spectatorCount} observateur${spectatorCount === 1 ? '' : 's'}` : ''} dans le salon. Au moins deux joueurs sont nécessaires.`;
+      solo
+        ? 'Choisissez les positions de vos navires, puis lancez la bataille contre l’amiral.'
+        : `${activeCount} joueur${activeCount === 1 ? '' : 's'}${spectatorCount ? ` · ${spectatorCount} observateur${spectatorCount === 1 ? '' : 's'}` : ''} dans le salon. Au moins deux joueurs sont nécessaires.`;
+    document.querySelector('.naval-invite-row').hidden = solo;
+    document.getElementById('naval-player-list').hidden = solo;
     document.getElementById('naval-invite-code').textContent = `Code : ${state.room_id}`;
     const inviteUrl = new URL(window.location.href);
     inviteUrl.search = new URLSearchParams({ room: state.room_id }).toString();
@@ -369,8 +376,11 @@
 
     const readyButton = document.getElementById('naval-ready-button');
     readyButton.textContent = ownPlayer?.ready ? 'Modifier ma flotte' : 'Confirmer ma flotte';
+    readyButton.hidden = solo;
     readyButton.disabled = roomBusy;
-    document.getElementById('naval-start-button').hidden = playerId !== state.host_player_id;
+    const startButton = document.getElementById('naval-start-button');
+    startButton.hidden = solo ? false : playerId !== state.host_player_id;
+    startButton.textContent = solo ? 'Lancer la bataille' : 'Démarrer la bataille';
     document.getElementById('naval-start-button').disabled = !state.can_start || roomBusy;
     document.getElementById('naval-orientation').textContent =
       `Orientation : ${vertical ? 'verticale' : 'horizontale'}`;
@@ -381,7 +391,9 @@
       ships: fleetForRender(),
       interactive: !ownPlayer?.ready,
     });
-    document.getElementById('naval-setup-help').textContent = ownPlayer?.ready
+    document.getElementById('naval-setup-help').textContent = solo
+      ? 'Sélectionnez un navire, puis une case de départ. Les navires ne peuvent pas se toucher.'
+      : ownPlayer?.ready
       ? 'Votre flotte est confirmée. Vous pourrez la modifier en sélectionnant « Modifier ma flotte ».'
       : 'Sélectionnez un navire, puis une case de départ. Les navires ne peuvent pas se toucher.';
   }

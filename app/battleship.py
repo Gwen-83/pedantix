@@ -218,8 +218,17 @@ class BattleshipRoom:
             "players": [item.public_state() for item in self.players.values()],
             "can_start": (
                 self.status == "lobby"
-                and len(self._active_players()) >= 2
-                and all(item.ready for item in self._active_players())
+                and (
+                    (
+                        self.is_solo
+                        and len(self._active_players()) == 2
+                        and self.host_player_id in self.players
+                    )
+                    or (
+                        len(self._active_players()) >= 2
+                        and all(item.ready for item in self._active_players())
+                    )
+                )
             ),
             "current_player_id": self.current_player_id,
             "target_player_id": target_id,
@@ -348,17 +357,13 @@ class BattleshipManager:
                 bot_difficulty=bot_difficulty,
             )
             player = BattleshipPlayer(
-                player_id, player_name, fleet=_generate_fleet(room.ship_lengths), ready=True
+                player_id, player_name, fleet=_generate_fleet(room.ship_lengths)
             )
             bot = BattleshipPlayer(
                 bot_id, f"Amiral {bot_difficulty}", fleet=_generate_fleet(room.ship_lengths), ready=True
             )
             room.players[player_id] = player
             room.players[bot_id] = bot
-            room.status = "playing"
-            room.current_player_id = player_id
-            room.turn_number = 1
-            room.started_at = time.time()
             self.rooms[room_id] = room
             return room
 
@@ -487,6 +492,8 @@ class BattleshipManager:
             if player_id in room.players:
                 room.players[player_id].name = player_name
                 return room
+            if room.is_solo:
+                raise ValueError("Les parties solo ne peuvent pas être rejointes.")
             room.players[player_id] = BattleshipPlayer(
                 player_id,
                 player_name,
@@ -561,6 +568,18 @@ class BattleshipManager:
                 raise PermissionError("Seul l'hôte peut démarrer la partie.")
             if room.status != "lobby":
                 raise ValueError("Cette partie a déjà démarré.")
+            if room.is_solo:
+                if player_id != room.host_player_id:
+                    raise PermissionError("Seul l'hôte peut démarrer la partie.")
+                if len(room._active_players()) != 2:
+                    raise ValueError("La partie solo n'est pas correctement configurée.")
+                for player in room._active_players():
+                    player.ready = True
+                room.status = "playing"
+                room.current_player_id = room.host_player_id
+                room.turn_number = 1
+                room.started_at = time.time()
+                return room
             active_players = room._active_players()
             if len(active_players) < 2:
                 raise ValueError("Il faut au moins deux joueurs pour démarrer.")
@@ -588,12 +607,11 @@ class BattleshipManager:
             room.match_number += 1
             room.winner_player_id = None
             if room.is_solo:
-                for player in room.players.values():
-                    player.ready = True
-                room.status = "playing"
-                room.current_player_id = room.host_player_id
-                room.turn_number = 1
-                room.started_at = time.time()
+                room.players[room.host_player_id].ready = False
+                room.status = "lobby"
+                room.current_player_id = None
+                room.turn_number = 0
+                room.started_at = None
                 room.stats_recorded = False
                 return room
             room.status = "lobby"

@@ -118,6 +118,17 @@ class FrontendContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('<option value="memories">Memory</option>', response.text)
 
+    def test_memory_solo_does_not_poll_and_uses_card_flip_feedback(self):
+        games_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "memories"
+        script = (games_dir / "app.js").read_text()
+        stylesheet = (games_dir / "style.css").read_text()
+
+        self.assertNotIn("setInterval(refreshSolo", script)
+        self.assertIn("scheduleSoloMismatchRefresh", script)
+        self.assertIn("setInterval(updateSoloClock, 100)", script)
+        self.assertIn("memory-card-reveal", stylesheet)
+        self.assertIn("memory-card-loading", stylesheet)
+
     def test_fermeture_express_is_removed(self):
         response = self.client.get("/")
         self.assertNotIn("Fermeture express", response.text)

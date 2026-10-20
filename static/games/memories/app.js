@@ -23,6 +23,9 @@
   let busy = false;
   let pollingTimer = null;
   let roomPollingInterval = null;
+  let soloMismatchTimer = null;
+  let soloClockTimer = null;
+  let soloStartedAt = null;
   let refreshing = false;
   let roomStateRevision = 0;
 
@@ -72,6 +75,10 @@
     if (pollingTimer) window.clearInterval(pollingTimer);
     pollingTimer = null;
     roomPollingInterval = null;
+    if (soloMismatchTimer) window.clearTimeout(soloMismatchTimer);
+    soloMismatchTimer = null;
+    if (soloClockTimer) window.clearInterval(soloClockTimer);
+    soloClockTimer = null;
     refreshing = false;
   }
 
@@ -88,7 +95,12 @@
     if (mode === 'room') {
       scheduleRoomPolling();
     } else if (mode === 'solo') {
-      pollingTimer = window.setInterval(refreshSolo, 1000);
+      soloStartedAt = Date.now() - (state.elapsed_ms ?? state.elapsed_seconds * 1000);
+      updateSoloClock();
+      if (state.status === 'playing') {
+        soloClockTimer = window.setInterval(updateSoloClock, 100);
+        scheduleSoloMismatchRefresh();
+      }
     }
   }
 
@@ -102,6 +114,32 @@
     return `${formatTime(Math.floor(value / 1000))}.${String(value % 1000).padStart(3, '0')}`;
   }
 
+  function updateSoloClock() {
+    if (!state || mode !== 'solo') return;
+    const elapsed = state.status === 'finished'
+      ? state.elapsed_ms
+      : Math.max(0, Date.now() - soloStartedAt);
+    document.getElementById('memory-time').textContent = formatPreciseTime(elapsed);
+  }
+
+  function scheduleSoloMismatchRefresh(delayOverride = null) {
+    if (soloMismatchTimer) window.clearTimeout(soloMismatchTimer);
+    soloMismatchTimer = null;
+    if (
+      mode !== 'solo'
+      || state?.status !== 'playing'
+      || state.pending_mismatch_until == null
+    ) return;
+    const untilDeadline = Math.max(
+      0,
+      state.pending_mismatch_until * 1000 - Date.now(),
+    );
+    soloMismatchTimer = window.setTimeout(
+      refreshSolo,
+      delayOverride ?? untilDeadline,
+    );
+  }
+
   function setScreen(screen) {
     home.hidden = screen !== 'home';
     setup.hidden = screen !== 'setup';
@@ -111,6 +149,7 @@
   function enterGame(nextMode, nextState) {
     mode = nextMode;
     state = nextState;
+    soloStartedAt = null;
     setScreen('game');
     document.getElementById('memory-mode-label').textContent =
       mode === 'solo' ? 'Concours solo chronométré' : `Multijoueur · salon ${state.room_id}`;
@@ -187,12 +226,18 @@
     }
     state.cards.forEach((card) => {
       const button = board.children[card.index];
-      button.textContent = card.face || '?';
-      button.setAttribute('aria-label', card.face
+      const face = card.face || '?';
+      if (button.textContent !== face) button.textContent = face;
+      const label = card.face
         ? `Carte ${card.index + 1} : ${card.face}${card.matched ? ', paire trouvée' : ''}`
-        : `Carte ${card.index + 1}, face cachée`);
-      button.disabled = locked || card.face != null || card.matched;
+        : `Carte ${card.index + 1}, face cachée`;
+      if (button.getAttribute('aria-label') !== label) {
+        button.setAttribute('aria-label', label);
+      }
+      const disabled = locked || card.face != null || card.matched;
+      if (button.disabled !== disabled) button.disabled = disabled;
       button.classList.toggle('is-hidden', !card.face);
+      button.classList.toggle('is-revealed', card.face != null);
       button.classList.toggle('is-matched', card.matched);
     });
   }
@@ -240,8 +285,10 @@
     document.getElementById('memory-pairs').textContent =
       `${state.matched_pairs} / ${state.total_pairs}`;
     document.getElementById('memory-moves').textContent = String(state.moves);
-    document.getElementById('memory-time').textContent =
-      formatPreciseTime(state.elapsed_ms ?? state.elapsed_seconds * 1000);
+    if (mode === 'solo') updateSoloClock();
+    else {
+      document.getElementById('memory-time').textContent = formatTime(state.elapsed_seconds);
+    }
     const currentTurnBox = document.getElementById('memory-current-turn-box');
     currentTurnBox.hidden = mode !== 'room';
     document.getElementById('memory-current-turn').textContent = state.turn_player_name || '';
@@ -274,9 +321,10 @@
       if (state.status === 'finished') {
         stopPolling();
         refreshSoloLeaderboard();
-      }
+      } else scheduleSoloMismatchRefresh();
     } catch (error) {
       showError('memory-game-error', error);
+      scheduleSoloMismatchRefresh(1000);
     } finally {
       refreshing = false;
     }
@@ -313,6 +361,7 @@
     const requestRevision = ++roomStateRevision;
     busy = true;
     clearError('memory-game-error');
+    board.children[index]?.classList.add('is-loading');
     renderBoard();
     try {
       if (mode === 'solo') {
@@ -324,14 +373,17 @@
           ...playerPayload(), room_id: roomId, index,
         });
       }
+      board.children[index]?.classList.remove('is-loading');
       roomStateRevision = requestRevision + 1;
       render();
+      if (mode === 'solo') scheduleSoloMismatchRefresh();
       if (mode === 'solo' && state.status === 'finished') {
         stopPolling();
         refreshSoloLeaderboard();
       }
       else if (mode === 'room') scheduleRoomPolling();
     } catch (error) {
+      board.children[index]?.classList.remove('is-loading');
       showError('memory-game-error', error);
     } finally {
       busy = false;

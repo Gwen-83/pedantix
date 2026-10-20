@@ -81,10 +81,22 @@
 .memory-stats strong { font-size: 1.1rem; }
 .memory-game-message { min-height: 1.5em; margin: 15px 0 8px; color: var(--game-muted); text-align: center; }
 .memory-board { display: grid; grid-template-columns: repeat(var(--memory-grid-size, 4), minmax(0, 1fr)); gap: clamp(6px, 1.5vw, 12px); width: min(100%, 640px); margin: 0 auto; }
-.memory-card { display: grid; aspect-ratio: 1; place-items: center; padding: 0; border: 1px solid var(--game-border); border-radius: clamp(8px, 2vw, 14px); background: linear-gradient(145deg, var(--game-panel-raised), var(--game-panel)); color: var(--game-text); font: inherit; font-size: clamp(1.35rem, 5vw, 3.25rem); font-weight: 700; cursor: pointer; transition: transform .13s ease, background .15s ease, border-color .15s ease; }
-.memory-card:not(:disabled):hover { transform: translateY(-2px); border-color: var(--game-accent); }
+.memory-card { display: grid; aspect-ratio: 1; place-items: center; padding: 0; border: 1px solid var(--game-border); border-radius: clamp(8px, 2vw, 14px); background: linear-gradient(145deg, var(--game-panel-raised), var(--game-panel)); color: var(--game-text); font: inherit; font-size: clamp(1.35rem, 5vw, 3.25rem); font-weight: 700; cursor: pointer; transform: translateZ(0); backface-visibility: hidden; transition: background .15s ease, border-color .15s ease, box-shadow .15s ease; }
+.memory-card:not(:disabled):hover { border-color: var(--game-accent); box-shadow: 0 5px 14px rgba(0, 0, 0, .2); }
 .memory-card.is-hidden { background: linear-gradient(145deg, color-mix(in srgb, var(--game-accent) 28%, var(--game-panel-raised)), var(--game-panel-raised)); color: var(--game-accent); font-size: clamp(1rem, 3vw, 2rem); }
+.memory-card.is-revealed { animation: memory-card-reveal .2s ease-out both; }
+.memory-card.is-hidden { animation: memory-card-hide .18s ease-in both; }
+.memory-card.is-loading { opacity: .7; animation: memory-card-loading .65s ease-in-out infinite alternate; }
 .memory-card.is-matched { border-color: #52c69b; background: color-mix(in srgb, #52c69b 18%, var(--game-panel-raised)); cursor: default; }
+@keyframes memory-card-reveal { from { transform: perspective(500px) rotateY(82deg) scale(.96); } to { transform: perspective(500px) rotateY(0) scale(1); } }
+@keyframes memory-card-hide { from { transform: perspective(500px) rotateY(-82deg) scale(.96); } to { transform: perspective(500px) rotateY(0) scale(1); } }
+@keyframes memory-card-loading { to { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) {
+  .memory-card,
+  .memory-card.is-revealed,
+  .memory-card.is-hidden,
+  .memory-card.is-loading { animation: none; transition: none; }
+}
 .memory-finished { max-width: 640px; margin: 20px auto 0; padding: 20px; border: 1px solid var(--game-border); border-radius: 14px; background: var(--game-panel-raised); }
 .memory-finished h2 { margin: 0; }
 .memory-finished > p { color: var(--game-muted); }
