@@ -88,6 +88,17 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .geo-mode-card strong { font-size: .98rem; }
 .geo-mode-card small { margin-top: 5px; color: #aab3c5; font-size: .79rem; line-height: 1.5; }
 .geo-arrow { margin-left: auto; color: #86efac; font-size: 1.3rem; }
+.geo-leaderboard { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--game-border); }
+.geo-leaderboard-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.geo-leaderboard-heading h2 { margin: 0; font-size: 1rem; }
+.geo-leaderboard-heading p { margin: 4px 0 0; color: var(--game-muted); font-size: .78rem; }
+.geo-leaderboard-list { display: grid; gap: 8px; margin: 13px 0 0; padding: 0; list-style: none; }
+.geo-leaderboard-list li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--game-border); border-radius: 10px; background: var(--game-panel-raised); }
+.geo-leaderboard-rank { min-width: 1.6em; color: var(--game-accent); font-weight: 800; }
+.geo-leaderboard-player { font-weight: 800; }
+.geo-leaderboard-score, .geo-leaderboard-empty { color: var(--game-muted); font-size: .78rem; }
+.geo-leaderboard-score { margin-left: auto; text-align: right; }
+.geo-leaderboard-list .geo-leaderboard-empty { justify-content: flex-start; }
 .geo-game-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .geo-game-heading h1 { font-size: clamp(1.5rem, 4vw, 2rem); }
 .geo-hint { margin: 7px 0 0; color: #aab3c5; font-size: .82rem; }

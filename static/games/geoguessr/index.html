@@ -67,6 +67,20 @@
         <span><strong>Jouer en solo</strong><small>Enchaînez cinq villes et comparez votre score.</small></span>
         <span class="geo-arrow" aria-hidden="true">→</span>
       </button>
+      <section class="geo-leaderboard" aria-labelledby="geo-leaderboard-title">
+        <div class="geo-leaderboard-heading">
+          <div>
+            <h2 id="geo-leaderboard-title">Meilleurs explorateurs</h2>
+            <p>Scores cumulés en solo et en multijoueur.</p>
+          </div>
+          <button type="button" id="geo-refresh-leaderboard" class="geo-secondary-button">
+            Actualiser
+          </button>
+        </div>
+        <ol id="geo-leaderboard" class="geo-leaderboard-list" aria-live="polite">
+          <li>Chargement du classement…</li>
+        </ol>
+      </section>
       <p id="geo-home-error" class="geo-error" role="alert" hidden></p>
     </section>
 

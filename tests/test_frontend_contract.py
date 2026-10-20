@@ -187,6 +187,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("`${state.prompt.city}, ${state.prompt.country}`", source)
         self.assertIn(": 'Ville à trouver';", source)
 
+    def test_geoguessr_home_displays_persistent_player_leaderboard(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
+        page = (static_dir / "index.html").read_text()
+        source = (static_dir / "app.js").read_text()
+
+        self.assertIn('id="geo-leaderboard-title"', page)
+        self.assertIn('id="geo-leaderboard"', page)
+        self.assertIn("request('/api/scores?game_id=geoguessr')", source)
+        self.assertIn("refreshLeaderboardAfterFinishedGame();", source)
+
     def test_geoguessr_solo_keeps_answer_map_framed_until_next_round(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
         source = (static_dir / "app.js").read_text()

@@ -48,6 +48,8 @@
   let renderedRound = null;
   let renderedResultRound = null;
   let lastResultSignature = '';
+  let leaderboardLoading = false;
+  let lastLeaderboardGame = '';
   let mapillaryToken = '';
   let googleMapsApiKey = '';
   let googleMapsLoading = null;
@@ -95,6 +97,59 @@
     if (!button.dataset.label) button.dataset.label = button.textContent;
     button.disabled = busy;
     button.textContent = busy ? busyText : button.dataset.label;
+  }
+
+  async function refreshLeaderboard() {
+    if (leaderboardLoading) return;
+    leaderboardLoading = true;
+    const list = document.getElementById('geo-leaderboard');
+    const button = document.getElementById('geo-refresh-leaderboard');
+    button.disabled = true;
+    try {
+      const scores = await request('/api/scores?game_id=geoguessr');
+      list.replaceChildren();
+      if (!scores.length) {
+        const empty = document.createElement('li');
+        empty.className = 'geo-leaderboard-empty';
+        empty.textContent = 'Aucun score enregistré pour le moment.';
+        list.append(empty);
+        return;
+      }
+      scores.forEach((score, index) => {
+        const item = document.createElement('li');
+        const rank = document.createElement('span');
+        rank.className = 'geo-leaderboard-rank';
+        rank.textContent = `${index + 1}.`;
+        const player = document.createElement('span');
+        player.className = 'geo-leaderboard-player';
+        player.textContent = score.player_name;
+        const details = document.createElement('span');
+        details.className = 'geo-leaderboard-score';
+        const wins = Number(score.wins || 0);
+        const games = Number(score.games_played || 0);
+        details.textContent =
+          `${Number(score.score || 0).toLocaleString('fr-FR')} pts · ${wins} victoire${wins === 1 ? '' : 's'} · ${games} partie${games === 1 ? '' : 's'}`;
+        item.append(rank, player, details);
+        list.append(item);
+      });
+    } catch (error) {
+      list.replaceChildren();
+      const failure = document.createElement('li');
+      failure.className = 'geo-leaderboard-empty';
+      failure.textContent = `Classement indisponible : ${error.message}`;
+      list.append(failure);
+    } finally {
+      leaderboardLoading = false;
+      button.disabled = false;
+    }
+  }
+
+  function refreshLeaderboardAfterFinishedGame() {
+    if (state?.status !== 'finished') return;
+    const gameKey = `${gameType}:${state.game_id || state.room_id}:${state.match_number || 1}`;
+    if (gameKey === lastLeaderboardGame) return;
+    lastLeaderboardGame = gameKey;
+    refreshLeaderboard();
   }
 
   function regionLabel(region) {
@@ -1037,6 +1092,7 @@
         showRoundAnswer(state.round_number, finalTarget, finalGuesses);
       }
       renderFinalScoreboard();
+      refreshLeaderboardAfterFinishedGame();
       if (isRoom) {
         if (!pollingTimer) startPolling();
       } else {
@@ -1310,6 +1366,10 @@
   }
 
   document.getElementById('geo-solo-button').addEventListener('click', () => startSolo(false));
+  document.getElementById('geo-refresh-leaderboard').addEventListener(
+    'click',
+    refreshLeaderboard,
+  );
   document.getElementById('geo-create-room').addEventListener('click', createRoom);
   document.getElementById('geo-refresh-rooms').addEventListener('click', refreshRoomDirectory);
   document.getElementById('geo-join-room').addEventListener('click', () => joinRoom(roomInput.value));
@@ -1385,5 +1445,6 @@
     localStorage.removeItem('geoguessr_active_room_id');
     showHome(false);
   }
+  refreshLeaderboard();
   loadPanoramaConfig();
 })();
