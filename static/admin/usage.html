@@ -40,6 +40,34 @@
         Les visites de pages sans lancement de partie ne sont pas historisées.
       </p>
 
+      <section class="usage-panel usage-google-panel" aria-labelledby="usage-google-title">
+        <div class="usage-panel-heading">
+          <div>
+            <h2 id="usage-google-title">Quota Google Street View</h2>
+            <p id="usage-google-month">Utilisation du mois en cours (UTC)</p>
+          </div>
+          <strong id="usage-google-percent" class="usage-google-percent">—</strong>
+        </div>
+        <div class="usage-google-summary">
+          <strong id="usage-google-count">—</strong>
+          <span>événements réservés sur <span id="usage-google-limit">—</span></span>
+          <span id="usage-google-remaining" class="usage-google-remaining"></span>
+        </div>
+        <div
+          id="usage-google-progress"
+          class="usage-google-track"
+          role="progressbar"
+          aria-label="Utilisation du plafond interne Google Street View"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+        ><span id="usage-google-progress-fill"></span></div>
+        <p id="usage-google-note" class="usage-google-note">
+          Le compteur de l’application réserve les vues prévues au lancement d’une partie photo et les navigations suivantes.
+          Ce plafond interne n’est pas le relevé de facturation Google : vérifiez aussi les quotas et coûts dans Google Cloud.
+        </p>
+      </section>
+
       <section class="usage-panel">
         <div class="usage-panel-heading">
           <div><h2>Activité dans le temps</h2><p>Parties lancées et terminées par jour</p></div>

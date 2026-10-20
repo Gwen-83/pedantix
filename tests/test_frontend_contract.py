@@ -137,6 +137,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("memory-card-reveal", stylesheet)
         self.assertIn("memory-card-loading", stylesheet)
 
+    def test_admin_usage_dashboard_displays_google_street_view_monthly_usage(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "admin"
+        page = (static_dir / "usage.html").read_text()
+        script = (static_dir / "usage.js").read_text()
+
+        self.assertIn('id="usage-google-percent"', page)
+        self.assertIn('id="usage-google-progress"', page)
+        self.assertIn("renderGoogleUsage(data.google_maps_usage)", script)
+        self.assertIn("report.google_maps_usage.events_reserved", script)
+
     def test_fermeture_express_is_removed(self):
         response = self.client.get("/")
         self.assertNotIn("Fermeture express", response.text)

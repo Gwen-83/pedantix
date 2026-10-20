@@ -4164,11 +4164,26 @@ async def admin_usage_analytics(
     if not _is_gwen_controller(x_auth_user, x_auth_token):
         raise HTTPException(status_code=403, detail="Accès réservé au compte administrateur Gwen.")
     try:
-        return await asyncio.to_thread(get_admin_usage_analytics, period)
+        analytics = await asyncio.to_thread(get_admin_usage_analytics, period)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        google_usage = await asyncio.to_thread(geoguessr_manager.google_usage)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Impossible de charger le suivi du quota Google Street View.",
+        ) from exc
+    analytics["google_maps_usage"] = {
+        "month": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m"),
+        "events_reserved": google_usage,
+        "monthly_limit": GOOGLE_STREETVIEW_MONTHLY_LIMIT,
+        "remaining": max(0, GOOGLE_STREETVIEW_MONTHLY_LIMIT - google_usage),
+        "usage_pct": round(google_usage / GOOGLE_STREETVIEW_MONTHLY_LIMIT * 100, 1),
+    }
+    return analytics
 
 
 @app.get("/api/scores")

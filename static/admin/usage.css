@@ -136,6 +136,18 @@
 
 .usage-definition strong { color: var(--game-text); }
 
+.usage-google-panel { --usage-google-color: #62c6a5; }
+.usage-google-panel[data-level="warning"] { --usage-google-color: #f0b44d; }
+.usage-google-panel[data-level="critical"] { --usage-google-color: #ff8f8f; }
+.usage-google-panel .usage-panel-heading { align-items: flex-start; }
+.usage-google-percent { color: var(--usage-google-color); font-size: clamp(1.6rem, 3vw, 2.2rem); }
+.usage-google-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px; color: var(--game-muted); }
+.usage-google-summary > strong { color: var(--game-text); font-size: 1.25rem; }
+.usage-google-remaining { margin-left: auto; }
+.usage-google-track { height: 14px; margin: 12px 0; overflow: hidden; border-radius: 999px; background: var(--game-panel-raised); }
+.usage-google-track span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--usage-google-color); transition: width .25s ease; }
+.usage-google-note { margin: 0; color: var(--game-muted); font-size: .8rem; line-height: 1.5; }
+
 .usage-panel {
   min-width: 0;
   margin: 0 0 16px;

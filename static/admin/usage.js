@@ -76,6 +76,30 @@
     });
   }
 
+  function renderGoogleUsage(usage) {
+    const panel = document.querySelector('.usage-google-panel');
+    const percentage = Number(usage.usage_pct) || 0;
+    const fillPercentage = Math.min(100, Math.max(0, percentage));
+    const progress = document.getElementById('usage-google-progress');
+    const monthDate = new Date(`${usage.month}-01T00:00:00Z`);
+
+    document.getElementById('usage-google-month').textContent =
+      `Utilisation du mois en cours (UTC) · ${new Intl.DateTimeFormat('fr-FR', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(monthDate)}`;
+    document.getElementById('usage-google-percent').textContent =
+      `${percentage.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}%`;
+    document.getElementById('usage-google-count').textContent = number(usage.events_reserved);
+    document.getElementById('usage-google-limit').textContent = number(usage.monthly_limit);
+    document.getElementById('usage-google-remaining').textContent =
+      `${number(usage.remaining)} restantes`;
+    progress.setAttribute('aria-valuenow', String(fillPercentage));
+    document.getElementById('usage-google-progress-fill').style.width = `${fillPercentage}%`;
+    panel.dataset.level = percentage >= 90 ? 'critical' : percentage >= 75 ? 'warning' : 'normal';
+  }
+
   function makeSvg(name, attributes = {}) {
     const element = document.createElementNS('http://www.w3.org/2000/svg', name);
     Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
@@ -234,6 +258,7 @@
   function render(data) {
     report = data;
     renderKpis(data.summary);
+    renderGoogleUsage(data.google_maps_usage);
     renderTimeline(data.timeline);
     renderBars('usage-hours', data.hourly_activity, (row) => `${String(row.hour).padStart(2, '0')}h`, (row) => row.sessions_started);
     renderBars('usage-weekdays', data.weekday_activity, (row) => ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'][row.weekday], (row) => row.sessions_started);
@@ -283,6 +308,16 @@
         game.player_seconds, game.player_time_share_pct, game.wall_seconds, game.wins,
         game.participant_results, game.avg_attempts, game.surrenders, game.points,
       ]),
+      [],
+      ['Section', 'Mois UTC', 'Événements réservés', 'Plafond interne mensuel', 'Restants', 'Utilisation (%)'],
+      [
+        'Quota Google Street View',
+        report.google_maps_usage.month,
+        report.google_maps_usage.events_reserved,
+        report.google_maps_usage.monthly_limit,
+        report.google_maps_usage.remaining,
+        report.google_maps_usage.usage_pct,
+      ],
       [],
       ['Mode', 'Sessions', 'Terminées', 'Résultats', 'Victoires', 'Temps joueur (secondes)'],
       ...report.modes.map((mode) => [

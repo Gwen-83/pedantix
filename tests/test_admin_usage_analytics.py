@@ -95,6 +95,21 @@ class AdminUsageAnalyticsTests(unittest.TestCase):
         self.assertEqual(battleship["avg_attempts"], 12)
         self.assertEqual(len(data["recent_sessions"]), 2)
 
+    def test_analytics_reports_current_google_street_view_quota_usage(self):
+        self.assertTrue(database.reserve_geoguessr_google_usage(123, 4_000))
+
+        response = self.client.get(
+            "/api/admin/usage-analytics?period=30", headers=self.gwen_headers
+        )
+
+        self.assertEqual(response.status_code, 200)
+        usage = response.json()["google_maps_usage"]
+        self.assertEqual(usage["month"], datetime.now(timezone.utc).strftime("%Y-%m"))
+        self.assertEqual(usage["events_reserved"], 123)
+        self.assertEqual(usage["monthly_limit"], 4_000)
+        self.assertEqual(usage["remaining"], 3_877)
+        self.assertEqual(usage["usage_pct"], 3.1)
+
     def test_analytics_api_is_gwen_only_and_validates_period(self):
         self.assertEqual(
             self.client.get("/api/admin/usage-analytics").status_code, 403
