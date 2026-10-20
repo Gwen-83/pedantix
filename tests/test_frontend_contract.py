@@ -218,19 +218,20 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("request('/api/geoguessr/leaderboard')", source)
         self.assertIn("refreshLeaderboardAfterFinishedGame();", source)
 
-    def test_geoguessr_city_map_uses_higher_resolution_tiles_and_smoother_borders(self):
+    def test_geoguessr_maps_use_keyless_tiles_and_city_map_stays_within_native_zoom(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
         source = (static_dir / "app.js").read_text()
         detailed_boundaries = self.client.get(
             "/static/games/geoguessr/data/countries_50m.geojson"
         )
 
-        self.assertIn("maxZoom: 20", source)
-        self.assertIn("maxNativeZoom: 20", source)
-        self.assertIn("rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", source)
-        self.assertIn("detectRetina: true", source)
+        self.assertIn("World_Terrain_Base/MapServer/tile/{z}/{y}/{x}", source)
+        self.assertIn("maxNativeZoom: 13", source)
+        self.assertIn("const maxZoom = isPanorama ? 19 : 13", source)
+        self.assertIn("tile.openstreetmap.org/{z}/{x}/{y}.png", source)
         self.assertIn("data/countries_50m.geojson", source)
         self.assertIn("smoothFactor: 0.5", source)
+        self.assertNotIn("basemaps.cartocdn.com", source)
         self.assertNotIn("World_Physical_Map", source)
         self.assertEqual(detailed_boundaries.status_code, 200)
         self.assertIn('"name":"ne_50m_admin_0_countries"', detailed_boundaries.text)

@@ -465,13 +465,12 @@
     const layer = L.tileLayer(
       useFallback
         ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'
-        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       {
         maxZoom: 19,
         attribution: useFallback
           ? '&copy; Esri &mdash; Sources: HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), OpenStreetMap contributors, and the GIS User Community'
-          : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> '
-            + '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+          : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
       },
     );
     layer.on('tileerror', () => {
@@ -508,13 +507,11 @@
       mapLabelsFallbackErrorShown = false;
       if (!mapCitiesLayer) {
         mapCitiesLayer = L.tileLayer(
-          'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
           {
-            maxNativeZoom: 20,
-            maxZoom: 20,
-            detectRetina: true,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> '
-              + '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+            maxNativeZoom: 13,
+            maxZoom: 13,
+            attribution: 'Sources : Esri, USGS, NOAA',
           },
         ).addTo(map);
       }
@@ -523,11 +520,15 @@
       mapCitiesLayer = null;
     }
 
+    const maxZoom = isPanorama ? 19 : 13;
+    map.setMaxZoom(maxZoom);
+    if (map.getZoom() > maxZoom) map.setZoom(maxZoom);
+
     countryBoundaryLayer?.setStyle(countryBoundaryStyle(isPanorama));
     const attribution = document.querySelector('.geo-map-actions > span');
     attribution.textContent = isPanorama
-      ? 'Carte © OpenStreetMap · CARTO · frontières © Natural Earth'
-      : 'Carte détaillée sans noms de villes © OpenStreetMap · CARTO · frontières © Natural Earth';
+      ? 'Carte © OpenStreetMap · frontières © Natural Earth'
+      : 'Carte de relief sans noms de villes © Esri, USGS, NOAA · frontières © Natural Earth';
   }
 
   function loadCountryBoundaries() {
