@@ -116,6 +116,10 @@
     return `${round.round_number}:${target.city}:${target.country || ''}`;
   }
 
+  function roundAnswerSignature(roundNumber) {
+    return `${gameType}:${state?.game_id || state?.room_id}:${state?.match_number || 1}:${roundNumber}`;
+  }
+
   function isWaitingForNextRound() {
     const round = currentRoundResult();
     const signature = roundResultSignature(round);
@@ -576,6 +580,13 @@
     }
   }
 
+  function showRoundAnswer(roundNumber, target, guesses) {
+    const resultKey = roundAnswerSignature(roundNumber);
+    if (renderedResultRound === resultKey) return;
+    showAnswerOnMap(target, guesses);
+    renderedResultRound = resultKey;
+  }
+
   function soloGuessMarker(result) {
     return {
       latitude: result.guess_latitude,
@@ -587,7 +598,11 @@
     if (!state || state.status !== 'playing') return true;
     if (gameType === 'solo') return state.awaiting_next_round === true;
     return gameType === 'room'
-      && (!!state.player?.is_spectator || !!state.player?.submitted);
+      && (
+        state.awaiting_next_round === true
+        || !!state.player?.is_spectator
+        || !!state.player?.submitted
+      );
   }
 
   function startPolling() {
@@ -666,6 +681,7 @@
     googlePanoramaRoundKey = '';
     googleNavigationPending = false;
     googleNavigationRollback = false;
+    renderedResultRound = null;
     lastResultSignature = '';
     state = null;
     gameType = null;
@@ -778,11 +794,22 @@
     if (!waitingForNextRound && state?.status !== 'finished') {
       roundResult.hidden = true;
       roundResult.replaceChildren();
-      lastResultSignature = signature;
+      lastResultSignature = '';
       return;
     }
-    if (signature === lastResultSignature && state?.status === 'finished') return;
-    lastResultSignature = signature;
+    const renderSignature = JSON.stringify([
+      signature,
+      state?.status,
+      waitingForNextRound,
+      ownResult?.distance_km,
+      ownResult?.score,
+      state?.ready_count,
+      state?.player_count,
+      state?.player?.ready,
+      state?.all_ready,
+    ]);
+    if (renderSignature === lastResultSignature) return;
+    lastResultSignature = renderSignature;
     roundResult.replaceChildren();
     roundResult.hidden = false;
     const heading = document.createElement('h2');
@@ -975,7 +1002,11 @@
         const ownResult = state.last_round.guesses.find((guess) => guess.player_id === playerId);
         renderRoundResult(state.last_round, ownResult);
         if (waitingForNextRound || state.status === 'finished') {
-          showAnswerOnMap(state.last_round.target, state.last_round.guesses);
+          showRoundAnswer(
+            state.last_round.round_number,
+            state.last_round.target,
+            state.last_round.guesses,
+          );
         }
       }
       if (state.status === 'playing' && state.player?.guess && locked) {
@@ -988,7 +1019,11 @@
         target: state.last_result,
       }, state.last_result);
       if (waitingForNextRound || state.status === 'finished') {
-        showAnswerOnMap(state.last_result, soloGuessMarker(state.last_result));
+        showRoundAnswer(
+          state.last_result.round_number,
+          state.last_result,
+          soloGuessMarker(state.last_result),
+        );
       }
     }
 
@@ -997,7 +1032,9 @@
       const finalGuesses = isRoom
         ? state.last_round?.guesses
         : state.last_result ? soloGuessMarker(state.last_result) : null;
-      if (finalTarget && finalGuesses) showAnswerOnMap(finalTarget, finalGuesses);
+      if (finalTarget && finalGuesses) {
+        showRoundAnswer(state.round_number, finalTarget, finalGuesses);
+      }
       renderFinalScoreboard();
       if (isRoom) {
         if (!pollingTimer) startPolling();
@@ -1050,6 +1087,7 @@
       localStorage.setItem('geoguessr_solo_game_id', state.game_id);
       regionSelect.value = state.region;
       renderedRound = null;
+      renderedResultRound = null;
       lastResultSignature = '';
       renderView();
       const view = mapView(state.region);
@@ -1077,10 +1115,6 @@
         state = response;
         renderedRound = null;
         renderView();
-        if (state.status !== 'finished') {
-          const view = mapView(state.region);
-          map.setView(view.center, view.zoom);
-        }
       } else {
         const response = await post('/api/geoguessr/room/guess', {
           room_id: state.room_id,
@@ -1097,6 +1131,7 @@
     } finally {
       roomBusy = false;
       if (state?.status === 'lobby') renderLobby();
+      else if (gameType === 'solo' && isWaitingForNextRound()) renderView();
     }
   }
 
@@ -1171,6 +1206,7 @@
     localStorage.setItem('geoguessr_active_room_id', state.room_id);
     history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(state.room_id)}`);
     renderedRound = null;
+    renderedResultRound = null;
     lastResultSignature = '';
     renderView();
     startPolling();

@@ -604,6 +604,36 @@ def _city_pool(region: str) -> List[tuple[str, str, str, float, float]]:
     return list(unique.values())
 
 
+def _sample_city_round(
+    region: str,
+    round_count: int,
+    excluded_cities: Optional[Set[tuple[str, str]]] = None,
+) -> List[tuple[str, str, str, float, float]]:
+    excluded_cities = excluded_cities or set()
+    by_country: Dict[str, List[tuple[str, str, str, float, float]]] = {}
+    for city in _city_pool(region):
+        if (city[0], city[1]) not in excluded_cities:
+            by_country.setdefault(city[1], []).append(city)
+
+    selected: List[tuple[str, str, str, float, float]] = []
+    selected_countries: Set[str] = set()
+    while len(selected) < min(round_count, sum(map(len, by_country.values()))):
+        available_countries = [
+            country for country, cities in by_country.items()
+            if cities and country not in selected_countries
+        ]
+        if not available_countries:
+            available_countries = [
+                country for country, cities in by_country.items() if cities
+            ]
+        country = random.choice(available_countries)
+        city = random.choice(by_country[country])
+        by_country[country].remove(city)
+        selected.append(city)
+        selected_countries.add(country)
+    return selected
+
+
 def _diverse_city_order(
     region: str,
     used_countries: Optional[Set[str]] = None,
@@ -840,6 +870,10 @@ class GeoGuessrManager:
     ) -> None:
         self.solo_games: Dict[str, GeoGuessrGame] = {}
         self.rooms: Dict[str, GeoGuessrRoom] = {}
+        self.solo_city_bags: Dict[
+            Tuple[str, str], List[tuple[str, str, str, float, float]]
+        ] = {}
+        self.last_solo_city_keys: Dict[Tuple[str, str], Set[Tuple[str, str]]] = {}
         self.mapillary_access_token = (
             mapillary_access_token or os.environ.get("MAPILLARY_ACCESS_TOKEN", "")
         ).strip()
@@ -1105,8 +1139,29 @@ class GeoGuessrManager:
                 reserve_google_views=True,
             )
         else:
-            pool = _city_pool(region)
-            cities = random.sample(pool, k=min(ROUND_COUNT, len(pool)))
+            with self.lock:
+                history_key = (player_id, region)
+                city_bag = self.solo_city_bags.setdefault(history_key, [])
+                if len(city_bag) < ROUND_COUNT:
+                    excluded_cities = self.last_solo_city_keys.get(history_key, set())
+                    excluded_cities = excluded_cities | {
+                        (city[0], city[1]) for city in city_bag
+                    }
+                    next_cities = _diverse_city_order(
+                        region,
+                        used_cities=excluded_cities,
+                    )
+                    if len(city_bag) + len(next_cities) < ROUND_COUNT:
+                        next_cities = _diverse_city_order(
+                            region,
+                            used_cities={(city[0], city[1]) for city in city_bag},
+                        )
+                    city_bag.extend(next_cities)
+                cities = city_bag[:ROUND_COUNT]
+                del city_bag[:ROUND_COUNT]
+                self.last_solo_city_keys[history_key] = {
+                    (city[0], city[1]) for city in cities
+                }
         with self.lock:
             game = GeoGuessrGame(
                 str(uuid.uuid4()), player_id, player_name.strip()[:24], region,
@@ -1177,8 +1232,7 @@ class GeoGuessrManager:
                 round_count=round_count,
             )
         else:
-            pool = _city_pool(region)
-            cities = random.sample(pool, k=round_count)
+            cities = _sample_city_round(region, round_count)
         with self.lock:
             room_id = uuid.uuid4().hex[:6].upper()
             room = GeoGuessrRoom(

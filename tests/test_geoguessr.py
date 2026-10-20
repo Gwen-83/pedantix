@@ -17,6 +17,7 @@ from app.geoguessr import (
     GeoGuessrManager,
     _city_pool,
     _diverse_city_order,
+    _sample_city_round,
     distance_km,
     score_distance_km,
 )
@@ -54,6 +55,23 @@ class GeoGuessrTests(unittest.TestCase):
         self.assertGreaterEqual(len(_city_pool("europe")), 200)
         self.assertGreaterEqual(len(_city_pool("world")), 350)
         self.assertEqual(len(CITY_LOCATIONS), len(set(CITY_LOCATIONS)))
+
+    def test_city_rounds_spread_targets_across_countries(self):
+        for region in ("europe", "world"):
+            cities = _sample_city_round(region, ROUND_COUNT)
+            self.assertEqual(len(cities), ROUND_COUNT)
+            self.assertEqual(len({city[1] for city in cities}), ROUND_COUNT)
+        french_cities = _sample_city_round("france", ROUND_COUNT)
+        self.assertEqual(len(french_cities), ROUND_COUNT)
+        self.assertEqual(len({(city[0], city[1]) for city in french_cities}), ROUND_COUNT)
+
+    def test_solo_games_do_not_repeat_cities_until_the_player_pool_is_used(self):
+        first_game = self.manager.create_solo("alice", "Alice", "world")
+        second_game = self.manager.create_solo("alice", "Alice", "world")
+
+        first_cities = {(city[0], city[1]) for city in first_game.cities}
+        second_cities = {(city[0], city[1]) for city in second_game.cities}
+        self.assertFalse(first_cities & second_cities)
 
     def test_added_city_pools_respect_population_thresholds(self):
         thresholds = {"france": 50_000, "europe": 200_000, "world": 1_000_000}

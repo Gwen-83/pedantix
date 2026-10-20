@@ -164,6 +164,46 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("`${state.prompt.city}, ${state.prompt.country}`", source)
         self.assertIn(": 'Ville à trouver';", source)
 
+    def test_geoguessr_solo_keeps_answer_map_framed_until_next_round(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
+        source = (static_dir / "app.js").read_text()
+        submit_guess = source.split("async function submitGuess()", 1)[1].split(
+            "async function advanceSoloRound()", 1
+        )[0]
+        advance_round = source.split("async function advanceSoloRound()", 1)[1].split(
+            "async function createRoom()", 1
+        )[0]
+
+        self.assertNotIn("map.setView", submit_guess)
+        self.assertIn("showRoundAnswer(", source)
+        self.assertIn("if (renderedResultRound === resultKey) return;", source)
+        self.assertIn("map.setView(view.center, view.zoom)", advance_round)
+
+    def test_geoguessr_room_result_updates_do_not_reset_map_or_rebuild_result(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
+        source = (static_dir / "app.js").read_text()
+        result_renderer = source.split("function renderRoundResult(", 1)[1].split(
+            "function renderFinalScoreboard(", 1
+        )[0]
+        guess_lock = source.split("function guessLocked()", 1)[1].split(
+            "function startPolling()", 1
+        )[0]
+
+        self.assertIn("if (renderSignature === lastResultSignature) return;", result_renderer)
+        self.assertIn("state.awaiting_next_round === true", guess_lock)
+
+    def test_geoguessr_solo_reenables_next_round_after_guess_request_finishes(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
+        source = (static_dir / "app.js").read_text()
+        submit_guess = source.split("async function submitGuess()", 1)[1].split(
+            "async function advanceSoloRound()", 1
+        )[0]
+
+        self.assertIn(
+            "else if (gameType === 'solo' && isWaitingForNextRound()) renderView();",
+            submit_guess,
+        )
+
     def test_geoguessr_immersive_map_falls_back_when_cartography_tiles_fail(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
         source = (static_dir / "app.js").read_text()
