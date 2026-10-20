@@ -215,5 +215,115 @@
       {"answer": "forestier", "aliases": ["forestière"], "score": 42},
       {"answer": "marin-pêcheur", "aliases": ["marin pecheur", "marin pêcheuse"], "score": 49}
     ]
+  },
+  {
+    "id": "legume",
+    "prompt": "Citez un légume.",
+    "answers": ["carotte", "pomme de terre", "tomate", "salade", "oignon", "courgette", "poireau", "aubergine", "poivron", "concombre", "brocoli", "chou-fleur", "épinard", "radis", "navet", "artichaut", "asperge", "céleri", "betterave", "panais", "topinambour", "rutabaga", "crosne", "chou-rave"]
+  },
+  {
+    "id": "sport",
+    "prompt": "Citez un sport.",
+    "answers": ["football", "tennis", "basketball", "natation", "course à pied", "rugby", "volleyball", "cyclisme", "handball", "judo", "boxe", "athlétisme", "golf", "escalade", "ski", "surf", "badminton", "ping-pong", "équitation", "patinage artistique", "escrime", "hockey sur glace", "taekwondo", "aviron", "tir à l'arc", "gymnastique", "karaté", "canoë-kayak", "pentathlon moderne", "curling"]
+  },
+  {
+    "id": "langue",
+    "prompt": "Citez une langue parlée dans le monde.",
+    "answers": ["anglais", "français", "espagnol", "arabe", "chinois", "mandarin", "hindi", "portugais", "russe", "allemand", "japonais", "italien", "coréen", "turc", "néerlandais", "swahili", "grec", "hébreu", "persan", "thaï", "vietnamien", "indonésien", "polonais", "suédois", "quechua", "basque", "breton", "wolof"]
+  },
+  {
+    "id": "couleur",
+    "prompt": "Citez une couleur.",
+    "answers": ["rouge", "bleu", "vert", "jaune", "noir", "blanc", "orange", "violet", "rose", "gris", "marron", "beige", "turquoise", "cyan", "magenta", "indigo", "ocre", "bordeaux", "pourpre", "kaki", "lavande", "corail"]
+  },
+  {
+    "id": "insecte",
+    "prompt": "Citez un insecte.",
+    "answers": ["fourmi", "moustique", "mouche", "abeille", "papillon", "coccinelle", "guêpe", "libellule", "scarabée", "sauterelle", "grillon", "cafard", "punaise", "puce", "pou", "termite", "mante religieuse", "luciole", "cigale", "bourdon", "frelon", "phasme", "hanneton", "perce-oreille"]
+  },
+  {
+    "id": "fleur",
+    "prompt": "Citez une fleur.",
+    "answers": ["rose", "tulipe", "marguerite", "tournesol", "pivoine", "coquelicot", "orchidée", "lys", "jonquille", "violette", "lavande", "iris", "camélia", "hortensia", "dahlia", "narcisse", "géranium", "bleuet", "muguet", "anémone", "edelweiss", "capucine"]
+  },
+  {
+    "id": "arbre",
+    "prompt": "Citez une espèce d'arbre.",
+    "answers": ["chêne", "sapin", "érable", "bouleau", "hêtre", "pin", "châtaignier", "platane", "peuplier", "saule", "marronnier", "frêne", "tilleul", "cèdre", "cyprès", "olivier", "pommier", "cerisier", "séquoia", "baobab", "eucalyptus", "mélèze", "charme", "noisetier"]
+  },
+  {
+    "id": "race_chien",
+    "prompt": "Citez une race de chien.",
+    "answers": ["labrador", "berger allemand", "caniche", "golden retriever", "bouledogue français", "beagle", "chihuahua", "teckel", "berger australien", "rottweiler", "boxer", "dalmatien", "border collie", "husky", "shiba inu", "yorkshire terrier", "bichon", "carlin", "dobermann", "akita inu", "lévrier", "terre-neuve", "jack russell", "cocker"]
+  },
+  {
+    "id": "instrument_musique",
+    "prompt": "Citez un instrument de musique.",
+    "answers": ["piano", "guitare", "violon", "batterie", "flûte", "trompette", "harpe", "saxophone", "accordéon", "clarinette", "violoncelle", "contrebasse", "hautbois", "basson", "xylophone", "cor", "tuba", "banjo", "mandoline", "clavecin", "ukulélé", "sitar", "koto", "didgeridoo", "hang", "théorbe"]
+  },
+  {
+    "id": "element_chimique",
+    "prompt": "Citez un élément chimique.",
+    "answers": ["hydrogène", "oxygène", "carbone", "fer", "or", "argent", "cuivre", "azote", "hélium", "calcium", "sodium", "chlore", "soufre", "silicium", "plomb", "mercure", "uranium", "lithium", "néon", "zinc", "nickel", "phosphore", "potassium", "iode", "cobalt", "titane", "platine", "bore", "argon", "magnésium"]
+  },
+  {
+    "id": "capitale_europe",
+    "prompt": "Citez la capitale d'un pays européen.",
+    "answers": ["Paris", "Londres", "Rome", "Berlin", "Madrid", "Lisbonne", "Bruxelles", "Amsterdam", "Dublin", "Vienne", "Prague", "Varsovie", "Athènes", "Stockholm", "Oslo", "Helsinki", "Copenhague", "Budapest", "Bucarest", "Sofia", "Zagreb", "Belgrade", "Reykjavik", "Tallinn", "Riga", "Vilnius", "Ljubljana", "Bratislava", "Tirana", "Skopje", "Sarajevo", "Podgorica", "Chisinau", "Minsk", "Kiev", "Ankara", "Vaduz", "Monaco"]
+  },
+  {
+    "id": "pays_a",
+    "prompt": "Citez un pays dont le nom commence par A.",
+    "answers": ["Afghanistan", "Afrique du Sud", "Albanie", "Algérie", "Allemagne", "Andorre", "Angola", "Antigua-et-Barbuda", "Arabie saoudite", "Argentine", "Arménie", "Australie", "Autriche", "Azerbaïdjan"]
+  },
+  {
+    "id": "ville_france",
+    "prompt": "Citez une ville française.",
+    "answers": ["Paris", "Lyon", "Marseille", "Toulouse", "Bordeaux", "Lille", "Nantes", "Strasbourg", "Nice", "Rennes", "Montpellier", "Grenoble", "Dijon", "Reims", "Brest", "Tours", "Rouen", "Caen", "Nancy", "Metz", "Annecy", "Avignon", "Perpignan", "Limoges", "Amiens", "Colmar", "Bayonne", "La Rochelle", "Quimper", "Chambéry", "Ajaccio", "Besançon"]
+  },
+  {
+    "id": "plat",
+    "prompt": "Citez un plat cuisiné.",
+    "answers": ["pizza", "couscous", "lasagnes", "paella", "ratatouille", "raclette", "quiche lorraine", "bœuf bourguignon", "pot-au-feu", "sushi", "curry", "tajine", "cassoulet", "gratin dauphinois", "crêpe", "tartiflette", "soupe", "hamburger", "ramen", "choucroute", "blanquette de veau", "hachis parmentier", "risotto", "fondue", "fish and chips"]
+  },
+  {
+    "id": "dessert",
+    "prompt": "Citez un dessert.",
+    "answers": ["gâteau au chocolat", "tarte aux pommes", "crêpe", "glace", "éclair", "mousse au chocolat", "tiramisu", "île flottante", "macaron", "fondant au chocolat", "crème brûlée", "flan", "mille-feuille", "profiterole", "cheesecake", "brownie", "clafoutis", "pain perdu", "baklava", "panna cotta", "gaufre", "chou à la crème"]
+  },
+  {
+    "id": "metier_sante",
+    "prompt": "Citez un métier du secteur de la santé.",
+    "answers": ["médecin", "infirmier", "pharmacien", "chirurgien", "dentiste", "kinésithérapeute", "sage-femme", "psychologue", "ambulancier", "vétérinaire", "aide-soignant", "pédiatre", "dermatologue", "radiologue", "anesthésiste", "orthophoniste", "opticien", "diététicien", "ergothérapeute", "cardiologue", "psychiatre", "brancardier", "laborantin"]
+  },
+  {
+    "id": "animal_ferme",
+    "prompt": "Citez un animal que l'on peut trouver dans une ferme.",
+    "answers": ["vache", "cochon", "poule", "cheval", "mouton", "chèvre", "canard", "lapin", "oie", "dinde", "âne", "paon", "pigeon", "pintade", "dindon", "bœuf", "taureau", "poney", "chat", "chien", "cobaye"]
+  },
+  {
+    "id": "matiere_scolaire",
+    "prompt": "Citez une matière enseignée à l'école.",
+    "answers": ["mathématiques", "français", "histoire", "géographie", "anglais", "physique", "chimie", "biologie", "sciences", "sport", "musique", "arts plastiques", "technologie", "philosophie", "latin", "espagnol", "allemand", "éducation civique", "informatique", "économie", "dessin"]
+  },
+  {
+    "id": "transport",
+    "prompt": "Citez un moyen de transport.",
+    "answers": ["voiture", "vélo", "train", "avion", "bus", "métro", "bateau", "moto", "camion", "tramway", "scooter", "hélicoptère", "trottinette", "taxi", "ferry", "sous-marin", "voilier", "téléphérique", "train à grande vitesse", "car", "canoë", "montgolfière"]
+  },
+  {
+    "id": "partie_corps",
+    "prompt": "Citez une partie du corps humain.",
+    "answers": ["tête", "bras", "jambe", "main", "pied", "œil", "nez", "bouche", "oreille", "cœur", "genou", "coude", "épaule", "dos", "ventre", "poumon", "foie", "rein", "langue", "doigt", "cheville", "poignet", "crâne", "cuisse", "mollet"]
+  },
+  {
+    "id": "jeu_societe",
+    "prompt": "Citez un jeu de société.",
+    "answers": ["Monopoly", "Scrabble", "échecs", "dames", "Cluedo", "Uno", "Risk", "Trivial Pursuit", "Catan", "Carcassonne", "6 qui prend", "Dixit", "Time's Up", "puissance 4", "dominos", "bataille navale", "les Aventuriers du rail", "La bonne paye", "morpion", "jeu de l'oie", "Pandemic", "7 Wonders"]
+  },
+  {
+    "id": "montagne",
+    "prompt": "Citez une montagne ou un sommet célèbre.",
+    "answers": ["Everest", "Mont Blanc", "Kilimandjaro", "K2", "Cervin", "Aconcagua", "Denali", "Annapurna", "Matterhorn", "Fuji", "Elbrouz", "Mont Olympe", "Puy de Dôme", "Vésuve", "Etna", "Mont Rose", "Makalu", "Lhotse", "Nanga Parbat", "Mont Kenya", "Table Mountain"]
   }
 ]

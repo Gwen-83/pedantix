@@ -29,6 +29,26 @@ def _load_prompts() -> List[Dict[str, Any]]:
         prompts = json.load(prompts_file)
     if not isinstance(prompts, list) or len(prompts) < ROUND_COUNT:
         raise ValueError("Le jeu de données de Plongée doit contenir au moins sept questions.")
+    prompt_ids = set()
+    for prompt in prompts:
+        if not isinstance(prompt, dict) or not prompt.get("id") or not prompt.get("prompt"):
+            raise ValueError("Chaque question de Plongée doit avoir un identifiant et un énoncé.")
+        if prompt["id"] in prompt_ids:
+            raise ValueError(f"Identifiant de question en double : {prompt['id']}.")
+        prompt_ids.add(prompt["id"])
+        answers = prompt.get("answers")
+        if not isinstance(answers, list) or not answers:
+            raise ValueError(f"La question {prompt['id']} doit proposer des réponses.")
+        answer_count = len(answers)
+        prompt["answers"] = [
+            {
+                "answer": answer,
+                "score": round(25 + 70 * index / max(1, answer_count - 1)),
+            }
+            if isinstance(answer, str)
+            else answer
+            for index, answer in enumerate(answers)
+        ]
     return prompts
 
 
@@ -48,11 +68,38 @@ def _build_answer_index(prompt: Dict[str, Any]) -> Dict[str, Tuple[str, int]]:
     for item in prompt["answers"]:
         canonical = normalize_answer(item["answer"])
         score = int(item["score"])
-        for variant in item.get("aliases", []):
+        aliases = [*item.get("aliases", []), *_simple_plural_variants(item["answer"])]
+        for variant in aliases:
             normalized = normalize_answer(variant)
             if normalized and normalized not in answer_index:
                 answer_index[normalized] = (canonical, score)
     return answer_index
+
+
+def _simple_plural_variants(answer: str) -> List[str]:
+    words = normalize_answer(answer).split()
+    if not words:
+        return []
+
+    def pluralize(word: str) -> str:
+        if len(word) < 3 or word.endswith(("s", "x", "z")):
+            return word
+        if word.endswith("al"):
+            return f"{word[:-2]}aux"
+        if word.endswith("eau"):
+            return f"{word}x"
+        return f"{word}s"
+
+    variants = set()
+    plural_first = pluralize(words[0])
+    plural_last = pluralize(words[-1])
+    if plural_last != words[-1]:
+        variants.add(" ".join([*words[:-1], plural_last]))
+    if len(words) > 1 and plural_first != words[0]:
+        variants.add(" ".join([plural_first, *words[1:]]))
+        if plural_last != words[-1]:
+            variants.add(" ".join([plural_first, *words[1:-1], plural_last]))
+    return sorted(variants)
 
 
 @dataclass
@@ -105,6 +152,8 @@ class PlongeeManager:
         self.rng = rng or random.Random()
         self.solo_games: Dict[str, PlongeeGame] = {}
         self.rooms: Dict[str, PlongeeRoom] = {}
+        self._solo_prompt_bags: Dict[str, List[int]] = {}
+        self._last_solo_prompt_indexes: Dict[str, set[int]] = {}
         self._lock = RLock()
 
     def _validate_player(self, player_id: str, player_name: str) -> Tuple[str, str]:
@@ -116,13 +165,35 @@ class PlongeeManager:
             raise ValueError("Le pseudo doit contenir de 1 à 24 caractères.")
         return clean_id, clean_name
 
-    def _new_round_set(self) -> Tuple[List[Dict[str, Any]], List[Dict[str, Tuple[str, int]]]]:
-        indexes = self.rng.sample(range(len(self.prompts)), k=ROUND_COUNT)
+    def _new_round_set(
+        self, player_id: Optional[str] = None,
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Tuple[str, int]]]]:
+        with self._lock:
+            if player_id is None:
+                indexes = self.rng.sample(range(len(self.prompts)), k=ROUND_COUNT)
+            else:
+                bag = self._solo_prompt_bags.setdefault(player_id, [])
+                if len(bag) < ROUND_COUNT:
+                    excluded = self._last_solo_prompt_indexes.get(player_id, set()) | set(bag)
+                    refill = [
+                        index for index in range(len(self.prompts))
+                        if index not in excluded
+                    ]
+                    if len(bag) + len(refill) < ROUND_COUNT:
+                        refill = [
+                            index for index in range(len(self.prompts))
+                            if index not in bag
+                        ]
+                    self.rng.shuffle(refill)
+                    bag.extend(refill)
+                indexes = bag[:ROUND_COUNT]
+                del bag[:ROUND_COUNT]
+                self._last_solo_prompt_indexes[player_id] = set(indexes)
         return [self.prompts[index] for index in indexes], [self.answer_indexes[index] for index in indexes]
 
     def create_solo(self, player_id: str, player_name: str) -> PlongeeGame:
         clean_id, clean_name = self._validate_player(player_id, player_name)
-        prompts, indexes = self._new_round_set()
+        prompts, indexes = self._new_round_set(clean_id)
         now = self.clock()
         game = PlongeeGame(
             game_id=uuid.uuid4().hex,
@@ -217,7 +288,7 @@ class PlongeeManager:
                 room_id = "".join(self.rng.choice(ROOM_CODE_ALPHABET) for _ in range(5))
                 if room_id not in self.rooms:
                     break
-            prompts, indexes = self._new_round_set()
+            prompts, indexes = self._new_round_set(clean_id)
             room = PlongeeRoom(
                 room_id=room_id,
                 host_player_id=clean_id,

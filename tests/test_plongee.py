@@ -3,6 +3,7 @@ import unittest
 
 from app.plongee import (
     MAX_PLAYERS,
+    PROMPTS,
     ROUND_COUNT,
     PlongeeManager,
     normalize_answer,
@@ -51,6 +52,44 @@ class PlongeeTests(unittest.TestCase):
             self.manager._score("violoncelles", prompt_indexes["instrument"]),
             ("violoncelle", 30, True),
         )
+
+    def test_question_bank_has_many_topics_and_plausible_answers(self):
+        self.assertGreaterEqual(len(PROMPTS), 25)
+        self.assertGreaterEqual(
+            min(len(prompt["answers"]) for prompt in PROMPTS),
+            14,
+        )
+        prompt_indexes = {
+            prompt["id"]: self.manager.answer_indexes[index]
+            for index, prompt in enumerate(self.manager.prompts)
+        }
+        self.assertTrue(self.manager._score("panais", prompt_indexes["legume"])[2])
+        self.assertTrue(self.manager._score("termite", prompt_indexes["insecte"])[2])
+        with self.assertRaisesRegex(ValueError, "hors sujet ou absente du barème"):
+            self.manager._score("Leeds", prompt_indexes["capitale_europe"])
+
+    def test_generated_plural_forms_are_accepted_but_unrelated_answers_are_not(self):
+        prompt_index = next(
+            index for index, prompt in enumerate(self.manager.prompts)
+            if prompt["id"] == "legume"
+        )
+        answer_index = self.manager.answer_indexes[prompt_index]
+
+        self.assertTrue(self.manager._score("carottes", answer_index)[2])
+        self.assertTrue(self.manager._score("pommes de terre", answer_index)[2])
+        with self.assertRaisesRegex(ValueError, "hors sujet ou absente du barème"):
+            self.manager._score("table", answer_index)
+
+    def test_solo_question_draws_do_not_repeat_until_the_bank_is_nearly_exhausted(self):
+        games = [
+            self.manager.create_solo("player-1", "Joueur")
+            for _ in range(len(PROMPTS) // ROUND_COUNT)
+        ]
+        prompt_ids = [
+            prompt["id"] for game in games for prompt in game.prompts
+        ]
+
+        self.assertEqual(len(prompt_ids), len(set(prompt_ids)))
 
     def test_known_alias_uses_same_barometer_entry(self):
         prompt_index = next(index for index, prompt in enumerate(self.manager.prompts) if prompt["id"] == "fruit")
