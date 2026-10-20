@@ -126,6 +126,18 @@ class FrontendContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('<option value="memories">Memory</option>', response.text)
 
+    def test_store_hides_login_button_when_authenticated(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static"
+        script = (static_dir / "store" / "store.js").read_text()
+        stylesheet = (static_dir / "store" / "store.css").read_text()
+
+        self.assertIn("accountButton.hidden = authenticated;", script)
+        self.assertIn("logoutButton.hidden = !authenticated;", script)
+        self.assertIn(
+            ".store-account-button[hidden],\n.store-logout-button[hidden] {\n  display: none;",
+            stylesheet,
+        )
+
     def test_memory_solo_does_not_poll_and_uses_card_flip_feedback(self):
         games_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "memories"
         script = (games_dir / "app.js").read_text()
@@ -203,6 +215,10 @@ class FrontendContractTests(unittest.TestCase):
             "else if (gameType === 'solo' && isWaitingForNextRound()) renderView();",
             submit_guess,
         )
+        result_renderer = source.split("function renderRoundResult(", 1)[1].split(
+            "function renderFinalScoreboard(", 1
+        )[0]
+        self.assertIn("roomBusy,", result_renderer)
 
     def test_geoguessr_immersive_map_falls_back_when_cartography_tiles_fail(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"

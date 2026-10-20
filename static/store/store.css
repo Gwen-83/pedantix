@@ -107,6 +107,11 @@ html.store-mode .game-store {
   border-color: var(--game-accent);
 }
 
+.store-account-button[hidden],
+.store-logout-button[hidden] {
+  display: none;
+}
+
 .store-admin-link[hidden] {
   display: none;
 }

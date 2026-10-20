@@ -119,8 +119,8 @@
     const authenticated = !!username && !!localStorage.getItem('pedantix_auth_token');
     accountName.hidden = !username;
     accountName.textContent = username ? `Bonjour, ${username}` : '';
-    accountButton.hidden = !!username;
-    logoutButton.hidden = !username;
+    accountButton.hidden = authenticated;
+    logoutButton.hidden = !authenticated;
     adminUsageLink.hidden = !authenticated || username.trim().toLocaleLowerCase() !== 'gwen';
     chatForm.hidden = !authenticated;
     document.getElementById('store-chat-login').hidden = authenticated;

@@ -807,6 +807,7 @@
       state?.player_count,
       state?.player?.ready,
       state?.all_ready,
+      roomBusy,
     ]);
     if (renderSignature === lastResultSignature) return;
     lastResultSignature = renderSignature;
