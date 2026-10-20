@@ -134,6 +134,7 @@ class MemoriesManagerTests(unittest.TestCase):
         self.assertFalse(room.to_dict("host")["can_start"])
         self.assertEqual(len(room.matched), 0)
         self.assertEqual(room.players["host"].pairs, 0)
+        self.assertEqual(room.to_dict("guest")["status"], "lobby")
 
 
 class MemoriesApiTests(unittest.TestCase):

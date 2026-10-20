@@ -347,7 +347,7 @@ def get_store_sent_invitations(username: str, limit: int = 20) -> List[Dict[str,
                       sender_player_id, recipient_player_id, status, created_at, expires_at
                FROM store_invitations
                WHERE LOWER(sender_username) = LOWER(?)
-                 AND status IN ('pending', 'accepted', 'declined', 'expired')
+                 AND status IN ('pending', 'accepted', 'declined', 'expired', 'cancelled')
                ORDER BY id DESC LIMIT ?""",
             (username.strip(), limit),
         )
@@ -397,6 +397,24 @@ def update_store_invitation_status(
                      AND status = 'pending' AND expires_at > ?""",
                 (status, invitation_id, username.strip(), time.time()),
             )
+        return db.cursor.rowcount == 1
+
+
+def cancel_store_invitation(invitation_id: int, sender_username: str) -> bool:
+    with DatabaseContext() as db:
+        now = time.time()
+        db.execute(
+            """UPDATE store_invitations SET status = 'expired'
+               WHERE id = ? AND LOWER(sender_username) = LOWER(?)
+                 AND status = 'pending' AND expires_at <= ?""",
+            (invitation_id, sender_username.strip(), now),
+        )
+        db.execute(
+            """UPDATE store_invitations SET status = 'cancelled'
+               WHERE id = ? AND LOWER(sender_username) = LOWER(?)
+                 AND status = 'pending' AND expires_at > ?""",
+            (invitation_id, sender_username.strip(), now),
+        )
         return db.cursor.rowcount == 1
 
 

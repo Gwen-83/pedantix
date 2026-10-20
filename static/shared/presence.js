@@ -23,7 +23,6 @@
   let activeInvitationId = null;
   let invitationPreviousFocus = null;
   let receivedInvitationCheckInFlight = false;
-  let sentInvitationCheckInFlight = false;
 
   const invitationGames = {
     motus: 'Motus',
@@ -207,47 +206,13 @@
       const data = await socialRequest('/api/social/invitations');
       const invitations = data.invitations || [];
       const active = invitations.find((invitation) => Number(invitation.id) === activeInvitationId);
-      if (active) return;
+      if (active && invitationModal && !invitationModal.hidden) return;
       if (activeInvitationId !== null) hideInvitationModal();
       if (invitations.length) renderInvitation(invitations[0]);
     } catch (error) {
       console.warn('Impossible de vérifier les invitations reçues.', error);
     } finally {
       receivedInvitationCheckInFlight = false;
-    }
-  }
-
-  async function refreshSentInvitations() {
-    if (sentInvitationCheckInFlight
-      || !localStorage.getItem('pedantix_auth_user')
-      || !localStorage.getItem('pedantix_auth_token')) return;
-    let awaiting;
-    try {
-      awaiting = new Set(JSON.parse(localStorage.getItem('store_awaiting_invitation_ids') || '[]'));
-    } catch (error) {
-      console.error('La liste des invitations suivies est illisible.', error);
-      localStorage.removeItem('store_awaiting_invitation_ids');
-      return;
-    }
-    if (!awaiting.size) return;
-
-    sentInvitationCheckInFlight = true;
-    try {
-      const data = await socialRequest('/api/social/invitations/sent');
-      const relevant = (data.invitations || []).filter(
-        (invitation) => awaiting.has(Number(invitation.id)),
-      );
-      const completed = relevant.filter(
-        (invitation) => ['accepted', 'declined', 'expired'].includes(invitation.status),
-      );
-      completed.forEach((invitation) => awaiting.delete(Number(invitation.id)));
-      localStorage.setItem('store_awaiting_invitation_ids', JSON.stringify([...awaiting]));
-      const accepted = completed.find((invitation) => invitation.status === 'accepted');
-      if (accepted) navigateToInvitation(accepted, accepted.sender_player_id);
-    } catch (error) {
-      console.warn('Impossible de vérifier les invitations envoyées.', error);
-    } finally {
-      sentInvitationCheckInFlight = false;
     }
   }
 
@@ -391,7 +356,7 @@
         notice.hidden = !data.paused && !canControl;
         notice.classList.toggle('is-paused', data.paused === true);
         message.textContent = data.paused
-          ? 'Les parties sont en pause. Les parties en cours restent accessibles, mais aucun nouveau lancement n’est accepté.'
+          ? 'Les parties sont en pause pour cause de maintenance. Les parties en cours restent accessibles, mais aucun nouveau lancement n’est accepté.'
           : canControl ? 'Toutes les parties sont disponibles.' : '';
         if (canControl) {
           control.textContent = data.paused ? 'Reprendre les parties' : 'Mettre les parties en pause';
@@ -437,7 +402,7 @@
         notice.classList.toggle('is-paused', data.paused === true);
         notice.hidden = !data.paused && !canControl;
         message.textContent = data.paused
-          ? 'Les parties sont en pause. Les parties en cours restent accessibles, mais aucun nouveau lancement n’est accepté.'
+          ? 'Les parties sont en pause pour cause de maintenance. Les parties en cours restent accessibles, mais aucun nouveau lancement n’est accepté.'
           : 'Toutes les parties sont disponibles.';
         control.textContent = data.paused ? 'Reprendre les parties' : 'Mettre les parties en pause';
         control.setAttribute('aria-pressed', String(data.paused === true));
@@ -465,8 +430,14 @@
   window.setInterval(sendHeartbeat, 30_000);
   refreshInvitations();
   window.setInterval(refreshInvitations, 3_000);
-  refreshSentInvitations();
-  window.setInterval(refreshSentInvitations, 3_000);
+  function refreshVisibleSocialState() {
+    if (document.visibilityState !== 'visible') return;
+    sendHeartbeat();
+    refreshInvitations();
+  }
+  document.addEventListener('visibilitychange', refreshVisibleSocialState);
+  window.addEventListener('focus', refreshVisibleSocialState);
+  window.addEventListener('pageshow', refreshVisibleSocialState);
   if (document.getElementById('store-online-list')) {
     refreshOnlinePlayers();
     window.setInterval(refreshOnlinePlayers, 15_000);

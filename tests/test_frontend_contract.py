@@ -111,6 +111,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Solo contre le bot", game_page.text)
         self.assertIn("Multijoueur", game_page.text)
 
+    def test_store_invitation_game_selector_includes_memories(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('<option value="memories">Memory</option>', response.text)
+
 
 if __name__ == "__main__":
     unittest.main()

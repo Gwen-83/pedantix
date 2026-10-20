@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 import app.database as database
 from app import main
+from app.memories import MemoriesManager
 
 
 class StoreSocialTests(unittest.IsolatedAsyncioTestCase):
@@ -236,6 +237,86 @@ class StoreSocialTests(unittest.IsolatedAsyncioTestCase):
             ][0]["status"],
             "declined",
         )
+
+    async def test_sender_can_cancel_invitation_and_recipient_can_no_longer_accept_it(self):
+        with main.online_presence_lock:
+            main.online_presence["bob-tab"] = {
+                "username": "Bob",
+                "game_id": "store",
+                "last_seen": main.time.time(),
+            }
+        invitation = await main.post_store_invitation(
+            main.StoreInvitationRequest(recipient_username="Bob", game_id="memories"),
+            "Alice",
+            self.alice["token"],
+        )
+
+        with self.assertRaises(HTTPException) as recipient_cannot_cancel:
+            await main.update_store_social_invitation(
+                invitation["id"],
+                main.StoreInvitationActionRequest(action="cancelled"),
+                "Bob",
+                self.bob["token"],
+            )
+        self.assertEqual(recipient_cannot_cancel.exception.status_code, 410)
+        self.assertEqual(
+            len((await main.get_store_social_invitations("Bob", self.bob["token"]))["invitations"]),
+            1,
+        )
+
+        cancelled = await main.update_store_social_invitation(
+            invitation["id"],
+            main.StoreInvitationActionRequest(action="cancelled"),
+            "Alice",
+            self.alice["token"],
+        )
+        self.assertEqual(cancelled, {"status": "cancelled"})
+        self.assertEqual(
+            (await main.get_store_social_invitations("Bob", self.bob["token"]))["invitations"],
+            [],
+        )
+        sent = await main.get_store_sent_social_invitations("Alice", self.alice["token"])
+        self.assertEqual(sent["invitations"][0]["status"], "cancelled")
+        with self.assertRaises(HTTPException) as cannot_accept_cancelled:
+            await main.update_store_social_invitation(
+                invitation["id"],
+                main.StoreInvitationActionRequest(action="accepted"),
+                "Bob",
+                self.bob["token"],
+            )
+        self.assertEqual(cannot_accept_cancelled.exception.status_code, 410)
+
+    async def test_memories_invitation_creates_a_joined_multiplayer_room(self):
+        manager = MemoriesManager()
+        with patch.dict(
+            main.STORE_INVITATION_GAMES,
+            {"memories": ("Memory", manager, "memories_player_id")},
+        ):
+            with main.online_presence_lock:
+                main.online_presence["bob-tab"] = {
+                    "username": "Bob",
+                    "game_id": "store",
+                    "last_seen": main.time.time(),
+                }
+            invitation = await main.post_store_invitation(
+                main.StoreInvitationRequest(
+                    recipient_username="Bob",
+                    game_id="memories",
+                ),
+                "Alice",
+                self.alice["token"],
+            )
+            accepted = await main.update_store_social_invitation(
+                invitation["id"],
+                main.StoreInvitationActionRequest(action="accepted"),
+                "Bob",
+                self.bob["token"],
+            )
+
+        room = manager.get_room(accepted["room_id"], accepted["player_id"])
+        self.assertEqual(room.status, "lobby")
+        self.assertEqual(set(room.players), {"Alice", "Bob"})
+        self.assertEqual(accepted["game_id"], "memories")
 
     async def test_invitation_expires_after_five_minutes(self):
         with main.online_presence_lock:

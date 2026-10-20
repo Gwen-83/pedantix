@@ -44,6 +44,7 @@ from app.database import (
     get_store_sent_invitations,
     get_store_invitation_for_accept,
     update_store_invitation_status,
+    cancel_store_invitation,
     record_user_guess_word,
     record_user_game_finish,
     record_multigame_session_start,
@@ -91,6 +92,9 @@ GAME_LAUNCH_SLUGS = {
     "motus", "undercover", "cemantix", "chiffrantix", "battleship",
     "sudoku", "geoguessr", "bitoguessr", "plongee", "memories",
 }
+GAME_PAUSE_MAINTENANCE_MESSAGE = (
+    "Les parties sont en pause pour cause de maintenance. Réessayez plus tard."
+)
 GAME_LAUNCH_LOCAL_LOCK = threading.Lock()
 
 
@@ -137,7 +141,7 @@ async def enforce_global_game_pause(request: Request, call_next):
                         return JSONResponse(
                             status_code=423,
                             content={
-                                "detail": "Les parties sont temporairement en pause. Réessayez plus tard.",
+                                "detail": GAME_PAUSE_MAINTENANCE_MESSAGE,
                                 "games_paused": True,
                             },
                         )
@@ -288,7 +292,7 @@ class StoreInvitationRequest(BaseModel):
     ]
 
 class StoreInvitationActionRequest(BaseModel):
-    action: Literal["accepted", "declined"]
+    action: Literal["accepted", "declined", "cancelled"]
 
 class AuthRegisterRequest(BaseModel):
     username: str
@@ -879,7 +883,7 @@ def _is_gwen_controller(username: Optional[str], token: Optional[str]) -> bool:
 
 
 STORE_INVITATION_TTL_SECONDS = 5 * 60
-store_invitation_lock = threading.RLock()
+store_invitation_lock = asyncio.Lock()
 STORE_INVITATION_GAMES = {
     "motus": ("Motus", motus_manager, "motus_player_id"),
     "cemantix": ("Cémantix", cemantix_manager, "cemantix_player_id"),
@@ -1074,15 +1078,25 @@ async def update_store_social_invitation(
     x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
 ):
     username = _require_store_user(x_auth_user, x_auth_token)
+    if req.action == "cancelled":
+        async with store_invitation_lock:
+            if not cancel_store_invitation(invitation_id, username):
+                raise HTTPException(
+                    status_code=410,
+                    detail="Cette invitation a déjà été traitée ou a expiré.",
+                )
+        return {"status": "cancelled"}
+
     if req.action == "declined":
-        if not update_store_invitation_status(invitation_id, username, "declined"):
-            raise HTTPException(
-                status_code=404,
-                detail="Cette invitation a expiré ou a déjà été traitée.",
-            )
+        async with store_invitation_lock:
+            if not update_store_invitation_status(invitation_id, username, "declined"):
+                raise HTTPException(
+                    status_code=404,
+                    detail="Cette invitation a expiré ou a déjà été traitée.",
+                )
         return {"status": "declined"}
 
-    with store_invitation_lock:
+    async with store_invitation_lock:
         invitation = get_store_invitation_for_accept(invitation_id, username)
         if invitation is None:
             raise HTTPException(
@@ -1095,7 +1109,10 @@ async def update_store_social_invitation(
                     if paused:
                         raise HTTPException(
                             status_code=423,
-                            detail="Les parties sont temporairement en pause. Cette invitation ne peut pas être acceptée.",
+                            detail=(
+                                f"{GAME_PAUSE_MAINTENANCE_MESSAGE} "
+                                "Cette invitation ne peut pas être acceptée."
+                            ),
                         )
                     created = _create_invitation_room(invitation)
         except (KeyError, ValueError, RuntimeError) as exc:

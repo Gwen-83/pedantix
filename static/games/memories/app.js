@@ -22,6 +22,7 @@
   let mode = null;
   let busy = false;
   let pollingTimer = null;
+  let roomPollingInterval = null;
   let refreshing = false;
 
   document.getElementById('memory-player-name').textContent = playerName;
@@ -69,13 +70,22 @@
   function stopPolling() {
     if (pollingTimer) window.clearInterval(pollingTimer);
     pollingTimer = null;
+    roomPollingInterval = null;
     refreshing = false;
+  }
+
+  function scheduleRoomPolling() {
+    const interval = state?.status === 'finished' ? 3000 : 650;
+    if (pollingTimer && roomPollingInterval === interval) return;
+    if (pollingTimer) window.clearInterval(pollingTimer);
+    roomPollingInterval = interval;
+    pollingTimer = window.setInterval(refreshRoom, interval);
   }
 
   function startPolling() {
     stopPolling();
     if (mode === 'room') {
-      pollingTimer = window.setInterval(refreshRoom, 650);
+      scheduleRoomPolling();
     } else if (mode === 'solo') {
       pollingTimer = window.setInterval(refreshSolo, 1000);
     }
@@ -258,7 +268,7 @@
         `/api/memories/room/${encodeURIComponent(state.room_id)}?player_id=${encodeURIComponent(playerId)}`,
       );
       render();
-      if (state.status === 'finished') stopPolling();
+      scheduleRoomPolling();
     } catch (error) {
       showError('memory-game-error', error);
     } finally {
@@ -282,7 +292,8 @@
         });
       }
       render();
-      if (state.status === 'finished') stopPolling();
+      if (mode === 'solo' && state.status === 'finished') stopPolling();
+      else if (mode === 'room') scheduleRoomPolling();
     } catch (error) {
       showError('memory-game-error', error);
     } finally {
@@ -387,6 +398,7 @@
         ...playerPayload(), room_id: state.room_id,
       });
       render();
+      scheduleRoomPolling();
     } catch (error) {
       showError('memory-game-error', error);
     } finally {
@@ -417,8 +429,12 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'memory-secondary';
-        button.textContent = room.is_member ? 'Reprendre' : 'Rejoindre';
-        button.disabled = room.status !== 'lobby' && !room.is_member;
+        const isFull = room.player_count >= room.max_players;
+        button.textContent = room.is_member
+          ? 'Reprendre'
+          : isFull ? 'Salon complet' : 'Rejoindre';
+        button.disabled = !room.is_member
+          && (room.status !== 'lobby' || isFull);
         button.addEventListener('click', () => joinRoom(room.room_id));
         item.append(details, button);
         container.append(item);

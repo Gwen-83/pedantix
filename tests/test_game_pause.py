@@ -94,7 +94,7 @@ class GlobalGamePauseTests(unittest.TestCase):
         ]
         for game in (
             "motus", "undercover", "cemantix", "chiffrantix", "battleship",
-            "sudoku", "geoguessr", "bitoguessr", "plongee",
+            "sudoku", "geoguessr", "bitoguessr", "plongee", "memories",
         ):
             launch_requests.extend([
                 ("POST", f"/api/{game}/solo/new"),
@@ -108,6 +108,7 @@ class GlobalGamePauseTests(unittest.TestCase):
                 response = self.client.request(method, path, json={})
                 self.assertEqual(response.status_code, 423)
                 self.assertTrue(response.json()["games_paused"])
+                self.assertIn("pause pour cause de maintenance", response.json()["detail"])
 
     def test_pause_does_not_interrupt_in_progress_game_actions(self):
         self.client.post(
@@ -151,6 +152,7 @@ class GlobalGamePauseTests(unittest.TestCase):
             json={"action": "accepted"},
         )
         self.assertEqual(accepted.status_code, 423)
+        self.assertIn("pause pour cause de maintenance", accepted.json()["detail"])
 
         declined = self.client.post(
             f"/api/social/invitations/{invitation_id}",

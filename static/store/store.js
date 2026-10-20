@@ -29,6 +29,10 @@
   const inviteGameSelect = document.getElementById('store-invite-game');
   let lastChatId = 0;
   let pendingInviteUsername = null;
+  let pendingOutgoingInvitationId = null;
+  let outgoingInvitationTimer = null;
+  let outgoingInvitationCheckInFlight = false;
+  let invitationRequestInFlight = false;
   let roomsRequestInFlight = false;
   const params = new URLSearchParams(window.location.search);
   const requestedNext = params.get('next');
@@ -278,10 +282,11 @@
       const item = document.createElement('li');
       const text = document.createElement('span');
       const statuses = {
-        pending: 'En attente · valable 5 minutes',
+        pending: 'En attente de réponse · valable 5 minutes',
         accepted: `Acceptée · salon ${invitation.room_id}`,
         declined: 'Refusée',
         expired: 'Expirée',
+        cancelled: 'Annulée',
       };
       text.textContent = `Invitation à ${invitation.recipient_username} · ${gameNames[invitation.game_id] || invitation.game_id} · ${statuses[invitation.status] || invitation.status}`;
       item.append(text);
@@ -370,16 +375,117 @@
       `Choisissez un jeu. Un salon privé avec vous deux sera créé si ${username} accepte. L’invitation expire dans 5 minutes.`;
     document.getElementById('store-invite-status').textContent = '';
     document.getElementById('store-invite-submit').disabled = false;
+    inviteForm.hidden = false;
     inviteOverlay.hidden = false;
     inviteForm.dataset.recipient = username;
     document.getElementById('store-invite-close').focus();
+  }
+
+  function stopOutgoingInvitationPolling() {
+    if (outgoingInvitationTimer) window.clearInterval(outgoingInvitationTimer);
+    outgoingInvitationTimer = null;
+  }
+
+  function navigateToAcceptedInvitation(invitation) {
+    const playerStorageKeys = {
+      motus: 'motus_player_id',
+      cemantix: 'cemantix_player_id',
+      chiffrantix: 'chiffrantix_player_id',
+      sudoku: 'sudoku_player_id',
+      battleship: 'battleship_player_id',
+      geoguessr: 'geoguessr_player_id',
+      plongee: 'plongee_player_id',
+      memories: 'memories_player_id',
+    };
+    const storageKey = playerStorageKeys[invitation.game_id];
+    if (!storageKey || !invitation.room_id || !invitation.sender_player_id) {
+      document.getElementById('store-invite-status').textContent =
+        'L’invitation a été acceptée, mais le salon ne peut pas être ouvert.';
+      return;
+    }
+    localStorage.setItem(storageKey, invitation.sender_player_id);
+    window.location.href =
+      `/games/${encodeURIComponent(invitation.game_id)}/?room=${encodeURIComponent(invitation.room_id)}`;
+  }
+
+  async function refreshOutgoingInvitation() {
+    if (pendingOutgoingInvitationId === null || outgoingInvitationCheckInFlight) return null;
+    outgoingInvitationCheckInFlight = true;
+    try {
+      const data = await socialRequest('/api/social/invitations/sent');
+      const invitation = (data.invitations || []).find(
+        (item) => Number(item.id) === pendingOutgoingInvitationId,
+      );
+      if (!invitation) return null;
+      if (invitation.status === 'accepted') {
+        stopOutgoingInvitationPolling();
+        pendingOutgoingInvitationId = null;
+        navigateToAcceptedInvitation(invitation);
+        return 'accepted';
+      }
+      if (['declined', 'expired', 'cancelled'].includes(invitation.status)) {
+        stopOutgoingInvitationPolling();
+        pendingOutgoingInvitationId = null;
+        const messages = {
+          declined: 'Invitation refusée.',
+          expired: 'Invitation expirée sans réponse.',
+          cancelled: 'Invitation annulée.',
+        };
+        document.getElementById('store-invite-status').textContent =
+          messages[invitation.status];
+        document.getElementById('store-invite-close').focus();
+        return invitation.status;
+      }
+      return invitation.status;
+    } catch (error) {
+      document.getElementById('store-invite-status').textContent =
+        `Impossible de vérifier la réponse : ${error.message}`;
+      return null;
+    } finally {
+      outgoingInvitationCheckInFlight = false;
+    }
+  }
+
+  async function closeInviteDialog() {
+    if (invitationRequestInFlight) return;
+    if (pendingOutgoingInvitationId !== null) {
+      const invitationId = pendingOutgoingInvitationId;
+      const close = document.getElementById('store-invite-close');
+      close.disabled = true;
+      document.getElementById('store-invite-status').textContent =
+        'Annulation de l’invitation…';
+      try {
+        await socialRequest(`/api/social/invitations/${invitationId}`, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'cancelled' }),
+        });
+        stopOutgoingInvitationPolling();
+        pendingOutgoingInvitationId = null;
+        refreshInvitations();
+        inviteOverlay.hidden = true;
+      } catch (error) {
+        document.getElementById('store-invite-status').textContent =
+          `Impossible d’annuler l’invitation : ${error.message}`;
+        const status = await refreshOutgoingInvitation();
+        if (['declined', 'expired', 'cancelled'].includes(status)) {
+          inviteOverlay.hidden = true;
+        }
+      } finally {
+        close.disabled = false;
+      }
+      return;
+    }
+    inviteOverlay.hidden = true;
   }
 
   async function sendInvitation(event) {
     event.preventDefault();
     const gameId = inviteGameSelect.value;
     const submit = document.getElementById('store-invite-submit');
+    const close = document.getElementById('store-invite-close');
     submit.disabled = true;
+    close.disabled = true;
+    invitationRequestInFlight = true;
     document.getElementById('store-invite-status').textContent = 'Envoi…';
     try {
       const invitation = await socialRequest('/api/social/invitations', {
@@ -389,17 +495,23 @@
           game_id: gameId,
         }),
       });
-      const awaiting = new Set(JSON.parse(localStorage.getItem('store_awaiting_invitation_ids') || '[]'));
-      awaiting.add(Number(invitation.id));
-      localStorage.setItem('store_awaiting_invitation_ids', JSON.stringify([...awaiting]));
+      pendingOutgoingInvitationId = Number(invitation.id);
+      inviteForm.hidden = true;
+      document.getElementById('store-invite-description').textContent =
+        `Invitation envoyée à ${invitation.recipient_username} pour jouer à ${inviteGameSelect.selectedOptions[0].textContent}.`;
       document.getElementById('store-invite-status').textContent =
-        `Invitation envoyée à ${invitation.recipient_username}. Elle expire dans 5 minutes.`;
+        'En attente de son acceptation… Fermer cette fenêtre annulera l’invitation.';
       refreshInvitations();
-      window.setTimeout(() => { inviteOverlay.hidden = true; }, 900);
+      stopOutgoingInvitationPolling();
+      outgoingInvitationTimer = window.setInterval(refreshOutgoingInvitation, 2000);
+      refreshOutgoingInvitation();
     } catch (error) {
       document.getElementById('store-invite-status').textContent =
         `Impossible d’envoyer l’invitation : ${error.message}`;
       submit.disabled = false;
+    } finally {
+      invitationRequestInFlight = false;
+      close.disabled = false;
     }
   }
 
@@ -430,11 +542,12 @@
   document.addEventListener('store:invite-player', (event) => {
     openInviteDialog(event.detail.username);
   });
-  document.getElementById('store-invite-close').addEventListener('click', () => {
-    inviteOverlay.hidden = true;
+  document.getElementById('store-invite-close').addEventListener('click', closeInviteDialog);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !inviteOverlay.hidden) closeInviteDialog();
   });
   inviteOverlay.addEventListener('click', (event) => {
-    if (event.target === inviteOverlay) inviteOverlay.hidden = true;
+    if (event.target === inviteOverlay) closeInviteDialog();
   });
   inviteForm.addEventListener('submit', sendInvitation);
   refreshChat(true);
