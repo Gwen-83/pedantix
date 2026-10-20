@@ -38,8 +38,7 @@
   let mapLabelsLayer = null;
   let mapLabelsLayerFallback = false;
   let mapLabelsFallbackErrorShown = false;
-  let mapPhysicalLayer = null;
-  let mapReliefLayer = null;
+  let mapCitiesLayer = null;
   let selectedPosition = null;
   let pollingTimer = null;
   let roundCountdownTimer = null;
@@ -438,7 +437,7 @@
       showError(playError, 'La carte ne s’est pas chargée. Vérifiez votre connexion puis rechargez la page.');
       return false;
     }
-    map = L.map('geo-map', { worldCopyJump: true, minZoom: 2, maxZoom: 18 })
+    map = L.map('geo-map', { worldCopyJump: true, minZoom: 2, maxZoom: 20 })
       .setView([20, 0], 2);
     loadCountryBoundaries();
     map.on('click', (event) => {
@@ -454,11 +453,11 @@
 
   function countryBoundaryStyle(isPanorama) {
     return {
-      color: isPanorama ? '#63716f' : '#f1f5f4',
-      weight: isPanorama ? 1 : 1.4,
-      opacity: 0.9,
+      color: isPanorama ? '#63716f' : '#31444a',
+      weight: isPanorama ? 1 : 0.9,
+      opacity: isPanorama ? 0.9 : 0.76,
       fillColor: '#58a83b',
-      fillOpacity: isPanorama ? 0 : 0.18,
+      fillOpacity: isPanorama ? 0 : 0.1,
     };
   }
 
@@ -507,44 +506,33 @@
       }
       mapLabelsLayerFallback = false;
       mapLabelsFallbackErrorShown = false;
-      if (!mapPhysicalLayer) {
-        mapPhysicalLayer = L.tileLayer(
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}',
+      if (!mapCitiesLayer) {
+        mapCitiesLayer = L.tileLayer(
+          'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',
           {
-            maxNativeZoom: 8,
-            maxZoom: 18,
-            attribution: 'Relief &copy; <a href="https://goto.arcgisonline.com/maps/World_Shaded_Relief" target="_blank" rel="noopener">Esri</a> · '
-              + 'Physique : <a href="https://goto.arcgisonline.com/maps/World_Physical_Map" target="_blank" rel="noopener">US National Park Service</a>',
-          },
-        ).addTo(map);
-        mapReliefLayer = L.tileLayer(
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
-          {
-            maxNativeZoom: 13,
-            maxZoom: 18,
-            opacity: 0.28,
-            attribution: '',
+            maxNativeZoom: 20,
+            maxZoom: 20,
+            detectRetina: true,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> '
+              + '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
           },
         ).addTo(map);
       }
     } else {
-      for (const layer of [mapPhysicalLayer, mapReliefLayer]) {
-        if (layer) map.removeLayer(layer);
-      }
-      mapPhysicalLayer = null;
-      mapReliefLayer = null;
+      if (mapCitiesLayer) map.removeLayer(mapCitiesLayer);
+      mapCitiesLayer = null;
     }
 
     countryBoundaryLayer?.setStyle(countryBoundaryStyle(isPanorama));
     const attribution = document.querySelector('.geo-map-actions > span');
     attribution.textContent = isPanorama
       ? 'Carte © OpenStreetMap · CARTO · frontières © Natural Earth'
-      : 'Carte physique et relief sans noms de villes · frontières © Natural Earth';
+      : 'Carte détaillée sans noms de villes © OpenStreetMap · CARTO · frontières © Natural Earth';
   }
 
   function loadCountryBoundaries() {
     if (countryBoundaryLayer || countryBoundaryLoading) return;
-    countryBoundaryLoading = fetch('/static/games/geoguessr/data/countries.geojson')
+    countryBoundaryLoading = fetch('/static/games/geoguessr/data/countries_50m.geojson')
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -554,6 +542,7 @@
         countryBoundaryLayer = L.geoJSON(countries, {
           interactive: false,
           style: countryBoundaryStyle(isPanorama),
+          smoothFactor: 0.5,
         }).addTo(map);
         countryBoundaryLayer.bringToBack();
       })
