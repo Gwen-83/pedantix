@@ -98,6 +98,26 @@ class FrontendContractTests(unittest.TestCase):
                         asset_response = self.client.get(url.path)
                         self.assertEqual(asset_response.status_code, 200)
 
+    def test_global_chat_notifications_are_shared_across_game_pages(self):
+        root_page = self.client.get("/")
+        self.assertIn('/static/shared/presence.js', root_page.text)
+        for path in GAME_PAGES:
+            with self.subTest(game_page=path):
+                self.assertIn('/static/shared/presence.js', self.client.get(path).text)
+        admin_page = (
+            Path(__file__).resolve().parents[1] / "static" / "admin" / "usage.html"
+        ).read_text()
+        self.assertIn('/static/shared/presence.js', admin_page)
+
+        presence_script = (
+            Path(__file__).resolve().parents[1] / "static" / "shared" / "presence.js"
+        ).read_text()
+        self.assertIn("refreshGeneralChatNotifications", presence_script)
+        self.assertIn("window.setInterval(refreshGeneralChatNotifications, 3_000)", presence_script)
+        self.assertIn("window.Notification.requestPermission()", presence_script)
+        self.assertIn("new window.Notification(", presence_script)
+        self.assertIn("message.username} · Chat général", presence_script)
+
     def test_battleship_catalog_promises_its_available_solo_and_multiplayer_modes(self):
         response = self.client.get("/")
         page = PageContractParser()

@@ -23,6 +23,13 @@
   let activeInvitationId = null;
   let invitationPreviousFocus = null;
   let receivedInvitationCheckInFlight = false;
+  const chatNotificationCursorKey = 'pedantix_chat_notification_cursor';
+  let chatNotificationCursor = Number(localStorage.getItem(chatNotificationCursorKey)) || 0;
+  let chatNotificationInitialized = chatNotificationCursor > 0;
+  let chatNotificationRequestInFlight = false;
+  let chatNotificationTimer = null;
+  let chatNotificationStack = null;
+  let chatNotificationPermissionButton = null;
 
   const invitationGames = {
     motus: 'Motus',
@@ -72,6 +79,160 @@
       throw error;
     }
     return data;
+  }
+
+  function ensureChatNotificationUi() {
+    if (chatNotificationStack) return;
+    const styles = document.createElement('style');
+    styles.textContent = `
+      .shared-chat-notification-stack {
+        position: fixed; z-index: 15000; right: 16px; bottom: 16px;
+        display: grid; width: min(390px, calc(100vw - 32px)); gap: 9px;
+        font: 500 .9rem/1.45 system-ui,sans-serif;
+      }
+      .shared-chat-notification {
+        display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px;
+        border: 1px solid rgba(148,163,184,.42); border-radius: 13px;
+        background: #17212b; color: #f8fafc; box-shadow: 0 10px 32px rgba(0,0,0,.32);
+      }
+      .shared-chat-notification a { flex: 1; color: inherit; text-decoration: none; }
+      .shared-chat-notification a:hover { text-decoration: underline; }
+      .shared-chat-notification strong, .shared-chat-notification span { display: block; }
+      .shared-chat-notification span { margin-top: 3px; color: #d1d5db; overflow-wrap: anywhere; }
+      .shared-chat-notification button, .shared-chat-notification-permission {
+        border: 1px solid rgba(255,255,255,.25); border-radius: 9px;
+        background: rgba(255,255,255,.1); color: #fff; font: inherit; cursor: pointer;
+      }
+      .shared-chat-notification button { padding: 2px 8px; }
+      .shared-chat-notification-permission {
+        position: fixed; z-index: 14999; left: 16px; bottom: 16px;
+        padding: 9px 12px; background: #17212b; box-shadow: 0 6px 22px rgba(0,0,0,.25);
+      }
+      .shared-chat-notification-permission[hidden] { display: none; }
+      @media (max-width: 520px) {
+        .shared-chat-notification-stack { right: 10px; bottom: 10px; width: calc(100vw - 20px); }
+        .shared-chat-notification-permission { left: 10px; bottom: 10px; }
+      }`;
+    document.head.append(styles);
+    chatNotificationStack = document.createElement('div');
+    chatNotificationStack.className = 'shared-chat-notification-stack';
+    chatNotificationStack.setAttribute('role', 'region');
+    chatNotificationStack.setAttribute('aria-label', 'Nouveaux messages du chat général');
+    chatNotificationStack.setAttribute('aria-live', 'polite');
+    chatNotificationStack.setAttribute('aria-relevant', 'additions');
+    document.body.append(chatNotificationStack);
+
+    if ('Notification' in window) {
+      chatNotificationPermissionButton = document.createElement('button');
+      chatNotificationPermissionButton.type = 'button';
+      chatNotificationPermissionButton.className = 'shared-chat-notification-permission';
+      chatNotificationPermissionButton.textContent = 'Activer les notifications du chat';
+      chatNotificationPermissionButton.addEventListener('click', async () => {
+        chatNotificationPermissionButton.disabled = true;
+        try {
+          await window.Notification.requestPermission();
+        } catch (error) {
+          console.warn('Impossible d’activer les notifications du chat.', error);
+        } finally {
+          updateChatNotificationPermissionButton();
+        }
+      });
+      document.body.append(chatNotificationPermissionButton);
+      updateChatNotificationPermissionButton();
+    }
+  }
+
+  function updateChatNotificationPermissionButton() {
+    if (!chatNotificationPermissionButton || !('Notification' in window)) return;
+    const permission = window.Notification.permission;
+    chatNotificationPermissionButton.hidden = permission !== 'default';
+    chatNotificationPermissionButton.disabled = false;
+    chatNotificationPermissionButton.title = permission === 'denied'
+      ? 'Les notifications sont bloquées dans les paramètres du navigateur.'
+      : '';
+  }
+
+  function showGeneralChatNotification(message) {
+    ensureChatNotificationUi();
+    const toast = document.createElement('div');
+    toast.className = 'shared-chat-notification';
+    toast.setAttribute('role', 'status');
+    const link = document.createElement('a');
+    link.href = '/#store-chat-title';
+    const sender = document.createElement('strong');
+    sender.textContent = `${message.username} · Chat général`;
+    const text = document.createElement('span');
+    text.textContent = message.message;
+    link.append(sender, text);
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Fermer la notification');
+    close.textContent = '×';
+    close.addEventListener('click', () => toast.remove());
+    toast.append(link, close);
+    chatNotificationStack.append(toast);
+    while (chatNotificationStack.children.length > 3) {
+      chatNotificationStack.firstElementChild.remove();
+    }
+    window.setTimeout(() => toast.remove(), 10_000);
+
+    if (
+      'Notification' in window
+      && window.Notification.permission === 'granted'
+      && (document.visibilityState !== 'visible' || !document.hasFocus())
+    ) {
+      try {
+        const notification = new window.Notification(
+          `${message.username} · Chat général`,
+          { body: message.message, tag: `pedantix-chat-${message.id}` },
+        );
+        notification.onclick = () => window.focus();
+      } catch (error) {
+        console.warn('Impossible d’afficher la notification système du chat.', error);
+      }
+    }
+  }
+
+  async function refreshGeneralChatNotifications() {
+    if (chatNotificationRequestInFlight) return;
+    chatNotificationRequestInFlight = true;
+    try {
+      const storedCursor = Number(localStorage.getItem(chatNotificationCursorKey)) || 0;
+      chatNotificationCursor = Math.max(chatNotificationCursor, storedCursor);
+      const query = chatNotificationInitialized
+        ? `?after_id=${chatNotificationCursor}`
+        : '';
+      const data = await socialRequest(`/api/social/chat${query}`);
+      const messages = data.messages || [];
+      if (!chatNotificationInitialized) {
+        const latestId = messages.reduce(
+          (latest, message) => Math.max(latest, Number(message.id) || 0),
+          0,
+        );
+        chatNotificationCursor = latestId;
+        chatNotificationInitialized = true;
+        if (latestId) localStorage.setItem(chatNotificationCursorKey, String(latestId));
+        return;
+      }
+
+      const currentUsername = (localStorage.getItem('pedantix_auth_user') || '')
+        .trim()
+        .toLocaleLowerCase();
+      for (const message of messages) {
+        const messageId = Number(message.id);
+        if (!Number.isInteger(messageId) || messageId <= chatNotificationCursor) continue;
+        chatNotificationCursor = messageId;
+        localStorage.setItem(chatNotificationCursorKey, String(messageId));
+        if (String(message.username || '').trim().toLocaleLowerCase() !== currentUsername) {
+          showGeneralChatNotification(message);
+        }
+      }
+    } catch (error) {
+      console.warn('Impossible de vérifier les nouveaux messages du chat général.', error);
+    } finally {
+      chatNotificationRequestInFlight = false;
+      updateChatNotificationPermissionButton();
+    }
   }
 
   function ensureInvitationModal() {
@@ -426,6 +587,9 @@
   }
 
   initializeGamePauseControl();
+  ensureChatNotificationUi();
+  refreshGeneralChatNotifications();
+  chatNotificationTimer = window.setInterval(refreshGeneralChatNotifications, 3_000);
   sendHeartbeat();
   window.setInterval(sendHeartbeat, 30_000);
   refreshInvitations();
@@ -434,10 +598,14 @@
     if (document.visibilityState !== 'visible') return;
     sendHeartbeat();
     refreshInvitations();
+    refreshGeneralChatNotifications();
   }
   document.addEventListener('visibilitychange', refreshVisibleSocialState);
   window.addEventListener('focus', refreshVisibleSocialState);
   window.addEventListener('pageshow', refreshVisibleSocialState);
+  window.addEventListener('pagehide', () => {
+    if (chatNotificationTimer) window.clearInterval(chatNotificationTimer);
+  }, { once: true });
   if (document.getElementById('store-online-list')) {
     refreshOnlinePlayers();
     window.setInterval(refreshOnlinePlayers, 15_000);
