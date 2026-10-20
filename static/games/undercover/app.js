@@ -88,7 +88,20 @@
     pollTimer = null;
   }
 
-  function leaveRoom() {
+  async function leaveRoom() {
+    if (roomId && state) {
+      stopPolling();
+      try {
+        await request('/api/undercover/room/leave', {
+          room_id: roomId,
+          player_id: playerId,
+        });
+      } catch (error) {
+        showError($('undercover-game-error'), error);
+        startPolling();
+        return;
+      }
+    }
     stopPolling();
     state = null;
     roomId = '';

@@ -100,7 +100,20 @@
     pollingTimer = window.setInterval(refreshRoom, 1500);
   }
 
-  function showHome() {
+  async function showHome() {
+    if (state?.room_id && state.is_solo !== true) {
+      stopPolling();
+      try {
+        await post('/api/battleship/room/leave', {
+          room_id: state.room_id,
+          player_id: playerId,
+        });
+      } catch (error) {
+        showError(playError, error.message);
+        startPolling();
+        return;
+      }
+    }
     stopPolling();
     localStorage.removeItem('battleship_solo_room_id');
     localStorage.removeItem('battleship_active_room_id');

@@ -24,6 +24,7 @@
   let pollingTimer = null;
   let roomPollingInterval = null;
   let refreshing = false;
+  let roomStateRevision = 0;
 
   document.getElementById('memory-player-name').textContent = playerName;
 
@@ -75,7 +76,7 @@
   }
 
   function scheduleRoomPolling() {
-    const interval = state?.status === 'finished' ? 3000 : 650;
+    const interval = state?.status === 'finished' ? 3000 : 900;
     if (pollingTimer && roomPollingInterval === interval) return;
     if (pollingTimer) window.clearInterval(pollingTimer);
     roomPollingInterval = interval;
@@ -157,26 +158,37 @@
   }
 
   function renderBoard() {
-    board.replaceChildren();
     board.style.setProperty('--memory-grid-size', state.grid_size);
     const isOwnTurn = mode === 'solo' || state.turn_player_id === playerId;
     const locked = busy || state.status !== 'playing'
       || state.pending_mismatch_until != null
       || (mode === 'room' && !isOwnTurn);
+    const buttons = Array.from(board.children);
+    if (
+      buttons.length !== state.cards.length
+      || buttons.some((button, index) => button.dataset.index !== String(index))
+    ) {
+      board.replaceChildren(...state.cards.map((card) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'memory-card';
+        button.dataset.index = String(card.index);
+        button.addEventListener('click', () => {
+          const index = Number(button.dataset.index);
+          if (Number.isInteger(index)) flipCard(index);
+        });
+        return button;
+      }));
+    }
     state.cards.forEach((card) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'memory-card';
-      button.dataset.index = String(card.index);
+      const button = board.children[card.index];
       button.textContent = card.face || '?';
       button.setAttribute('aria-label', card.face
         ? `Carte ${card.index + 1} : ${card.face}${card.matched ? ', paire trouvée' : ''}`
         : `Carte ${card.index + 1}, face cachée`);
       button.disabled = locked || card.face != null || card.matched;
-      if (!card.face) button.classList.add('is-hidden');
-      if (card.matched) button.classList.add('is-matched');
-      button.addEventListener('click', () => flipCard(card.index));
-      board.append(button);
+      button.classList.toggle('is-hidden', !card.face);
+      button.classList.toggle('is-matched', card.matched);
     });
   }
 
@@ -263,10 +275,18 @@
   async function refreshRoom() {
     if (!state || mode !== 'room' || refreshing || busy) return;
     refreshing = true;
+    const revision = roomStateRevision;
+    const roomId = state.room_id;
     try {
-      state = await request(
-        `/api/memories/room/${encodeURIComponent(state.room_id)}?player_id=${encodeURIComponent(playerId)}`,
+      const nextState = await request(
+        `/api/memories/room/${encodeURIComponent(roomId)}?player_id=${encodeURIComponent(playerId)}`,
       );
+      if (
+        revision !== roomStateRevision
+        || mode !== 'room'
+        || state?.room_id !== roomId
+      ) return;
+      state = nextState;
       render();
       scheduleRoomPolling();
     } catch (error) {
@@ -278,19 +298,23 @@
 
   async function flipCard(index) {
     if (!state || busy) return;
+    const roomId = state.room_id;
+    const gameId = state.game_id;
+    const requestRevision = ++roomStateRevision;
     busy = true;
     clearError('memory-game-error');
     renderBoard();
     try {
       if (mode === 'solo') {
         state = await post('/api/memories/solo/flip', {
-          ...playerPayload(), game_id: state.game_id, index,
+          ...playerPayload(), game_id: gameId, index,
         });
       } else {
         state = await post('/api/memories/room/flip', {
-          ...playerPayload(), room_id: state.room_id, index,
+          ...playerPayload(), room_id: roomId, index,
         });
       }
+      roomStateRevision = requestRevision + 1;
       render();
       if (mode === 'solo' && state.status === 'finished') stopPolling();
       else if (mode === 'room') scheduleRoomPolling();
@@ -444,7 +468,20 @@
     }
   }
 
-  function showHome() {
+  async function showHome() {
+    if (mode === 'room' && state?.room_id) {
+      stopPolling();
+      try {
+        await post('/api/memories/room/leave', {
+          room_id: state.room_id,
+          player_id: playerId,
+        });
+      } catch (error) {
+        showError('memory-game-error', error);
+        startPolling();
+        return;
+      }
+    }
     stopPolling();
     state = null;
     mode = null;

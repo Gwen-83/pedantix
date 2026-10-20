@@ -75,7 +75,20 @@
     pollingTimer = window.setInterval(refreshRoom, 1800);
   }
 
-  function showHome(clearActiveGame = true) {
+  async function showHome(clearActiveGame = true) {
+    if (clearActiveGame && gameType === 'room' && state?.room_id) {
+      stopPolling();
+      try {
+        await post('/api/motus/room/leave', {
+          room_id: state.room_id,
+          player_id: playerId,
+        });
+      } catch (error) {
+        showError(playError, error.message);
+        startPolling();
+        return;
+      }
+    }
     stopPolling();
     gameType = null;
     state = null;

@@ -884,6 +884,8 @@ def _is_gwen_controller(username: Optional[str], token: Optional[str]) -> bool:
 
 STORE_INVITATION_TTL_SECONDS = 5 * 60
 store_invitation_lock = asyncio.Lock()
+private_store_invitation_rooms: set[tuple[str, str]] = set()
+private_store_invitation_rooms_lock = threading.Lock()
 STORE_INVITATION_GAMES = {
     "motus": ("Motus", motus_manager, "motus_player_id"),
     "cemantix": ("Cémantix", cemantix_manager, "cemantix_player_id"),
@@ -939,12 +941,150 @@ def _create_invitation_room(
     else:
         room = manager.create_room(sender_id, sender_name)
     manager.join_room(room.room_id, recipient_id, recipient_name)
+    with private_store_invitation_rooms_lock:
+        private_store_invitation_rooms.add((game_id, room.room_id))
     return {
         "game_id": game_id,
         "room_id": room.room_id,
         "sender_player_id": sender_id,
         "recipient_player_id": recipient_id,
     }
+
+
+def _filter_private_invitation_rooms(
+    game_id: str, rooms: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    with private_store_invitation_rooms_lock:
+        private_room_ids = {
+            room_id.casefold()
+            for room_game_id, room_id in private_store_invitation_rooms
+            if room_game_id == game_id
+        }
+    return [
+        room for room in rooms
+        if str(room.get("room_id", "")).casefold() not in private_room_ids
+    ]
+
+
+def _require_invitation_room_member(
+    game_id: str, room_id: str, player_id: str
+) -> None:
+    with private_store_invitation_rooms_lock:
+        is_private = any(
+            private_game_id == game_id
+            and private_room_id.casefold() == room_id.casefold()
+            for private_game_id, private_room_id in private_store_invitation_rooms
+        )
+    if not is_private:
+        return
+
+    game = STORE_INVITATION_GAMES.get(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Salon introuvable.")
+    _game_name, manager, _player_storage_key = game
+    is_member = any(
+        str(room.get("room_id", "")).casefold() == room_id.casefold()
+        and room.get("is_member")
+        for room in manager.list_rooms(player_id)
+    )
+    if not is_member:
+        raise HTTPException(
+            status_code=403,
+            detail="Ce salon est réservé aux joueurs invités.",
+        )
+
+
+def _leave_store_multiplayer_room(
+    game_id: str, room_id: str, player_id: str
+) -> Dict[str, str]:
+    game = STORE_ACTIVE_ROOM_GAMES.get(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Jeu multijoueur introuvable.")
+    _game_name, manager, _player_storage_key = game
+    lock = getattr(manager, "_lock", getattr(manager, "lock", None))
+    if lock is None:
+        raise RuntimeError(f"Le gestionnaire {game_id} n'expose pas de verrou de salon.")
+
+    with lock:
+        room_key = next(
+            (
+                key for key in manager.rooms
+                if str(key).casefold() == room_id.strip().casefold()
+            ),
+            None,
+        )
+        if room_key is None:
+            return {"status": "already_left"}
+
+        room = manager.rooms[room_key]
+        if getattr(room, "is_solo", False):
+            raise HTTPException(
+                status_code=400,
+                detail="Cette route ne permet de quitter que les salons multijoueurs.",
+            )
+        players = getattr(room, "players", None)
+        if not isinstance(players, dict):
+            raise RuntimeError(f"Le salon {game_id}/{room_id} n'a pas de liste de joueurs.")
+        if player_id not in players:
+            return {"status": "already_left"}
+
+        current_player_id = None
+        if game_id == "memories" and players:
+            player_order = list(players)
+            current_player_id = player_order[room.turn_index % len(player_order)]
+
+        players.pop(player_id)
+
+        if game_id == "bitoguessr":
+            for round_state in room.rounds:
+                round_state.guesses.pop(player_id, None)
+        elif game_id == "plongee":
+            room.answers.pop(player_id, None)
+        elif game_id == "memories":
+            if players:
+                remaining_order = list(players)
+                room.turn_index = (
+                    remaining_order.index(current_player_id)
+                    if current_player_id in players
+                    else room.turn_index % len(remaining_order)
+                )
+            else:
+                room.turn_index = 0
+        elif game_id == "battleship" and room.current_player_id == player_id:
+            next_players = [
+                candidate_id
+                for candidate_id, candidate in players.items()
+                if not candidate.is_spectator and not candidate.eliminated
+            ]
+            room.current_player_id = next_players[0] if next_players else None
+
+        if not players:
+            manager.rooms.pop(room_key)
+            with private_store_invitation_rooms_lock:
+                private_store_invitation_rooms.discard((game_id, room.room_id))
+            return {"status": "left"}
+
+        if room.host_player_id == player_id:
+            active_player_ids = [
+                candidate_id
+                for candidate_id, candidate in players.items()
+                if not getattr(candidate, "is_spectator", False)
+            ]
+            room.host_player_id = (
+                active_player_ids[0]
+                if active_player_ids
+                else next(iter(players))
+            )
+        return {"status": "left"}
+
+
+@app.post("/api/{game_id}/room/leave")
+async def leave_store_multiplayer_room(
+    game_id: str, req: RoomLeaveRequest, request: Request
+):
+    if game_id == "bitoguessr":
+        _require_bitoguessr_access(request, req.player_id)
+    return _leave_store_multiplayer_room(game_id, req.room_id, req.player_id)
 
 
 @app.get("/api/social/chat")
@@ -990,6 +1130,8 @@ async def get_store_social_rooms():
 
     for game_id, (game_name, manager, _player_storage_key) in STORE_ACTIVE_ROOM_GAMES.items():
         for room in manager.list_rooms():
+            if not _filter_private_invitation_rooms(game_id, [room]):
+                continue
             if room["status"] not in {"lobby", "playing"}:
                 continue
             if game_id == "plongee" and room["status"] != "lobby":
@@ -1044,8 +1186,8 @@ async def post_store_invitation(
             username,
             recipient,
             req.game_id,
-            username,
-            recipient,
+            uuid.uuid4().hex,
+            uuid.uuid4().hex,
             now + STORE_INVITATION_TTL_SECONDS,
         )
     except ValueError as exc:
@@ -1888,7 +2030,11 @@ async def new_motus_solo(req: MotusPlayerRequest):
 
 @app.get("/api/motus/rooms")
 async def list_motus_rooms(player_id: Optional[str] = Query(None)):
-    return {"rooms": motus_manager.list_rooms(player_id)}
+    return {
+        "rooms": _filter_private_invitation_rooms(
+            "motus", motus_manager.list_rooms(player_id)
+        )
+    }
 
 
 @app.get("/api/motus/solo/{game_id}")
@@ -1943,6 +2089,7 @@ async def create_motus_room(req: MotusPlayerRequest):
 
 @app.post("/api/motus/room/join")
 async def join_motus_room(req: MotusRoomPlayerRequest):
+    _require_invitation_room_member("motus", req.room_id, req.player_id)
     try:
         room = motus_manager.join_room(req.room_id, req.player_id, req.player_name)
     except KeyError as exc:
@@ -2194,7 +2341,11 @@ async def restart_undercover_room(req: UndercoverRoomPlayerRequest):
 
 @app.get("/api/cemantix/rooms")
 async def list_cemantix_rooms(player_id: Optional[str] = Query(None)):
-    return {"rooms": cemantix_manager.list_rooms(player_id)}
+    return {
+        "rooms": _filter_private_invitation_rooms(
+            "cemantix", cemantix_manager.list_rooms(player_id)
+        )
+    }
 
 
 @app.post("/api/cemantix/solo/new")
@@ -2294,6 +2445,7 @@ async def create_cemantix_room(req: CemantixPlayerRequest):
 
 @app.post("/api/cemantix/room/join")
 async def join_cemantix_room(req: CemantixRoomPlayerRequest):
+    _require_invitation_room_member("cemantix", req.room_id, req.player_id)
     try:
         room = cemantix_manager.join_room(req.room_id, req.player_id, req.player_name)
     except KeyError as exc:
@@ -2396,7 +2548,11 @@ async def get_cemantix_room(room_id: str, player_id: str = Query(...)):
 
 @app.get("/api/chiffrantix/rooms")
 async def list_chiffrantix_rooms(player_id: Optional[str] = Query(None)):
-    return {"rooms": chiffrantix_manager.list_rooms(player_id)}
+    return {
+        "rooms": _filter_private_invitation_rooms(
+            "chiffrantix", chiffrantix_manager.list_rooms(player_id)
+        )
+    }
 
 
 @app.post("/api/chiffrantix/solo/new")
@@ -2483,6 +2639,7 @@ async def create_chiffrantix_room(req: ChiffrantixPlayerRequest):
 
 @app.post("/api/chiffrantix/room/join")
 async def join_chiffrantix_room(req: ChiffrantixRoomPlayerRequest):
+    _require_invitation_room_member("chiffrantix", req.room_id, req.player_id)
     try:
         room = chiffrantix_manager.join_room(
             req.room_id, req.player_id, req.player_name
@@ -2592,7 +2749,11 @@ async def get_chiffrantix_room(room_id: str, player_id: str = Query(...)):
 
 @app.get("/api/battleship/rooms")
 async def list_battleship_rooms(player_id: Optional[str] = Query(None)):
-    return {"rooms": battleship_manager.list_rooms(player_id)}
+    return {
+        "rooms": _filter_private_invitation_rooms(
+            "battleship", battleship_manager.list_rooms(player_id)
+        )
+    }
 
 
 @app.post("/api/battleship/room/create")
@@ -2626,6 +2787,7 @@ async def new_battleship_solo(req: BattleshipPlayerRequest):
 
 @app.post("/api/battleship/room/join")
 async def join_battleship_room(req: BattleshipRoomPlayerRequest):
+    _require_invitation_room_member("battleship", req.room_id, req.player_id)
     try:
         room = battleship_manager.join_room(req.room_id, req.player_id, req.player_name)
     except KeyError as exc:
@@ -2735,7 +2897,11 @@ async def set_sudoku_solo_cell(req: SudokuSoloCellRequest):
 
 @app.get("/api/sudoku/rooms")
 async def list_sudoku_rooms(player_id: Optional[str] = Query(None)):
-    return {"rooms": sudoku_manager.list_rooms(player_id)}
+    return {
+        "rooms": _filter_private_invitation_rooms(
+            "sudoku", sudoku_manager.list_rooms(player_id)
+        )
+    }
 
 
 @app.post("/api/sudoku/room/create")
@@ -2751,6 +2917,7 @@ async def create_sudoku_room(req: SudokuRoomCreateRequest):
 
 @app.post("/api/sudoku/room/join")
 async def join_sudoku_room(req: SudokuRoomPlayerRequest):
+    _require_invitation_room_member("sudoku", req.room_id, req.player_id)
     try:
         room = sudoku_manager.join_room(req.room_id, req.player_id, req.player_name)
     except KeyError as exc:
@@ -2974,7 +3141,11 @@ async def guess_geoguessr_solo(req: GeoGuessrSoloGuessRequest):
 
 @app.get("/api/geoguessr/rooms")
 async def list_geoguessr_rooms(player_id: Optional[str] = Query(None)):
-    return {"rooms": geoguessr_manager.list_rooms(player_id)}
+    return {
+        "rooms": _filter_private_invitation_rooms(
+            "geoguessr", geoguessr_manager.list_rooms(player_id)
+        )
+    }
 
 
 @app.post("/api/geoguessr/room/create")
@@ -2995,6 +3166,7 @@ async def create_geoguessr_room(req: GeoGuessrRoomCreateRequest):
 
 @app.post("/api/geoguessr/room/join")
 async def join_geoguessr_room(req: GeoGuessrRoomPlayerRequest):
+    _require_invitation_room_member("geoguessr", req.room_id, req.player_id)
     try:
         room = geoguessr_manager.join_room(req.room_id, req.player_id, req.player_name)
     except KeyError as exc:
@@ -3185,7 +3357,11 @@ async def flip_memories_solo(req: MemoriesSoloFlipRequest):
 
 @app.get("/api/memories/rooms")
 async def list_memories_rooms(player_id: Optional[str] = Query(None)):
-    return {"rooms": memories_manager.list_rooms(player_id)}
+    return {
+        "rooms": _filter_private_invitation_rooms(
+            "memories", memories_manager.list_rooms(player_id)
+        )
+    }
 
 
 @app.post("/api/memories/room/create")
@@ -3201,6 +3377,7 @@ async def create_memories_room(req: MemoriesRoomCreateRequest):
 
 @app.post("/api/memories/room/join")
 async def join_memories_room(req: MemoriesRoomRequest):
+    _require_invitation_room_member("memories", req.room_id, req.player_id)
     try:
         room = memories_manager.join_room(
             req.room_id, req.player_id, req.player_name
@@ -4072,7 +4249,11 @@ async def next_plongee_solo(req: PlongeeSoloActionRequest):
 
 @app.get("/api/plongee/rooms")
 async def list_plongee_rooms(player_id: Optional[str] = Query(None)):
-    return {"rooms": plongee_manager.list_rooms(player_id)}
+    return {
+        "rooms": _filter_private_invitation_rooms(
+            "plongee", plongee_manager.list_rooms(player_id)
+        )
+    }
 
 
 @app.post("/api/plongee/room/create")
@@ -4086,6 +4267,7 @@ async def create_plongee_room(req: PlongeePlayerRequest):
 
 @app.post("/api/plongee/room/join")
 async def join_plongee_room(req: PlongeeRoomRequest):
+    _require_invitation_room_member("plongee", req.room_id, req.player_id)
     try:
         room = plongee_manager.join_room(req.room_id, req.player_id, req.player_name)
     except KeyError as exc:

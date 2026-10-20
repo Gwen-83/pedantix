@@ -137,12 +137,20 @@ class StoreSocialTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["rooms"][0]["spectator_count"], 1)
 
     async def test_invitation_creates_private_battleship_room_when_accepted(self):
+        class FakeRoom:
+            def __init__(self, room_id):
+                self.room_id = room_id
+                self.players = {}
+
+            def to_dict(self, player_id):
+                return {"room_id": self.room_id, "player_id": player_id}
+
         class FakeBattleshipManager:
             def __init__(self):
                 self.rooms = {}
 
             def create_room(self, player_id, player_name, difficulty):
-                room = SimpleNamespace(room_id="ROOM42", players={})
+                room = FakeRoom("ROOM42")
                 room.players[player_id] = SimpleNamespace(name=player_name)
                 self.rooms[room.room_id] = room
                 return room
@@ -152,10 +160,27 @@ class StoreSocialTests(unittest.IsolatedAsyncioTestCase):
                 room.players[player_id] = SimpleNamespace(name=player_name)
                 return room
 
+            def list_rooms(self, player_id=None):
+                return [
+                    {
+                        "room_id": room_id,
+                        "status": "lobby",
+                        "player_count": len(room.players),
+                        "spectator_count": 0,
+                        "host_name": next(iter(room.players.values())).name,
+                        "is_member": player_id in room.players if player_id else False,
+                    }
+                    for room_id, room in self.rooms.items()
+                ]
+
         manager = FakeBattleshipManager()
-        with patch.dict(
-            main.STORE_INVITATION_GAMES,
-            {"battleship": ("Bataille navale", manager, "battleship_player_id")},
+        with (
+            patch.object(main, "battleship_manager", manager),
+            patch.object(main, "private_store_invitation_rooms", set()),
+            patch.dict(
+                main.STORE_INVITATION_GAMES,
+                {"battleship": ("Bataille navale", manager, "battleship_player_id")},
+            ),
         ):
             with main.online_presence_lock:
                 main.online_presence["bob-tab"] = {
@@ -184,12 +209,39 @@ class StoreSocialTests(unittest.IsolatedAsyncioTestCase):
                 "Bob",
                 self.bob["token"],
             )
+            self.assertEqual(
+                (await main.list_battleship_rooms("Mallory"))["rooms"],
+                [],
+            )
+            self.assertEqual(
+                (await main.list_battleship_rooms("Bob"))["rooms"],
+                [],
+            )
+            with self.assertRaises(HTTPException) as outsider_join:
+                await main.join_battleship_room(
+                    main.BattleshipRoomPlayerRequest(
+                        room_id="ROOM42",
+                        player_id="Mallory",
+                        player_name="Mallory",
+                    )
+                )
+            self.assertEqual(outsider_join.exception.status_code, 403)
+            await main.join_battleship_room(
+                main.BattleshipRoomPlayerRequest(
+                    room_id="ROOM42",
+                    player_id=accepted["player_id"],
+                    player_name="Bob",
+                )
+            )
 
         self.assertEqual(accepted["status"], "accepted")
         self.assertEqual(accepted["room_id"], "ROOM42")
-        self.assertEqual(accepted["player_id"], "Bob")
+        self.assertEqual(accepted["player_id"], invitation["recipient_player_id"])
         room = manager.rooms["ROOM42"]
-        self.assertEqual(set(room.players), {"Alice", "Bob"})
+        self.assertEqual(
+            set(room.players),
+            {invitation["sender_player_id"], invitation["recipient_player_id"]},
+        )
         sent = await main.get_store_sent_social_invitations("Alice", self.alice["token"])
         self.assertEqual(sent["invitations"][0]["status"], "accepted")
         self.assertEqual(sent["invitations"][0]["room_id"], "ROOM42")
@@ -288,9 +340,20 @@ class StoreSocialTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_memories_invitation_creates_a_joined_multiplayer_room(self):
         manager = MemoriesManager()
-        with patch.dict(
-            main.STORE_INVITATION_GAMES,
-            {"memories": ("Memory", manager, "memories_player_id")},
+        with (
+            patch.object(main, "memories_manager", manager),
+            patch.object(main, "private_store_invitation_rooms", set()),
+            patch.dict(
+                main.STORE_INVITATION_GAMES,
+                {"memories": ("Memory", manager, "memories_player_id")},
+            ),
+            patch.dict(
+                main.STORE_ACTIVE_ROOM_GAMES,
+                {"memories": ("Memory", manager, "memories_player_id")},
+                clear=True,
+            ),
+            patch.dict(main.STORE_ROOM_PLAYER_LIMITS, {"memories": 8}, clear=True),
+            patch.object(main.room_manager, "list_active_rooms", return_value=[]),
         ):
             with main.online_presence_lock:
                 main.online_presence["bob-tab"] = {
@@ -313,10 +376,84 @@ class StoreSocialTests(unittest.IsolatedAsyncioTestCase):
                 self.bob["token"],
             )
 
-        room = manager.get_room(accepted["room_id"], accepted["player_id"])
-        self.assertEqual(room.status, "lobby")
-        self.assertEqual(set(room.players), {"Alice", "Bob"})
-        self.assertEqual(accepted["game_id"], "memories")
+            room = manager.get_room(accepted["room_id"], accepted["player_id"])
+            self.assertEqual(room.status, "lobby")
+            self.assertEqual(
+                set(room.players),
+                {invitation["sender_player_id"], invitation["recipient_player_id"]},
+            )
+            self.assertEqual(accepted["game_id"], "memories")
+            self.assertEqual(
+                (await main.list_memories_rooms("Mallory"))["rooms"],
+                [],
+            )
+            self.assertEqual(
+                (await main.list_memories_rooms("Bob"))["rooms"],
+                [],
+            )
+            self.assertEqual(
+                (await main.get_store_social_rooms())["rooms"],
+                [],
+            )
+            with self.assertRaises(HTTPException) as outsider_join:
+                await main.join_memories_room(
+                    main.MemoriesRoomRequest(
+                        room_id=accepted["room_id"],
+                        player_id="Mallory",
+                        player_name="Mallory",
+                    )
+                )
+            self.assertEqual(outsider_join.exception.status_code, 403)
+            await main.join_memories_room(
+                main.MemoriesRoomRequest(
+                    room_id=accepted["room_id"],
+                    player_id=accepted["player_id"],
+                    player_name="Bob",
+                )
+            )
+
+    async def test_leaving_multiplayer_room_removes_player_and_transfers_host(self):
+        manager = MemoriesManager()
+        room = manager.create_room("Alice", "Alice")
+        manager.join_room(room.room_id, "Bob", "Bob")
+        with (
+            patch.object(main, "memories_manager", manager),
+            patch.object(main, "private_store_invitation_rooms", set()),
+            patch.dict(
+                main.STORE_ACTIVE_ROOM_GAMES,
+                {"memories": ("Memory", manager, "memories_player_id")},
+                clear=True,
+            ),
+        ):
+            departed = await main.leave_store_multiplayer_room(
+                "memories",
+                main.RoomLeaveRequest(room_id=room.room_id.lower(), player_id="Alice"),
+                SimpleNamespace(),
+            )
+            self.assertEqual(departed, {"status": "left"})
+            self.assertEqual(list(room.players), ["Bob"])
+            self.assertEqual(room.host_player_id, "Bob")
+            self.assertEqual(
+                (await main.list_memories_rooms("Bob"))["rooms"][0]["room_id"],
+                room.room_id,
+            )
+            self.assertEqual(
+                await main.leave_store_multiplayer_room(
+                    "memories",
+                    main.RoomLeaveRequest(room_id=room.room_id, player_id="Alice"),
+                    SimpleNamespace(),
+                ),
+                {"status": "already_left"},
+            )
+            self.assertEqual(
+                await main.leave_store_multiplayer_room(
+                    "memories",
+                    main.RoomLeaveRequest(room_id=room.room_id, player_id="Bob"),
+                    SimpleNamespace(),
+                ),
+                {"status": "left"},
+            )
+            self.assertNotIn(room.room_id, manager.rooms)
 
     async def test_invitation_expires_after_five_minutes(self):
         with main.online_presence_lock:

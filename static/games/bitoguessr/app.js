@@ -720,7 +720,21 @@
     pollTimer = window.setInterval(refreshRoom, 2000);
   }
 
-  function leaveGame() {
+  async function leaveGame() {
+    if (gameType === 'room' && state?.room_id) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      try {
+        await post('/api/bitoguessr/room/leave', {
+          room_id: state.room_id,
+          player_id: playerId,
+        });
+      } catch (error) {
+        setError(gameError, `Impossible de quitter le salon : ${error.message}`);
+        startPolling();
+        return;
+      }
+    }
     clearInterval(pollTimer);
     pollTimer = null;
     state = null;

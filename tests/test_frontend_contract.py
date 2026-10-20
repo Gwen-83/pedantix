@@ -1,4 +1,5 @@
 from html.parser import HTMLParser
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import unittest
@@ -115,6 +116,29 @@ class FrontendContractTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn('<option value="memories">Memory</option>', response.text)
+
+    def test_multiplayer_exit_controls_call_the_server_leave_endpoint(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games"
+        game_ids = (
+            "motus",
+            "cemantix",
+            "chiffrantix",
+            "battleship",
+            "sudoku",
+            "geoguessr",
+            "memories",
+            "plongee",
+            "undercover",
+            "bitoguessr",
+        )
+        for game_id in game_ids:
+            with self.subTest(game_id=game_id):
+                source = (static_dir / game_id / "app.js").read_text()
+                self.assertIn(f"/api/{game_id}/room/leave", source)
+        self.assertIn(
+            "/api/{game_id}/room/leave",
+            {route.path for route in app.routes},
+        )
 
 
 if __name__ == "__main__":

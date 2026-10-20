@@ -50,7 +50,18 @@
     element.textContent = '';
   }
 
-  function showHome() {
+  async function showHome() {
+    if (gameType === 'room' && state?.room_id) {
+      try {
+        await post('/api/plongee/room/leave', {
+          room_id: state.room_id,
+          player_id: playerId,
+        });
+      } catch (error) {
+        showError(gameError, error.message);
+        return;
+      }
+    }
     gameType = null;
     state = null;
     gamePanel.hidden = true;

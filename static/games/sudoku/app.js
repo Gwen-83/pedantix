@@ -76,7 +76,20 @@
     elapsedTimer = null;
   }
 
-  function showHome(clearActiveGame = true) {
+  async function showHome(clearActiveGame = true) {
+    if (clearActiveGame && gameType === 'room' && state?.room_id) {
+      stopTimers();
+      try {
+        await post('/api/sudoku/room/leave', {
+          room_id: state.room_id,
+          player_id: playerId,
+        });
+      } catch (error) {
+        showError(playError, error.message);
+        if (gameType === 'room') updateView();
+        return;
+      }
+    }
     stopTimers();
     state = null;
     gameType = null;
