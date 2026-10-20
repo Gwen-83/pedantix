@@ -49,6 +49,7 @@
   let mapillaryToken = '';
   let googleMapsApiKey = '';
   let googleMapsLoading = null;
+  let googleMapsAuthFailed = false;
   let panoramaViewer = null;
   let googlePanoramaViewer = null;
   let googleLastPanoramaId = '';
@@ -114,14 +115,33 @@
   }
 
   function isWaitingForNextRound() {
-    if (gameType !== 'room') return false;
     const round = currentRoundResult();
     const signature = roundResultSignature(round);
     if (!signature) return false;
+    if (gameType === 'solo') {
+      return state?.status === 'playing'
+        && state.awaiting_next_round === true
+        && round.round_number === state.round_number;
+    }
+    if (gameType !== 'room') return false;
     return state?.status === 'playing'
       && state.awaiting_next_round === true
       && round.round_number === state.round_number;
   }
+
+  function reportGoogleMapsAuthFailure() {
+    googleMapsAuthFailed = true;
+    showError(
+      playError,
+      googleMapsAuthFailureMessage(),
+    );
+  }
+
+  function googleMapsAuthFailureMessage() {
+    return 'Google Maps a refusé la clé navigateur. Vérifiez que Maps JavaScript API est activée, que la facturation Google Maps est active et que les restrictions HTTP referrer incluent le domaine de production (avec et sans www si nécessaire). Utilisez la clé navigateur, pas la clé serveur.';
+  }
+
+  window.gm_authFailure = reportGoogleMapsAuthFailure;
 
   async function loadPanoramaConfig() {
     const setup = document.getElementById('geo-panorama-setup');
@@ -135,16 +155,30 @@
       if (panoramaUnavailable) {
         if (variantSelect.value === 'panorama') variantSelect.value = 'cities';
         if (roomVariantSelect.value === 'panorama') roomVariantSelect.value = 'cities';
-        setup.replaceChildren(document.createTextNode(
-          'Le mode photo nécessite GOOGLE_MAPS_BROWSER_API_KEY et GOOGLE_MAPS_SERVER_API_KEY, ou MAPILLARY_ACCESS_TOKEN configuré sur le serveur. '
-        ));
+        let message = 'Le mode photo est indisponible. ';
+        if (config.google_streetview_configured && !config.google_streetview_available) {
+          message += `Quota Google atteint (${config.google_monthly_events_reserved}/${config.google_monthly_event_limit}). `;
+        } else {
+          const missingGoogleKeys = [];
+          if (!config.google_maps_browser_key_configured) {
+            missingGoogleKeys.push('GOOGLE_MAPS_BROWSER_API_KEY');
+          }
+          if (!config.google_maps_server_key_configured) {
+            missingGoogleKeys.push('GOOGLE_MAPS_SERVER_API_KEY');
+          }
+          if (missingGoogleKeys.length) {
+            message += `Clé(s) manquante(s) : ${missingGoogleKeys.join(', ')}. `;
+          }
+        }
+        if (!mapillaryToken) message += 'MAPILLARY_ACCESS_TOKEN est également absent. ';
+        setup.replaceChildren(document.createTextNode(message));
         const link = document.createElement('a');
         link.href = config.google_streetview_configured
           ? 'https://www.mapillary.com/dashboard/developers'
           : 'https://console.cloud.google.com/google/maps-apis/credentials';
         link.target = '_blank';
         link.rel = 'noopener';
-        link.textContent = config.google_streetview_configured
+        link.textContent = config.google_maps_browser_key_configured
           ? 'Créer un jeton Mapillary de secours'
           : 'Configurer les clés Google Maps';
         setup.append(link);
@@ -171,18 +205,31 @@
   function loadGoogleMaps() {
     if (window.google?.maps?.StreetViewPanorama) return Promise.resolve();
     if (googleMapsLoading) return googleMapsLoading;
+    if (!googleMapsApiKey) {
+      return Promise.reject(new Error(
+        'La clé GOOGLE_MAPS_BROWSER_API_KEY n’est pas configurée sur le serveur.',
+      ));
+    }
     googleMapsLoading = new Promise((resolve, reject) => {
-      if (!googleMapsApiKey) {
-        reject(new Error('La clé Google Maps n’est pas disponible.'));
-        return;
-      }
+      googleMapsAuthFailed = false;
       const script = document.createElement('script');
       script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsApiKey)}&v=weekly&language=fr&region=FR&loading=async`;
       script.async = true;
-      script.onload = () => resolve();
+      script.onload = () => {
+        window.setTimeout(() => {
+          if (googleMapsAuthFailed) {
+            googleMapsLoading = null;
+            reject(new Error('Google Maps a refusé la clé navigateur ou son domaine autorisé.'));
+            return;
+          }
+          resolve();
+        }, 100);
+      };
       script.onerror = () => {
         googleMapsLoading = null;
-        reject(new Error('Google Maps JavaScript API ne s’est pas chargée.'));
+        reject(new Error(
+          'Google Maps JavaScript API ne s’est pas chargée. Vérifiez que la clé navigateur autorise Maps JavaScript API et le domaine de production, ainsi que la connexion au service.',
+        ));
       };
       document.head.append(script);
     });
@@ -309,7 +356,12 @@
       activePanoramaProvider = '';
       googleLastPanoramaId = '';
       googlePanoramaRoundKey = '';
-      showError(playError, `Impossible d’ouvrir cette photo : ${error.message || 'erreur du lecteur'}`);
+      showError(
+        playError,
+        googleMapsAuthFailed
+          ? googleMapsAuthFailureMessage()
+          : `Impossible d’ouvrir cette photo : ${error.message || 'erreur du lecteur'}`,
+      );
     }
   }
 
@@ -502,6 +554,7 @@
 
   function guessLocked() {
     if (!state || state.status !== 'playing') return true;
+    if (gameType === 'solo') return state.awaiting_next_round === true;
     return gameType === 'room'
       && (!!state.player?.is_spectator || !!state.player?.submitted);
   }
@@ -726,7 +779,18 @@
       missed.textContent = `Temps écoulé pour : ${round.missed_players.join(', ')}.`;
       roundResult.append(missed);
     }
-    if (waitingForNextRound) {
+    if (waitingForNextRound && gameType === 'solo') {
+      const continueButton = document.createElement('button');
+      continueButton.type = 'button';
+      continueButton.className = 'geo-primary-button';
+      continueButton.textContent = `Manche suivante (${state.round_number + 1}/${state.round_count})`;
+      continueButton.disabled = roomBusy;
+      continueButton.addEventListener('click', advanceSoloRound);
+      roundResult.append(continueButton);
+      const waiting = document.createElement('p');
+      waiting.textContent = 'Prenez le temps de comparer votre estimation à la cible avant de continuer.';
+      roundResult.append(waiting);
+    } else if (waitingForNextRound) {
       const continueButton = document.createElement('button');
       continueButton.type = 'button';
       continueButton.className = 'geo-primary-button';
@@ -867,6 +931,8 @@
         : 'Vous observez cette manche et serez joueur à la prochaine.'
       : state.status === 'finished'
       ? 'Toutes les manches sont terminées.'
+      : waitingForNextRound && !isRoom
+        ? 'Votre réponse est verrouillée : la cible et la distance sont révélées.'
       : locked ? 'Votre position est validée. En attente des autres joueurs…'
         : isPanorama
           ? 'Naviguez dans la photo, puis cliquez sur la carte pour choisir votre estimation.'
@@ -890,7 +956,7 @@
         round_number: state.last_result.round_number,
         target: state.last_result,
       }, state.last_result);
-      if (waitingForNextRound) {
+      if (waitingForNextRound || state.status === 'finished') {
         showAnswerOnMap(state.last_result, soloGuessMarker(state.last_result));
       }
     }
@@ -1000,6 +1066,27 @@
     } finally {
       roomBusy = false;
       if (state?.status === 'lobby') renderLobby();
+    }
+  }
+
+  async function advanceSoloRound() {
+    if (!state || gameType !== 'solo' || !isWaitingForNextRound() || roomBusy) return;
+    roomBusy = true;
+    hideError(playError);
+    try {
+      state = await post('/api/geoguessr/solo/next', {
+        game_id: state.game_id,
+        player_id: playerId,
+      });
+      selectedPosition = null;
+      renderView();
+      const view = mapView(state.region);
+      map.setView(view.center, view.zoom);
+    } catch (error) {
+      showError(playError, error.message);
+    } finally {
+      roomBusy = false;
+      if (state?.awaiting_next_round) renderView();
     }
   }
 

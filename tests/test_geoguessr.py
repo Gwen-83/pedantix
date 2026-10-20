@@ -115,8 +115,15 @@ class GeoGuessrTests(unittest.TestCase):
             self.assertEqual(game.to_dict()["last_result"]["city"], target[0])
             if round_number < ROUND_COUNT - 1:
                 self.assertEqual(game.status, "playing")
+                self.assertTrue(game.to_dict()["awaiting_next_round"])
                 self.assertIsNone(game.to_dict()["target"])
+                self.assertIsNone(game.to_dict()["prompt"])
+                self.assertEqual(game.to_dict()["round_number"], round_number + 1)
+                with self.assertRaisesRegex(ValueError, "résultat"):
+                    self.manager.guess_solo(game.game_id, "alice", 0, 0)
+                game = self.manager.next_solo_round(game.game_id, "alice")
                 next_city = game.cities[game.round_index]
+                self.assertFalse(game.to_dict()["awaiting_next_round"])
                 self.assertEqual(
                     game.to_dict()["prompt"],
                     {"city": next_city[0], "country": next_city[1]},
@@ -246,6 +253,61 @@ class GeoGuessrTests(unittest.TestCase):
             })
             self.assertFalse(second_ready.json()["awaiting_next_round"])
             self.assertEqual(second_ready.json()["round_number"], 2)
+
+    def test_solo_round_confirmation_api_reveals_result_before_advancing(self):
+        with (
+            patch.object(main_app, "geoguessr_manager", self.manager),
+            patch.object(main_app, "record_multigame_session_start"),
+            patch.object(main_app, "record_user_game_finish"),
+            patch.object(main_app, "increment_player_score"),
+        ):
+            client = TestClient(app)
+            created = client.post("/api/geoguessr/solo/new", json={
+                "player_id": "alice",
+                "player_name": "Alice",
+                "region": "france",
+                "variant": "cities",
+            })
+            self.assertEqual(created.status_code, 200)
+            game_id = created.json()["game_id"]
+            target = self.manager.get_solo(game_id, "alice").target
+            guessed = client.post("/api/geoguessr/solo/guess", json={
+                "game_id": game_id,
+                "player_id": "alice",
+                "player_name": "Alice",
+                "region": "france",
+                "latitude": target[3] + 1,
+                "longitude": target[4] + 1,
+            })
+            self.assertEqual(guessed.status_code, 200)
+            self.assertTrue(guessed.json()["awaiting_next_round"])
+            self.assertEqual(guessed.json()["last_result"]["city"], target[0])
+            self.assertEqual(guessed.json()["last_result"]["round_number"], 1)
+            self.assertEqual(guessed.json()["round_number"], 1)
+
+            next_round = client.post("/api/geoguessr/solo/next", json={
+                "game_id": game_id,
+                "player_id": "alice",
+            })
+            self.assertEqual(next_round.status_code, 200)
+            self.assertFalse(next_round.json()["awaiting_next_round"])
+            self.assertEqual(next_round.json()["round_number"], 2)
+
+    def test_google_config_reports_key_presence_without_exposing_server_key(self):
+        manager = GeoGuessrManager(
+            google_maps_browser_api_key="test-browser-key",
+            google_maps_server_api_key="test-server-key",
+            google_usage_reader=Mock(return_value=0),
+        )
+        with patch.object(main_app, "geoguessr_manager", manager):
+            response = TestClient(app).get("/api/geoguessr/config")
+
+        self.assertEqual(response.status_code, 200)
+        config = response.json()
+        self.assertTrue(config["google_maps_browser_key_configured"])
+        self.assertTrue(config["google_maps_server_key_configured"])
+        self.assertEqual(config["google_maps_browser_api_key"], "test-browser-key")
+        self.assertNotIn("test-server-key", response.text)
 
     def test_joining_during_a_round_spectates_until_the_next_round(self):
         room = self.manager.create_room("host", "Hôte", "france", round_count=2)
@@ -419,6 +481,10 @@ class GeoGuessrTests(unittest.TestCase):
             target = game.target
             game, result = manager.guess_solo(game.game_id, "alice", target[3], target[4])
             self.assertEqual(result["score"], MAX_SCORE_PER_ROUND)
+            if result["round_number"] < ROUND_COUNT:
+                self.assertTrue(game.to_dict()["awaiting_next_round"])
+                self.assertEqual(game.to_dict()["image_id"], game.image_ids[game.round_index])
+                game = manager.next_solo_round(game.game_id, "alice")
 
         self.assertEqual(game.status, "finished")
         self.assertEqual(game.to_dict()["image_id"], game.image_ids[-1])
@@ -536,6 +602,24 @@ class GeoGuessrTests(unittest.TestCase):
         get_metadata.assert_not_called()
         self.assertEqual(game.panorama_provider, "mapillary")
         self.assertTrue(game.to_dict()["image_id"].startswith("mapillary-"))
+
+    def test_google_key_rejection_is_reported_when_no_mapillary_fallback_exists(self):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "status": "REQUEST_DENIED",
+            "error_message": "The provided API key is invalid.",
+        }
+        manager = GeoGuessrManager(
+            google_maps_server_api_key="test-server-key",
+            google_maps_browser_api_key="test-browser-key",
+            google_usage_reader=Mock(return_value=0),
+        )
+        with (
+            patch("app.geoguessr.requests.get", return_value=response),
+            self.assertRaisesRegex(ValueError, "Street View a refusé la clé serveur"),
+        ):
+            manager.create_solo("alice", "Alice", "france", "panorama")
 
     def test_google_multiplayer_room_reserves_for_all_players_or_uses_mapillary(self):
         manager = GeoGuessrManager(

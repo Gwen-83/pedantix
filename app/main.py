@@ -497,6 +497,10 @@ class GeoGuessrSoloGuessRequest(GeoGuessrPlayerRequest):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
 
+class GeoGuessrSoloNextRequest(BaseModel):
+    game_id: str = Field(min_length=1, max_length=64)
+    player_id: str = Field(min_length=1, max_length=100)
+
 class GeoGuessrRoomGuessRequest(GeoGuessrRoomPlayerRequest):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
@@ -3058,6 +3062,9 @@ async def get_geoguessr_config():
     google_configured = bool(
         google_browser_key and geoguessr_manager.google_maps_server_api_key
     )
+    google_server_key_configured = bool(
+        geoguessr_manager.google_maps_server_api_key
+    )
     try:
         google_usage = geoguessr_manager.google_usage()
     except RuntimeError:
@@ -3070,6 +3077,8 @@ async def get_geoguessr_config():
         "panorama_available": google_has_capacity or bool(token),
         "google_streetview_configured": google_configured,
         "google_streetview_available": google_has_capacity,
+        "google_maps_browser_key_configured": bool(google_browser_key),
+        "google_maps_server_key_configured": google_server_key_configured,
         "google_maps_browser_api_key": google_browser_key or None,
         "google_monthly_event_limit": GOOGLE_STREETVIEW_MONTHLY_LIMIT,
         "google_monthly_events_reserved": google_usage,
@@ -3124,6 +3133,17 @@ async def get_geoguessr_solo(game_id: str, player_id: str = Query(...)):
         game = geoguessr_manager.get_solo(game_id, player_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return game.to_dict()
+
+
+@app.post("/api/geoguessr/solo/next")
+async def next_geoguessr_solo_round(req: GeoGuessrSoloNextRequest):
+    try:
+        game = geoguessr_manager.next_solo_round(req.game_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return game.to_dict()
 
 

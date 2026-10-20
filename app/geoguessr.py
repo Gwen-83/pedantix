@@ -686,6 +686,7 @@ class GeoGuessrGame:
     total_score: int = 0
     results: List[Dict[str, Any]] = field(default_factory=list)
     status: str = "playing"
+    awaiting_next_round: bool = False
 
     @property
     def target(self) -> tuple[str, str, str, float, float]:
@@ -693,7 +694,11 @@ class GeoGuessrGame:
 
     def to_dict(self) -> Dict[str, Any]:
         last_result = self.results[-1] if self.results else None
-        prompt = self.cities[self.round_index] if self.status == "playing" else None
+        prompt = (
+            self.cities[self.round_index]
+            if self.status == "playing" and not self.awaiting_next_round
+            else None
+        )
         return {
             "game_id": self.game_id,
             "status": self.status,
@@ -707,6 +712,7 @@ class GeoGuessrGame:
             "max_total_score": ROUND_COUNT * MAX_SCORE_PER_ROUND,
             "round_results": self.results,
             "last_result": last_result,
+            "awaiting_next_round": self.awaiting_next_round,
             "prompt": {"city": prompt[0], "country": prompt[1]} if prompt else None,
             "image_id": (
                 self.image_ids[min(self.round_index, len(self.image_ids) - 1)]
@@ -893,6 +899,12 @@ class GeoGuessrManager:
             if metadata.get("status") == "ZERO_RESULTS":
                 continue
             if metadata.get("status") != "OK":
+                if metadata.get("status") == "REQUEST_DENIED":
+                    raise ValueError(
+                        "Google Street View a refusé la clé serveur. Vérifiez que "
+                        "Street View Static API est activée, que la facturation est "
+                        "active et que les restrictions autorisent les requêtes du serveur."
+                    )
                 raise ValueError(
                     "Google Street View n’a pas fourni de photo "
                     f"({metadata.get('status', 'réponse invalide')})."
@@ -929,6 +941,7 @@ class GeoGuessrManager:
         google_viewer_count: int = 1,
         round_count: int = ROUND_COUNT,
     ) -> tuple[List[tuple[str, str, str, float, float]], List[str], str]:
+        google_error: Optional[Exception] = None
         if self.google_maps_server_api_key and self.google_maps_browser_api_key:
             try:
                 reserved_usage = round_count * google_viewer_count
@@ -942,11 +955,14 @@ class GeoGuessrManager:
                     ):
                         return targets, image_ids, "google"
             except Exception as exc:
+                google_error = exc
                 logger.warning(
                     "Google Street View indisponible, repli sur Mapillary : %s",
                     exc,
                 )
 
+        if not self.mapillary_access_token and isinstance(google_error, ValueError):
+            raise google_error
         targets, image_ids = self._get_mapillary_targets(region, round_count)
         return targets, image_ids, "mapillary"
 
@@ -1113,6 +1129,8 @@ class GeoGuessrManager:
             game = self.get_solo(game_id, player_id)
             if game.status != "playing":
                 raise ValueError("Cette partie est déjà terminée.")
+            if game.awaiting_next_round:
+                raise ValueError("Consultez d'abord le résultat de la manche précédente.")
             result = _score_guess(game.target, latitude, longitude)
             result["guess_latitude"] = latitude
             result["guess_longitude"] = longitude
@@ -1120,10 +1138,22 @@ class GeoGuessrManager:
             result["round_number"] = game.round_index + 1
             game.results.append(result)
             game.total_score += result["score"]
-            game.round_index += 1
-            if game.round_index == ROUND_COUNT:
+            if game.round_index + 1 == ROUND_COUNT:
                 game.status = "finished"
+            else:
+                game.awaiting_next_round = True
             return game, result
+
+    def next_solo_round(self, game_id: str, player_id: str) -> GeoGuessrGame:
+        with self.lock:
+            game = self.get_solo(game_id, player_id)
+            if game.status != "playing":
+                raise ValueError("Cette partie est déjà terminée.")
+            if not game.awaiting_next_round:
+                raise ValueError("Aucun résultat n'attend votre confirmation.")
+            game.round_index += 1
+            game.awaiting_next_round = False
+            return game
 
     def create_room(
         self,
