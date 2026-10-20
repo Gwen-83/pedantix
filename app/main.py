@@ -25,6 +25,7 @@ from app.database import (
     get_player_score,
     increment_player_score,
     get_top_player_scores,
+    get_top_geoguessr_scores,
     get_db_status,
     get_game_catalog,
     get_stats_overview,
@@ -3118,6 +3119,11 @@ async def create_geoguessr_solo(req: GeoGuessrPlayerRequest):
         game.region,
     )
     return game.to_dict()
+
+
+@app.get("/api/geoguessr/leaderboard")
+async def geoguessr_leaderboard():
+    return get_top_geoguessr_scores(limit=5)
 
 
 @app.get("/api/geoguessr/solo/{game_id}")

@@ -214,7 +214,8 @@ class FrontendContractTests(unittest.TestCase):
 
         self.assertIn('id="geo-leaderboard-title"', page)
         self.assertIn('id="geo-leaderboard"', page)
-        self.assertIn("request('/api/scores?game_id=geoguessr')", source)
+        self.assertIn("Top 5 des meilleurs scores sur une partie.", page)
+        self.assertIn("request('/api/geoguessr/leaderboard')", source)
         self.assertIn("refreshLeaderboardAfterFinishedGame();", source)
 
     def test_geoguessr_solo_keeps_answer_map_framed_until_next_round(self):

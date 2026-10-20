@@ -1732,6 +1732,24 @@ def get_top_player_scores(
         return []
 
 
+def get_top_geoguessr_scores(limit: int = 5) -> List[Dict[str, Any]]:
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                """SELECT username AS player_name, MAX(points) AS score
+                   FROM user_game_stats
+                   WHERE game_id = ?
+                   GROUP BY username
+                   ORDER BY score DESC, LOWER(username) ASC
+                   LIMIT ?""",
+                ("geoguessr", max(1, min(int(limit), 100))),
+            )
+            return [_jsonable(row) for row in db.fetchall()]
+    except Exception as e:
+        logger.warning(f"get_top_geoguessr_scores: {e}")
+        return []
+
+
 def record_memory_solo_time(
     username: str,
     grid_size: int,

@@ -106,7 +106,7 @@
     const button = document.getElementById('geo-refresh-leaderboard');
     button.disabled = true;
     try {
-      const scores = await request('/api/scores?game_id=geoguessr');
+      const scores = await request('/api/geoguessr/leaderboard');
       list.replaceChildren();
       if (!scores.length) {
         const empty = document.createElement('li');
@@ -125,10 +125,7 @@
         player.textContent = score.player_name;
         const details = document.createElement('span');
         details.className = 'geo-leaderboard-score';
-        const wins = Number(score.wins || 0);
-        const games = Number(score.games_played || 0);
-        details.textContent =
-          `${Number(score.score || 0).toLocaleString('fr-FR')} pts · ${wins} victoire${wins === 1 ? '' : 's'} · ${games} partie${games === 1 ? '' : 's'}`;
+        details.textContent = `${Number(score.score || 0).toLocaleString('fr-FR')} pts`;
         item.append(rank, player, details);
         list.append(item);
       });

@@ -163,6 +163,45 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
             1,
         )
 
+    def test_geoguessr_leaderboard_uses_each_players_best_single_game_and_limits_to_five(self):
+        results = [
+            ("Alice", "game-1", 18_000),
+            ("Alice", "game-2", 22_000),
+            ("Bob", "game-1", 19_000),
+            ("Chloe", "game-1", 25_000),
+            ("David", "game-1", 17_000),
+            ("Emma", "game-1", 20_000),
+            ("Farid", "game-1", 15_000),
+        ]
+        for username, game_id, points in results:
+            database._record_user_game_finish_sync(
+                username,
+                False,
+                5,
+                points,
+                f"geoguessr:{username}:{game_id}",
+                "solo",
+                "GeoGuessr",
+                False,
+                120,
+                0,
+                0,
+                "geoguessr",
+            )
+
+        leaderboard = database.get_top_geoguessr_scores()
+
+        self.assertEqual(
+            [(entry["player_name"], entry["score"]) for entry in leaderboard],
+            [
+                ("Chloe", 25_000),
+                ("Alice", 22_000),
+                ("Emma", 20_000),
+                ("Bob", 19_000),
+                ("David", 17_000),
+            ],
+        )
+
     def test_global_results_count_a_multiplayer_session_once(self):
         database._record_multigame_session_start_sync(
             "sudoku:room-1", "sudoku", "multiplayer", "Sudoku", "moyen"
