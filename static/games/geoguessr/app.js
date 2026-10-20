@@ -113,23 +113,14 @@
     return `${round.round_number}:${target.city}:${target.country || ''}`;
   }
 
-  function roundResultStorageKey() {
-    const gameId = gameType === 'solo' ? state?.game_id : state?.room_id;
-    return `geoguessr_seen_result_${gameType}_${gameId}`;
-  }
-
   function isWaitingForNextRound() {
+    if (gameType !== 'room') return false;
     const round = currentRoundResult();
     const signature = roundResultSignature(round);
     if (!signature) return false;
-    if (gameType === 'room') {
-      return state?.status === 'playing'
-        && state.awaiting_next_round === true
-        && round.round_number === state.round_number;
-    }
     return state?.status === 'playing'
-      && round.round_number === state.round_number - 1
-      && localStorage.getItem(roundResultStorageKey()) !== signature;
+      && state.awaiting_next_round === true
+      && round.round_number === state.round_number;
   }
 
   async function loadPanoramaConfig() {
@@ -836,7 +827,9 @@
         : 'Placez un marqueur sur la carte, puis validez votre estimation.';
     document.getElementById('geo-total-score').textContent =
       (state.total_score ?? state.player?.total_score ?? 0).toLocaleString('fr-FR');
-    document.getElementById('geo-target-label').textContent = isPanorama ? 'Lieu à retrouver' : 'Ville à placer';
+    document.getElementById('geo-target-label').textContent = isPanorama
+      ? 'Lieu à retrouver'
+      : 'Ville à trouver';
     document.getElementById('geo-target-name').textContent = waitingForNextRound
       ? 'Consultez la distance avant de continuer'
       : isPanorama

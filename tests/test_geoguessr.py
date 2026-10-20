@@ -116,6 +116,11 @@ class GeoGuessrTests(unittest.TestCase):
             if round_number < ROUND_COUNT - 1:
                 self.assertEqual(game.status, "playing")
                 self.assertIsNone(game.to_dict()["target"])
+                next_city = game.cities[game.round_index]
+                self.assertEqual(
+                    game.to_dict()["prompt"],
+                    {"city": next_city[0], "country": next_city[1]},
+                )
             else:
                 self.assertEqual(game.status, "finished")
                 self.assertEqual(game.to_dict()["target"]["city"], target[0])

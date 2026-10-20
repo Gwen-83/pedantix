@@ -118,6 +118,14 @@ class FrontendContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('<option value="memories">Memory</option>', response.text)
 
+    def test_geoguessr_solo_shows_the_next_city_without_waiting_for_room_readiness(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
+        source = (static_dir / "app.js").read_text()
+
+        self.assertIn("if (gameType !== 'room') return false;", source)
+        self.assertIn("`${state.prompt.city}, ${state.prompt.country}`", source)
+        self.assertIn(": 'Ville à trouver';", source)
+
     def test_multiplayer_exit_controls_call_the_server_leave_endpoint(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games"
         game_ids = (
