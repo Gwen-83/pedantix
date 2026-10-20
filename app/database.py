@@ -497,6 +497,10 @@ _SCHEMA_PG = [
     """CREATE TABLE IF NOT EXISTS global_game_controls (
         control_id TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0,
         updated_by TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS fermeture_express_records (
+        username TEXT PRIMARY KEY, elapsed_ms INTEGER NOT NULL,
+        mistakes INTEGER NOT NULL, penalty_ms INTEGER NOT NULL,
+        session_id TEXT NOT NULL, achieved_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_games_finished ON games(finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_article_category ON article_cache(category)",
@@ -583,6 +587,10 @@ _SCHEMA_SQLITE = [
     """CREATE TABLE IF NOT EXISTS global_game_controls (
         control_id TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0,
         updated_by TEXT NOT NULL DEFAULT '', updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS fermeture_express_records (
+        username TEXT PRIMARY KEY, elapsed_ms INTEGER NOT NULL,
+        mistakes INTEGER NOT NULL, penalty_ms INTEGER NOT NULL,
+        session_id TEXT NOT NULL, achieved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
     "CREATE INDEX IF NOT EXISTS idx_user_game_stats_user_finished ON user_game_stats(username, finished_at DESC)",
@@ -605,6 +613,7 @@ _GAME_CATALOG = (
     ("bitoguessr", "Bitoguessr"),
     ("plongee", "Plongée"),
     ("memories", "Memory"),
+    ("fermeture-express", "Fermeture express"),
 )
 
 
@@ -1696,6 +1705,93 @@ def get_top_player_scores(
     except Exception as e:
         logger.warning(f"get_top_player_scores: {e}")
         return []
+
+
+def record_fermeture_express_time(
+    username: str,
+    session_id: str,
+    elapsed_ms: int,
+    mistakes: int,
+    penalty_ms: int,
+) -> Dict[str, Any]:
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                "SELECT username FROM users WHERE LOWER(username) = LOWER(?)",
+                (username.strip(),),
+            )
+            user = db.fetchone()
+            if user is None:
+                raise ValueError("Compte introuvable.")
+            canonical_username = user["username"]
+            db.execute(
+                """INSERT INTO fermeture_express_records
+                   (username, elapsed_ms, mistakes, penalty_ms, session_id)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (username) DO UPDATE SET
+                       elapsed_ms = EXCLUDED.elapsed_ms,
+                       mistakes = EXCLUDED.mistakes,
+                       penalty_ms = EXCLUDED.penalty_ms,
+                       session_id = EXCLUDED.session_id,
+                       achieved_at = CURRENT_TIMESTAMP
+                   WHERE EXCLUDED.elapsed_ms < fermeture_express_records.elapsed_ms""",
+                (
+                    canonical_username,
+                    max(0, int(elapsed_ms)),
+                    max(0, int(mistakes)),
+                    max(0, int(penalty_ms)),
+                    session_id,
+                ),
+            )
+            db.execute(
+                """SELECT username, elapsed_ms, mistakes, penalty_ms, session_id,
+                          achieved_at
+                   FROM fermeture_express_records WHERE username = ?""",
+                (canonical_username,),
+            )
+            row = db.fetchone()
+            if row is None:
+                raise RuntimeError("Le record n'a pas été enregistré.")
+            record = _jsonable(row)
+            record["is_record"] = record["session_id"] == session_id
+            return record
+    except ValueError:
+        raise
+    except Exception as exc:
+        logger.error("Enregistrement du record Fermeture express impossible : %s", exc)
+        raise RuntimeError("Impossible d'enregistrer le record.") from exc
+
+
+def get_fermeture_express_leaderboard(limit: int = 20) -> List[Dict[str, Any]]:
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                """SELECT username, elapsed_ms, mistakes, penalty_ms, achieved_at
+                   FROM fermeture_express_records
+                   ORDER BY elapsed_ms ASC, achieved_at ASC, LOWER(username) ASC
+                   LIMIT ?""",
+                (max(1, min(int(limit), 100)),),
+            )
+            return [_jsonable(row) for row in db.fetchall()]
+    except Exception as exc:
+        logger.error("Classement Fermeture express indisponible : %s", exc)
+        raise RuntimeError("Impossible de charger le classement.") from exc
+
+
+def get_fermeture_express_record(username: str) -> Optional[Dict[str, Any]]:
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                """SELECT username, elapsed_ms, mistakes, penalty_ms, achieved_at
+                   FROM fermeture_express_records
+                   WHERE LOWER(username) = LOWER(?)""",
+                (username.strip(),),
+            )
+            row = db.fetchone()
+            return _jsonable(row) if row else None
+    except Exception as exc:
+        logger.error("Record Fermeture express indisponible : %s", exc)
+        raise RuntimeError("Impossible de charger le record.") from exc
 
 
 def get_db_status() -> Dict[str, Any]:

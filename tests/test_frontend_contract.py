@@ -19,6 +19,7 @@ GAME_PAGES = (
     "/games/undercover/",
     "/games/plongee/",
     "/games/bitoguessr/",
+    "/games/fermeture-express/",
 )
 
 
@@ -73,8 +74,8 @@ class FrontendContractTests(unittest.TestCase):
         page = PageContractParser()
         page.feed(response.text)
 
-        self.assertEqual(len(page.cards), 10)
-        self.assertEqual(page.count_text.strip(), "10 jeux")
+        self.assertEqual(len(page.cards), 11)
+        self.assertEqual(page.count_text.strip(), "11 jeux")
         self.assertEqual(len({card["href"] for card in page.cards}), len(page.cards))
 
     def test_every_game_page_and_its_local_scripts_and_stylesheets_load(self):

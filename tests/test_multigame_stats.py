@@ -241,7 +241,8 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
             {item["game_id"] for item in catalog},
             {
                 "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
-                "geoguessr", "undercover", "bitoguessr", "plongee",
+                "geoguessr", "undercover", "bitoguessr", "plongee", "memories",
+                "fermeture-express",
             },
         )
 
