@@ -154,6 +154,15 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("`${state.prompt.city}, ${state.prompt.country}`", source)
         self.assertIn(": 'Ville à trouver';", source)
 
+    def test_geoguessr_immersive_map_falls_back_when_cartography_tiles_fail(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
+        source = (static_dir / "app.js").read_text()
+
+        self.assertIn("function createPanoramaLabelsLayer(useFallback = false)", source)
+        self.assertIn("layer.on('tileerror'", source)
+        self.assertIn("World_Topo_Map/MapServer/tile/{z}/{y}/{x}", source)
+        self.assertIn("Impossible de charger le fond de carte.", source)
+
     def test_multiplayer_exit_controls_call_the_server_leave_endpoint(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games"
         game_ids = (

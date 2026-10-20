@@ -36,6 +36,8 @@
   let countryBoundaryLayer = null;
   let countryBoundaryLoading = null;
   let mapLabelsLayer = null;
+  let mapLabelsLayerFallback = false;
+  let mapLabelsFallbackErrorShown = false;
   let mapPhysicalLayer = null;
   let mapReliefLayer = null;
   let selectedPosition = null;
@@ -404,22 +406,51 @@
     };
   }
 
+  function createPanoramaLabelsLayer(useFallback = false) {
+    const layer = L.tileLayer(
+      useFallback
+        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'
+        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      {
+        maxZoom: 19,
+        attribution: useFallback
+          ? '&copy; Esri &mdash; Sources: HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), OpenStreetMap contributors, and the GIS User Community'
+          : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> '
+            + '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+      },
+    );
+    layer.on('tileerror', () => {
+      if (mapLabelsLayer !== layer) return;
+      if (!useFallback) {
+        mapLabelsLayerFallback = true;
+        map.removeLayer(layer);
+        mapLabelsLayer = createPanoramaLabelsLayer(true).addTo(map);
+        document.querySelector('.geo-map-actions > span').textContent =
+          'Carte de secours © Esri · frontières © Natural Earth';
+      } else if (!mapLabelsFallbackErrorShown) {
+        mapLabelsFallbackErrorShown = true;
+        showError(
+          playError,
+          'Impossible de charger le fond de carte. Vérifiez votre connexion ou désactivez le bloqueur de contenu.',
+        );
+      }
+    });
+    return layer;
+  }
+
   function setMapStyle(isPanorama) {
     if (!map) return;
     if (isPanorama && !mapLabelsLayer) {
-      mapLabelsLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-        {
-          maxZoom: 19,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> '
-            + '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
-        },
-      ).addTo(map);
+      mapLabelsLayerFallback = false;
+      mapLabelsFallbackErrorShown = false;
+      mapLabelsLayer = createPanoramaLabelsLayer().addTo(map);
     } else if (!isPanorama) {
       if (mapLabelsLayer) {
         map.removeLayer(mapLabelsLayer);
         mapLabelsLayer = null;
       }
+      mapLabelsLayerFallback = false;
+      mapLabelsFallbackErrorShown = false;
       if (!mapPhysicalLayer) {
         mapPhysicalLayer = L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}',
