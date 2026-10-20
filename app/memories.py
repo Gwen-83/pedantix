@@ -56,11 +56,17 @@ class MemoryGame:
     moves: int = 0
     points: int = 0
     status: str = "playing"
+    finished_at: Optional[float] = None
     pending_mismatch_until: Optional[float] = None
     stats_recorded: bool = False
+    best_record: Optional[dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         _resolve_mismatch(self)
+        finished_time = self.finished_at if self.finished_at is not None else time.time()
+        elapsed_ms = max(
+            0, round((finished_time - self.started_at) * 1000)
+        )
         return {
             "game_id": self.game_id,
             "status": self.status,
@@ -78,7 +84,9 @@ class MemoryGame:
             "total_pairs": len(self.cards) // 2,
             "moves": self.moves,
             "points": self.points,
-            "elapsed_seconds": max(0, int(time.time() - self.started_at)),
+            "elapsed_seconds": elapsed_ms // 1000,
+            "elapsed_ms": elapsed_ms,
+            "record": self.best_record,
             "pending_mismatch_until": self.pending_mismatch_until,
         }
 
@@ -380,6 +388,8 @@ class MemoriesManager:
                         player.player_id for player in game.players.values()
                         if player.pairs == top_pairs
                     ]
+                else:
+                    game.finished_at = time.time()
             return
         game.pending_mismatch_until = time.time() + MISMATCH_REVEAL_SECONDS
 

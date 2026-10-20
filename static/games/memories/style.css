@@ -48,6 +48,11 @@
 .memory-primary:disabled,
 .memory-secondary:disabled { opacity: .55; cursor: not-allowed; }
 .memory-room-browser { margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--game-border); }
+.memory-leaderboard { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--game-border); }
+.memory-leaderboard-list { display: grid; gap: 7px; margin: 12px 0 0; padding-left: 28px; }
+.memory-leaderboard-list li { padding: 9px 11px; border: 1px solid var(--game-border); border-radius: 9px; background: var(--game-panel-raised); }
+.memory-leaderboard-list li span { margin-right: 8px; }
+.memory-leaderboard-list li strong { float: right; }
 .memory-section-heading h2,
 .memory-setup-grid h2 { margin: 0; font-size: 1rem; }
 .memory-section-heading p { margin: 4px 0 0; color: var(--game-muted); font-size: .8rem; }

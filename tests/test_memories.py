@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -33,6 +35,26 @@ class MemoriesManagerTests(unittest.TestCase):
         self.assertEqual(game.moves, 1)
         self.assertEqual(game.points, 100)
         self.assertEqual(len(game.matched), 2)
+
+    def test_solo_elapsed_time_is_captured_when_the_last_pair_is_found(self):
+        with patch("app.memories.time.time", return_value=100):
+            game = self.manager.create_solo("alice", "Alice", 4)
+        game.started_at = 100
+        with patch("app.memories.time.time", return_value=102.345):
+            for left in range(len(game.cards)):
+                if left in game.matched:
+                    continue
+                right = next(
+                    index for index in range(left + 1, len(game.cards))
+                    if game.cards[index] == game.cards[left]
+                )
+                self.manager.flip_solo(game.game_id, "alice", left)
+                self.manager.flip_solo(game.game_id, "alice", right)
+
+        state = game.to_dict()
+        self.assertEqual(state["status"], "finished")
+        self.assertEqual(state["elapsed_ms"], 2345)
+        self.assertEqual(state["elapsed_seconds"], 2)
 
     def test_solo_mismatch_stays_visible_then_turns_back_after_delay(self):
         game = self.manager.create_solo("alice", "Alice", 4)
@@ -149,7 +171,18 @@ class MemoriesApiTests(unittest.TestCase):
             client = TestClient(app)
             page = client.get("/games/memories/")
             self.assertEqual(page.status_code, 200)
-            self.assertIn("Jouer en solo", page.text)
+            self.assertIn("Concours solo chronométré", page.text)
+            self.assertIn("Meilleurs temps", page.text)
+            with patch.object(
+                main_app,
+                "get_memory_solo_leaderboard",
+                return_value=[{"username": "Alice", "elapsed_ms": 12345, "moves": 8}],
+            ):
+                leaderboard = client.get("/api/memories/solo/leaderboard?grid_size=4")
+            self.assertEqual(leaderboard.status_code, 200)
+            self.assertEqual(leaderboard.json()["records"][0]["elapsed_ms"], 12345)
+            invalid_grid = client.get("/api/memories/solo/leaderboard?grid_size=5")
+            self.assertEqual(invalid_grid.status_code, 400)
 
             solo = client.post("/api/memories/solo/new", json={
                 "player_id": "solo", "player_name": "Solo", "grid_size": 4,
@@ -179,6 +212,68 @@ class MemoriesApiTests(unittest.TestCase):
             self.assertEqual(started.status_code, 200)
             self.assertEqual(started.json()["status"], "playing")
             self.assertEqual(started.json()["total_pairs"], 18)
+
+    def test_finished_solo_game_saves_and_returns_its_timed_record(self):
+        manager = MemoriesManager()
+        game = manager.create_solo("solo", "Solo", 4)
+        game.status = "finished"
+        game.started_at = 100
+        game.finished_at = 102.345
+        game.matched.update(range(len(game.cards)))
+        game.moves = 8
+        record = {
+            "username": "Solo",
+            "elapsed_ms": 2345,
+            "moves": 8,
+            "is_record": True,
+        }
+        with (
+            patch.object(main_app, "memories_manager", manager),
+            patch.object(main_app, "record_memory_solo_time", return_value=record) as save_record,
+            patch.object(main_app, "record_user_game_finish"),
+            patch.object(main_app, "increment_player_score"),
+        ):
+            response = TestClient(app).get(
+                f"/api/memories/solo/{game.game_id}?player_id=solo"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["record"]["is_record"])
+        self.assertEqual(response.json()["elapsed_ms"], 2345)
+        self.assertEqual(save_record.call_args.args[3:], (2345, 8))
+
+
+class MemorySoloRecordTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path_patch = patch.object(
+            database, "DB_PATH", str(Path(self.temp_dir.name) / "memory.sqlite3")
+        )
+        self.db_path_patch.start()
+        self.pg_disabled_patch = patch.object(database, "_pg_disabled", True)
+        self.pg_disabled_patch.start()
+        self.assertTrue(database.init_db())
+
+    def tearDown(self):
+        self.pg_disabled_patch.stop()
+        self.db_path_patch.stop()
+        self.temp_dir.cleanup()
+
+    def test_personal_records_keep_fastest_time_per_grid_and_leaderboard_ranks(self):
+        first = database.record_memory_solo_time("Alice", 4, "session-1", 12000, 10)
+        slower = database.record_memory_solo_time("ALICE", 4, "session-2", 15000, 8)
+        tie_break = database.record_memory_solo_time("alice", 4, "session-3", 12000, 9)
+        other_grid = database.record_memory_solo_time("Alice", 6, "session-4", 45000, 25)
+
+        self.assertTrue(first["is_record"])
+        self.assertFalse(slower["is_record"])
+        self.assertTrue(tie_break["is_record"])
+        self.assertEqual(tie_break["moves"], 9)
+        self.assertTrue(other_grid["is_record"])
+        fastest = database.get_memory_solo_leaderboard(4)[0]
+        self.assertEqual(fastest["elapsed_ms"], 12000)
+        self.assertEqual(fastest["moves"], 9)
+        self.assertEqual(len(database.get_memory_solo_leaderboard(6)), 1)
 
     def test_multiplayer_flips_are_turn_based_and_reject_out_of_turn_calls(self):
         manager = MemoriesManager()

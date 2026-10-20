@@ -97,6 +97,11 @@
     return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
   }
 
+  function formatPreciseTime(milliseconds) {
+    const value = Math.max(0, Math.floor(milliseconds));
+    return `${formatTime(Math.floor(value / 1000))}.${String(value % 1000).padStart(3, '0')}`;
+  }
+
   function setScreen(screen) {
     home.hidden = screen !== 'home';
     setup.hidden = screen !== 'setup';
@@ -108,7 +113,7 @@
     state = nextState;
     setScreen('game');
     document.getElementById('memory-mode-label').textContent =
-      mode === 'solo' ? 'Partie solo' : `Multijoueur · salon ${state.room_id}`;
+      mode === 'solo' ? 'Concours solo chronométré' : `Multijoueur · salon ${state.room_id}`;
     document.getElementById('memory-round-heading').textContent =
       `${state.grid_size} × ${state.grid_size} · ${state.total_pairs} paires`;
     render();
@@ -199,9 +204,10 @@
     const finalScores = document.getElementById('memory-final-scores');
     finalScores.replaceChildren();
     if (mode === 'solo') {
-      document.getElementById('memory-finished-title').textContent = 'Bravo, toutes les paires sont trouvées !';
+      document.getElementById('memory-finished-title').textContent =
+        state.record?.is_record ? 'Nouveau record personnel !' : 'Toutes les paires sont trouvées !';
       document.getElementById('memory-finished-summary').textContent =
-        `${state.matched_pairs} paires en ${state.moves} coups et ${formatTime(state.elapsed_seconds)} · ${state.points} points.`;
+        `${state.matched_pairs} paires en ${formatPreciseTime(state.elapsed_ms)} et ${state.moves} coups.`;
       document.getElementById('memory-replay').hidden = false;
       return;
     }
@@ -234,7 +240,8 @@
     document.getElementById('memory-pairs').textContent =
       `${state.matched_pairs} / ${state.total_pairs}`;
     document.getElementById('memory-moves').textContent = String(state.moves);
-    document.getElementById('memory-time').textContent = formatTime(state.elapsed_seconds);
+    document.getElementById('memory-time').textContent =
+      formatPreciseTime(state.elapsed_ms ?? state.elapsed_seconds * 1000);
     const currentTurnBox = document.getElementById('memory-current-turn-box');
     currentTurnBox.hidden = mode !== 'room';
     document.getElementById('memory-current-turn').textContent = state.turn_player_name || '';
@@ -264,7 +271,10 @@
         `/api/memories/solo/${encodeURIComponent(state.game_id)}?player_id=${encodeURIComponent(playerId)}`,
       );
       render();
-      if (state.status === 'finished') stopPolling();
+      if (state.status === 'finished') {
+        stopPolling();
+        refreshSoloLeaderboard();
+      }
     } catch (error) {
       showError('memory-game-error', error);
     } finally {
@@ -316,7 +326,10 @@
       }
       roomStateRevision = requestRevision + 1;
       render();
-      if (mode === 'solo' && state.status === 'finished') stopPolling();
+      if (mode === 'solo' && state.status === 'finished') {
+        stopPolling();
+        refreshSoloLeaderboard();
+      }
       else if (mode === 'room') scheduleRoomPolling();
     } catch (error) {
       showError('memory-game-error', error);
@@ -468,6 +481,41 @@
     }
   }
 
+  async function refreshSoloLeaderboard() {
+    const gridSize = Number(document.getElementById('memory-grid-size').value);
+    const title = document.getElementById('memory-leaderboard-title');
+    const list = document.getElementById('memory-leaderboard');
+    title.textContent = `Meilleurs temps · grille ${gridSize} × ${gridSize}`;
+    list.replaceChildren();
+    const loading = document.createElement('li');
+    loading.textContent = 'Chargement du classement…';
+    list.append(loading);
+    try {
+      const data = await request(`/api/memories/solo/leaderboard?grid_size=${gridSize}`);
+      list.replaceChildren();
+      if (!data.records.length) {
+        const empty = document.createElement('li');
+        empty.textContent = 'Aucun temps enregistré pour cette grille. À vous de jouer !';
+        list.append(empty);
+        return;
+      }
+      data.records.forEach((record) => {
+        const item = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = record.username;
+        const time = document.createElement('strong');
+        time.textContent = `${formatPreciseTime(record.elapsed_ms)} · ${record.moves} coups`;
+        item.append(name, time);
+        list.append(item);
+      });
+    } catch (error) {
+      list.replaceChildren();
+      const item = document.createElement('li');
+      item.textContent = `Impossible de charger le classement : ${error.message}`;
+      list.append(item);
+    }
+  }
+
   async function showHome() {
     if (mode === 'room' && state?.room_id) {
       stopPolling();
@@ -531,6 +579,7 @@
     if (event.key === 'Enter') joinRoom(event.currentTarget.value);
   });
   document.getElementById('memory-refresh-rooms').addEventListener('click', refreshRooms);
+  document.getElementById('memory-grid-size').addEventListener('change', refreshSoloLeaderboard);
   document.getElementById('memory-ready').addEventListener('click', () => setReady(!state?.player?.ready));
   document.getElementById('memory-start').addEventListener('click', startRoom);
   document.getElementById('memory-leave').addEventListener('click', showHome);
@@ -554,6 +603,7 @@
   const params = new URLSearchParams(window.location.search);
   const requestedRoom = params.get('room');
   const requestedMode = params.get('mode');
+  refreshSoloLeaderboard();
   if (requestedRoom) openRoomFromUrl(requestedRoom);
   else if (requestedMode === 'solo' && localStorage.getItem('memories_solo_game_id')) {
     resumeSoloFromUrl(localStorage.getItem('memories_solo_game_id'));

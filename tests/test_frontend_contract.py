@@ -19,7 +19,7 @@ GAME_PAGES = (
     "/games/undercover/",
     "/games/plongee/",
     "/games/bitoguessr/",
-    "/games/fermeture-express/",
+    "/games/memories/",
 )
 
 
@@ -74,8 +74,8 @@ class FrontendContractTests(unittest.TestCase):
         page = PageContractParser()
         page.feed(response.text)
 
-        self.assertEqual(len(page.cards), 11)
-        self.assertEqual(page.count_text.strip(), "11 jeux")
+        self.assertEqual(len(page.cards), 10)
+        self.assertEqual(page.count_text.strip(), "10 jeux")
         self.assertEqual(len({card["href"] for card in page.cards}), len(page.cards))
 
     def test_every_game_page_and_its_local_scripts_and_stylesheets_load(self):
@@ -117,6 +117,15 @@ class FrontendContractTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn('<option value="memories">Memory</option>', response.text)
+
+    def test_fermeture_express_is_removed(self):
+        response = self.client.get("/")
+        self.assertNotIn("Fermeture express", response.text)
+        self.assertEqual(self.client.get("/games/fermeture-express/").status_code, 404)
+        self.assertEqual(
+            self.client.post("/api/fermeture-express/solo/new").status_code,
+            404,
+        )
 
     def test_geoguessr_solo_shows_the_next_city_without_waiting_for_room_readiness(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"

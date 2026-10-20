@@ -40,7 +40,7 @@
     <section id="memory-home" class="memory-panel" aria-labelledby="memory-title">
       <p class="memory-eyebrow">Retournez les cartes, mémorisez les symboles, trouvez toutes les paires</p>
       <h1 id="memory-title">À vous de jouer de mémoire</h1>
-      <p class="memory-intro">En solo, faites le moins de coups possible. À plusieurs, chacun retourne deux cartes à son tour : une paire trouvée vous laisse rejouer, un raté passe la main.</p>
+      <p class="memory-intro">En concours solo, trouvez toutes les paires le plus vite possible : le temps départage les joueurs, puis le nombre de coups en cas d’égalité. À plusieurs, chacun joue à son tour : une paire trouvée vous laisse rejouer, un raté passe la main.</p>
       <div class="memory-settings">
         <label for="memory-grid-size">Taille de la grille</label>
         <select id="memory-grid-size" data-game-setting="grid-size">
@@ -49,10 +49,21 @@
         </select>
       </div>
       <div class="memory-home-actions">
-        <button type="button" id="memory-solo-start" class="memory-primary">Jouer en solo</button>
+        <button type="button" id="memory-solo-start" class="memory-primary">Concours solo chronométré</button>
         <button type="button" id="memory-open-multiplayer" class="memory-secondary">Jouer en multijoueur</button>
       </div>
       <p id="memory-home-error" class="memory-error" role="alert" hidden></p>
+      <section class="memory-leaderboard" aria-labelledby="memory-leaderboard-title">
+        <div class="memory-section-heading">
+          <div>
+            <h2 id="memory-leaderboard-title">Meilleurs temps · grille 4 × 4</h2>
+            <p>Classement du concours solo : le temps, puis les coups.</p>
+          </div>
+        </div>
+        <ol id="memory-leaderboard" class="memory-leaderboard-list" aria-live="polite">
+          <li>Chargement du classement…</li>
+        </ol>
+      </section>
       <section id="memory-room-browser" class="memory-room-browser" aria-labelledby="memory-rooms-title">
         <div class="memory-section-heading">
           <div><h2 id="memory-rooms-title">Salons en attente</h2><p>Rejoignez un salon ouvert ou reprenez le vôtre.</p></div>

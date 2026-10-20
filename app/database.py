@@ -466,6 +466,12 @@ _SCHEMA_PG = [
         points INTEGER NOT NULL DEFAULT 0, revealed_words INTEGER NOT NULL DEFAULT 0,
         total_words INTEGER NOT NULL DEFAULT 0, finished_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (username, session_id))""",
+    """CREATE TABLE IF NOT EXISTS memory_solo_records (
+        grid_size INTEGER NOT NULL, username TEXT NOT NULL,
+        normalized_username TEXT NOT NULL, elapsed_ms INTEGER NOT NULL,
+        moves INTEGER NOT NULL, session_id TEXT NOT NULL,
+        achieved_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (grid_size, normalized_username))""",
     """CREATE TABLE IF NOT EXISTS user_words (
         username TEXT NOT NULL, word TEXT NOT NULL, count INTEGER DEFAULT 1,
         PRIMARY KEY (username, word))""",
@@ -497,10 +503,6 @@ _SCHEMA_PG = [
     """CREATE TABLE IF NOT EXISTS global_game_controls (
         control_id TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0,
         updated_by TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
-    """CREATE TABLE IF NOT EXISTS fermeture_express_records (
-        username TEXT PRIMARY KEY, elapsed_ms INTEGER NOT NULL,
-        mistakes INTEGER NOT NULL, penalty_ms INTEGER NOT NULL,
-        session_id TEXT NOT NULL, achieved_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_games_finished ON games(finished_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_article_category ON article_cache(category)",
@@ -511,6 +513,7 @@ _SCHEMA_PG = [
     "CREATE INDEX IF NOT EXISTS idx_user_played_title ON user_played_articles(article_title)",
     "CREATE INDEX IF NOT EXISTS idx_store_chat_messages_created ON store_chat_messages(id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_store_invitations_recipient_status ON store_invitations(recipient_username, status, id DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_memory_solo_records_rank ON memory_solo_records(grid_size, elapsed_ms, moves)",
 ]
 
 _SCHEMA_SQLITE = [
@@ -556,6 +559,12 @@ _SCHEMA_SQLITE = [
         points INTEGER NOT NULL DEFAULT 0, revealed_words INTEGER NOT NULL DEFAULT 0,
         total_words INTEGER NOT NULL DEFAULT 0, finished_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (username, session_id))""",
+    """CREATE TABLE IF NOT EXISTS memory_solo_records (
+        grid_size INTEGER NOT NULL, username TEXT NOT NULL,
+        normalized_username TEXT NOT NULL, elapsed_ms INTEGER NOT NULL,
+        moves INTEGER NOT NULL, session_id TEXT NOT NULL,
+        achieved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (grid_size, normalized_username))""",
     """CREATE TABLE IF NOT EXISTS user_words (
         username TEXT NOT NULL, word TEXT NOT NULL, count INTEGER DEFAULT 1,
         PRIMARY KEY (username, word))""",
@@ -587,10 +596,6 @@ _SCHEMA_SQLITE = [
     """CREATE TABLE IF NOT EXISTS global_game_controls (
         control_id TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0,
         updated_by TEXT NOT NULL DEFAULT '', updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-    """CREATE TABLE IF NOT EXISTS fermeture_express_records (
-        username TEXT PRIMARY KEY, elapsed_ms INTEGER NOT NULL,
-        mistakes INTEGER NOT NULL, penalty_ms INTEGER NOT NULL,
-        session_id TEXT NOT NULL, achieved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_guesses_session ON guesses(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_words_user ON user_words(username)",
     "CREATE INDEX IF NOT EXISTS idx_user_game_stats_user_finished ON user_game_stats(username, finished_at DESC)",
@@ -599,6 +604,7 @@ _SCHEMA_SQLITE = [
     "CREATE INDEX IF NOT EXISTS idx_user_played_title ON user_played_articles(article_title)",
     "CREATE INDEX IF NOT EXISTS idx_store_chat_messages_created ON store_chat_messages(id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_store_invitations_recipient_status ON store_invitations(recipient_username, status, id DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_memory_solo_records_rank ON memory_solo_records(grid_size, elapsed_ms, moves)",
 ]
 
 _GAME_CATALOG = (
@@ -613,7 +619,6 @@ _GAME_CATALOG = (
     ("bitoguessr", "Bitoguessr"),
     ("plongee", "Plongée"),
     ("memories", "Memory"),
-    ("fermeture-express", "Fermeture express"),
 )
 
 
@@ -669,6 +674,7 @@ def _migrate_multigame_schema(db: DatabaseContext) -> None:
                VALUES (?, ?, 1) ON CONFLICT (game_id) DO NOTHING""",
             (game_id, display_name),
         )
+    db.execute("DELETE FROM game_catalog WHERE game_id = 'fermeture-express'")
 
     db.execute(
         """INSERT INTO game_sessions
@@ -1707,47 +1713,48 @@ def get_top_player_scores(
         return []
 
 
-def record_fermeture_express_time(
+def record_memory_solo_time(
     username: str,
+    grid_size: int,
     session_id: str,
     elapsed_ms: int,
-    mistakes: int,
-    penalty_ms: int,
+    moves: int,
 ) -> Dict[str, Any]:
+    if grid_size not in {4, 6}:
+        raise ValueError("Choisissez une grille de 4 × 4 ou de 6 × 6.")
+    clean_username = username.strip()
+    if not clean_username:
+        raise ValueError("Le nom du joueur est obligatoire.")
+    normalized_username = clean_username.casefold()
     try:
         with DatabaseContext() as db:
             db.execute(
-                "SELECT username FROM users WHERE LOWER(username) = LOWER(?)",
-                (username.strip(),),
-            )
-            user = db.fetchone()
-            if user is None:
-                raise ValueError("Compte introuvable.")
-            canonical_username = user["username"]
-            db.execute(
-                """INSERT INTO fermeture_express_records
-                   (username, elapsed_ms, mistakes, penalty_ms, session_id)
-                   VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT (username) DO UPDATE SET
+                """INSERT INTO memory_solo_records
+                   (grid_size, username, normalized_username, elapsed_ms, moves, session_id)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT (grid_size, normalized_username) DO UPDATE SET
+                       username = EXCLUDED.username,
                        elapsed_ms = EXCLUDED.elapsed_ms,
-                       mistakes = EXCLUDED.mistakes,
-                       penalty_ms = EXCLUDED.penalty_ms,
+                       moves = EXCLUDED.moves,
                        session_id = EXCLUDED.session_id,
                        achieved_at = CURRENT_TIMESTAMP
-                   WHERE EXCLUDED.elapsed_ms < fermeture_express_records.elapsed_ms""",
+                   WHERE EXCLUDED.elapsed_ms < memory_solo_records.elapsed_ms
+                      OR (EXCLUDED.elapsed_ms = memory_solo_records.elapsed_ms
+                          AND EXCLUDED.moves < memory_solo_records.moves)""",
                 (
-                    canonical_username,
+                    grid_size,
+                    clean_username,
+                    normalized_username,
                     max(0, int(elapsed_ms)),
-                    max(0, int(mistakes)),
-                    max(0, int(penalty_ms)),
+                    max(0, int(moves)),
                     session_id,
                 ),
             )
             db.execute(
-                """SELECT username, elapsed_ms, mistakes, penalty_ms, session_id,
-                          achieved_at
-                   FROM fermeture_express_records WHERE username = ?""",
-                (canonical_username,),
+                """SELECT grid_size, username, elapsed_ms, moves, session_id, achieved_at
+                   FROM memory_solo_records
+                   WHERE grid_size = ? AND normalized_username = ?""",
+                (grid_size, normalized_username),
             )
             row = db.fetchone()
             if row is None:
@@ -1758,40 +1765,26 @@ def record_fermeture_express_time(
     except ValueError:
         raise
     except Exception as exc:
-        logger.error("Enregistrement du record Fermeture express impossible : %s", exc)
-        raise RuntimeError("Impossible d'enregistrer le record.") from exc
+        logger.error("Enregistrement du record Memory impossible : %s", exc)
+        raise RuntimeError("Impossible d'enregistrer le record Memory.") from exc
 
 
-def get_fermeture_express_leaderboard(limit: int = 5) -> List[Dict[str, Any]]:
+def get_memory_solo_leaderboard(grid_size: int, limit: int = 5) -> List[Dict[str, Any]]:
+    if grid_size not in {4, 6}:
+        raise ValueError("Choisissez une grille de 4 × 4 ou de 6 × 6.")
     try:
         with DatabaseContext() as db:
             db.execute(
-                """SELECT username, elapsed_ms, mistakes, penalty_ms, achieved_at
-                   FROM fermeture_express_records
-                   ORDER BY elapsed_ms ASC, achieved_at ASC, LOWER(username) ASC
+                """SELECT username, elapsed_ms, moves, achieved_at
+                   FROM memory_solo_records WHERE grid_size = ?
+                   ORDER BY elapsed_ms ASC, moves ASC, achieved_at ASC, LOWER(username) ASC
                    LIMIT ?""",
-                (max(1, min(int(limit), 5)),),
+                (grid_size, max(1, min(int(limit), 10))),
             )
             return [_jsonable(row) for row in db.fetchall()]
     except Exception as exc:
-        logger.error("Classement Fermeture express indisponible : %s", exc)
+        logger.error("Classement Memory indisponible : %s", exc)
         raise RuntimeError("Impossible de charger le classement.") from exc
-
-
-def get_fermeture_express_record(username: str) -> Optional[Dict[str, Any]]:
-    try:
-        with DatabaseContext() as db:
-            db.execute(
-                """SELECT username, elapsed_ms, mistakes, penalty_ms, achieved_at
-                   FROM fermeture_express_records
-                   WHERE LOWER(username) = LOWER(?)""",
-                (username.strip(),),
-            )
-            row = db.fetchone()
-            return _jsonable(row) if row else None
-    except Exception as exc:
-        logger.error("Record Fermeture express indisponible : %s", exc)
-        raise RuntimeError("Impossible de charger le record.") from exc
 
 
 def get_db_status() -> Dict[str, Any]:

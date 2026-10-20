@@ -84,6 +84,19 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
         self.assertEqual(old_session["game_id"], "pedantix")
         self.assertEqual(database.get_user_stats("Alice")["games_played"], 1)
 
+    def test_migration_removes_retired_game_from_catalog(self):
+        with database.DatabaseContext() as db:
+            db.execute(
+                "INSERT INTO game_catalog (game_id, display_name, enabled) VALUES (?, ?, 1)",
+                ("fermeture-express", "Fermeture express"),
+            )
+            database._migrate_multigame_schema(db)
+
+        self.assertNotIn(
+            "fermeture-express",
+            {item["game_id"] for item in database.get_game_catalog()},
+        )
+
     def test_migration_splits_existing_cross_game_score_without_losing_pedantix_points(self):
         with database.DatabaseContext() as db:
             db.execute(
@@ -242,7 +255,6 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
             {
                 "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
                 "geoguessr", "undercover", "bitoguessr", "plongee", "memories",
-                "fermeture-express",
             },
         )
 

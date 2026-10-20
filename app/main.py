@@ -55,9 +55,8 @@ from app.database import (
     get_recently_played_articles,
     is_valid_user_identifier,
     is_gate_unlocked,
-    record_fermeture_express_time,
-    get_fermeture_express_record,
-    get_fermeture_express_leaderboard,
+    record_memory_solo_time,
+    get_memory_solo_leaderboard,
 )
 from app.secret_gate import (
     secret_gate_manager,
@@ -83,7 +82,6 @@ from app.bitoguessr import (
 )
 from app.plongee import plongee_manager
 from app.memories import memories_manager
-from app.fermeture_express import fermeture_express_manager
 from app.game import GameManager, GameSession
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
@@ -95,7 +93,6 @@ app = FastAPI(title="Pédantix Local - Concours Multijoueur", version="2.0.0")
 GAME_LAUNCH_SLUGS = {
     "motus", "undercover", "cemantix", "chiffrantix", "battleship",
     "sudoku", "geoguessr", "bitoguessr", "plongee", "memories",
-    "fermeture-express",
 }
 GAME_PAUSE_MAINTENANCE_MESSAGE = (
     "Les parties sont en pause pour cause de maintenance. Réessayez plus tard."
@@ -284,12 +281,7 @@ class PresenceRequest(BaseModel):
     game_id: Literal[
         "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship", "geoguessr",
         "undercover", "bitoguessr", "plongee", "store", "memories",
-        "fermeture-express"
     ]
-
-class FermetureExpressAnswerRequest(BaseModel):
-    session_id: str = Field(min_length=1, max_length=80)
-    answer: int = Field(ge=0, le=2)
 
 class StoreChatMessageRequest(BaseModel):
     message: str = Field(min_length=1, max_length=500)
@@ -691,13 +683,6 @@ async def memories_page():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page Mémories est introuvable.")
-
-@app.get("/games/fermeture-express/")
-async def fermeture_express_page():
-    index_path = os.path.join(STATIC_DIR, "games", "fermeture-express", "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    raise HTTPException(status_code=404, detail="La page Fermeture express est introuvable.")
 
 @app.get("/games/undercover/")
 async def undercover_page():
@@ -2031,103 +2016,6 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
 # SOLO / STANDARD GAME ENDPOINTS
 # ============================================================================
 
-@app.post("/api/fermeture-express/solo/new")
-async def new_fermeture_express_solo(
-    x_auth_user: Optional[str] = Header(None),
-    x_auth_token: Optional[str] = Header(None),
-):
-    username = _require_store_user(x_auth_user, x_auth_token)
-    state = fermeture_express_manager.start(username)
-    record_multigame_session_start(
-        f"fermeture-express:{state['session_id']}",
-        "fermeture-express",
-        "solo",
-        "Fermeture express",
-        None,
-    )
-    return state
-
-
-@app.get("/api/fermeture-express/solo/{session_id}")
-async def get_fermeture_express_solo(
-    session_id: str,
-    x_auth_user: Optional[str] = Header(None),
-    x_auth_token: Optional[str] = Header(None),
-):
-    username = _require_store_user(x_auth_user, x_auth_token)
-    try:
-        return fermeture_express_manager.get(username, session_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@app.post("/api/fermeture-express/solo/submit")
-async def submit_fermeture_express_answer(
-    req: FermetureExpressAnswerRequest,
-    x_auth_user: Optional[str] = Header(None),
-    x_auth_token: Optional[str] = Header(None),
-):
-    username = _require_store_user(x_auth_user, x_auth_token)
-    try:
-        state = fermeture_express_manager.submit(
-            username, req.session_id, req.answer
-        )
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    if state["finished"]:
-        try:
-            record = record_fermeture_express_time(
-                username,
-                state["session_id"],
-                state["elapsed_ms"],
-                state["mistakes"],
-                state["penalty_ms"],
-            )
-        except (RuntimeError, ValueError) as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-        record_user_game_finish(
-            username,
-            won=True,
-            attempts=state["task_count"],
-            points=0,
-            session_id=f"fermeture-express:{state['session_id']}",
-            mode="solo",
-            title="Fermeture express",
-            duration_seconds=state["elapsed_ms"] // 1000,
-            game_id="fermeture-express",
-            metrics={
-                "elapsed_ms": state["elapsed_ms"],
-                "mistakes": state["mistakes"],
-                "penalty_ms": state["penalty_ms"],
-            },
-        )
-        state["record"] = record
-    return state
-
-
-@app.get("/api/fermeture-express/leaderboard")
-async def fermeture_express_leaderboard():
-    try:
-        return {"records": get_fermeture_express_leaderboard()}
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@app.get("/api/fermeture-express/record")
-async def fermeture_express_personal_record(
-    x_auth_user: Optional[str] = Header(None),
-    x_auth_token: Optional[str] = Header(None),
-):
-    username = _require_store_user(x_auth_user, x_auth_token)
-    try:
-        return {"record": get_fermeture_express_record(username)}
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
 @app.post("/api/motus/solo/new")
 async def new_motus_solo(req: MotusPlayerRequest):
     try:
@@ -3378,8 +3266,16 @@ async def get_geoguessr_room(room_id: str, player_id: str = Query(...)):
 def _record_memories_solo_result(game) -> None:
     if game.status != "finished" or game.stats_recorded:
         return
-    game.stats_recorded = True
-    duration = max(0, int(time.time() - game.started_at))
+    finished_time = game.finished_at if game.finished_at is not None else time.time()
+    elapsed_ms = max(0, round((finished_time - game.started_at) * 1000))
+    duration = elapsed_ms // 1000
+    game.best_record = record_memory_solo_time(
+        game.player_name,
+        game.grid_size,
+        f"memories:{game.game_id}",
+        elapsed_ms,
+        game.moves,
+    )
     record_user_game_finish(
         game.player_name,
         won=True,
@@ -3395,9 +3291,11 @@ def _record_memories_solo_result(game) -> None:
             "grid_size": game.grid_size,
             "pairs": len(game.matched) // 2,
             "moves": game.moves,
+            "elapsed_ms": elapsed_ms,
         },
     )
     increment_player_score(game.player_name, game.points, "memories")
+    game.stats_recorded = True
 
 
 def _record_memories_room_results(room) -> None:
@@ -3447,13 +3345,29 @@ async def create_memories_solo(req: MemoriesSoloCreateRequest):
     return game.to_dict()
 
 
+@app.get("/api/memories/solo/leaderboard")
+async def memories_solo_leaderboard(grid_size: int = Query(4)):
+    if grid_size not in {4, 6}:
+        raise HTTPException(
+            status_code=400,
+            detail="Choisissez une grille de 4 × 4 ou de 6 × 6.",
+        )
+    try:
+        return {"records": get_memory_solo_leaderboard(grid_size)}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/api/memories/solo/{game_id}")
 async def get_memories_solo(game_id: str, player_id: str = Query(...)):
     try:
         game = memories_manager.get_solo(game_id, player_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    _record_memories_solo_result(game)
+    try:
+        _record_memories_solo_result(game)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return game.to_dict()
 
 
@@ -3465,7 +3379,10 @@ async def flip_memories_solo(req: MemoriesSoloFlipRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _record_memories_solo_result(game)
+    try:
+        _record_memories_solo_result(game)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return game.to_dict()
 
 
