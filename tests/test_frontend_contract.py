@@ -138,6 +138,17 @@ class FrontendContractTests(unittest.TestCase):
             stylesheet,
         )
 
+    def test_dropdown_options_use_the_active_theme_colors(self):
+        shared_stylesheet = (
+            Path(__file__).resolve().parents[1] / "static" / "shared" / "game-ui.css"
+        ).read_text()
+
+        self.assertIn(":where(select) {\n  color-scheme: inherit;", shared_stylesheet)
+        self.assertIn("background-color: var(--game-input);", shared_stylesheet)
+        self.assertIn("color: var(--game-text);", shared_stylesheet)
+        self.assertIn("background-color: var(--game-accent);", shared_stylesheet)
+        self.assertIn("color: var(--game-accent-contrast);", shared_stylesheet)
+
     def test_memory_solo_does_not_poll_and_uses_card_flip_feedback(self):
         games_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "memories"
         script = (games_dir / "app.js").read_text()

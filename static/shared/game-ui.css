@@ -97,6 +97,20 @@ body {
   color: var(--game-text);
 }
 
+:where(select) {
+  color-scheme: inherit;
+}
+
+:where(select option, select optgroup) {
+  background-color: var(--game-input);
+  color: var(--game-text);
+}
+
+:where(select option:checked) {
+  background-color: var(--game-accent);
+  color: var(--game-accent-contrast);
+}
+
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 3px solid var(--game-accent);
   outline-offset: 3px;
