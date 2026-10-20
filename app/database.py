@@ -472,6 +472,10 @@ _SCHEMA_PG = [
         moves INTEGER NOT NULL, session_id TEXT NOT NULL,
         achieved_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (grid_size, normalized_username))""",
+    """CREATE TABLE IF NOT EXISTS memory_solo_attempts (
+        session_id TEXT PRIMARY KEY, grid_size INTEGER NOT NULL, username TEXT NOT NULL,
+        elapsed_ms INTEGER NOT NULL, moves INTEGER NOT NULL,
+        achieved_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)""",
     """CREATE TABLE IF NOT EXISTS user_words (
         username TEXT NOT NULL, word TEXT NOT NULL, count INTEGER DEFAULT 1,
         PRIMARY KEY (username, word))""",
@@ -514,6 +518,7 @@ _SCHEMA_PG = [
     "CREATE INDEX IF NOT EXISTS idx_store_chat_messages_created ON store_chat_messages(id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_store_invitations_recipient_status ON store_invitations(recipient_username, status, id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_memory_solo_records_rank ON memory_solo_records(grid_size, elapsed_ms, moves)",
+    "CREATE INDEX IF NOT EXISTS idx_memory_solo_attempts_rank ON memory_solo_attempts(grid_size, elapsed_ms, moves, achieved_at)",
 ]
 
 _SCHEMA_SQLITE = [
@@ -565,6 +570,10 @@ _SCHEMA_SQLITE = [
         moves INTEGER NOT NULL, session_id TEXT NOT NULL,
         achieved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (grid_size, normalized_username))""",
+    """CREATE TABLE IF NOT EXISTS memory_solo_attempts (
+        session_id TEXT PRIMARY KEY, grid_size INTEGER NOT NULL, username TEXT NOT NULL,
+        elapsed_ms INTEGER NOT NULL, moves INTEGER NOT NULL,
+        achieved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
     """CREATE TABLE IF NOT EXISTS user_words (
         username TEXT NOT NULL, word TEXT NOT NULL, count INTEGER DEFAULT 1,
         PRIMARY KEY (username, word))""",
@@ -605,6 +614,7 @@ _SCHEMA_SQLITE = [
     "CREATE INDEX IF NOT EXISTS idx_store_chat_messages_created ON store_chat_messages(id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_store_invitations_recipient_status ON store_invitations(recipient_username, status, id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_memory_solo_records_rank ON memory_solo_records(grid_size, elapsed_ms, moves)",
+    "CREATE INDEX IF NOT EXISTS idx_memory_solo_attempts_rank ON memory_solo_attempts(grid_size, elapsed_ms, moves, achieved_at)",
 ]
 
 _GAME_CATALOG = (
@@ -640,6 +650,15 @@ def _migrate_multigame_schema(db: DatabaseContext) -> None:
     _ensure_column(db, "store_invitations", "sender_player_id", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(db, "store_invitations", "recipient_player_id", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(db, "store_invitations", "expires_at", "REAL NOT NULL DEFAULT 0")
+
+    db.execute(
+        """INSERT INTO memory_solo_attempts
+               (session_id, grid_size, username, elapsed_ms, moves, achieved_at)
+           SELECT session_id, grid_size, username, elapsed_ms, moves, achieved_at
+           FROM memory_solo_records
+           WHERE 1 = 1
+           ON CONFLICT (session_id) DO NOTHING"""
+    )
 
     db.execute(
         """INSERT INTO player_game_scores (player_name, game_id, score, last_played)
@@ -1729,6 +1748,19 @@ def record_memory_solo_time(
     try:
         with DatabaseContext() as db:
             db.execute(
+                """INSERT INTO memory_solo_attempts
+                   (session_id, grid_size, username, elapsed_ms, moves)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (session_id) DO NOTHING""",
+                (
+                    session_id,
+                    grid_size,
+                    clean_username,
+                    max(0, int(elapsed_ms)),
+                    max(0, int(moves)),
+                ),
+            )
+            db.execute(
                 """INSERT INTO memory_solo_records
                    (grid_size, username, normalized_username, elapsed_ms, moves, session_id)
                    VALUES (?, ?, ?, ?, ?, ?)
@@ -1776,7 +1808,7 @@ def get_memory_solo_leaderboard(grid_size: int, limit: int = 5) -> List[Dict[str
         with DatabaseContext() as db:
             db.execute(
                 """SELECT username, elapsed_ms, moves, achieved_at
-                   FROM memory_solo_records WHERE grid_size = ?
+                   FROM memory_solo_attempts WHERE grid_size = ?
                    ORDER BY elapsed_ms ASC, moves ASC, achieved_at ASC, LOWER(username) ASC
                    LIMIT ?""",
                 (grid_size, max(1, min(int(limit), 10))),

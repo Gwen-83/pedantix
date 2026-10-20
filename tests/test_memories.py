@@ -259,21 +259,47 @@ class MemorySoloRecordTests(unittest.TestCase):
         self.db_path_patch.stop()
         self.temp_dir.cleanup()
 
-    def test_personal_records_keep_fastest_time_per_grid_and_leaderboard_ranks(self):
+    def test_leaderboard_ranks_each_attempt_even_when_one_player_repeats(self):
         first = database.record_memory_solo_time("Alice", 4, "session-1", 12000, 10)
         slower = database.record_memory_solo_time("ALICE", 4, "session-2", 15000, 8)
         tie_break = database.record_memory_solo_time("alice", 4, "session-3", 12000, 9)
         other_grid = database.record_memory_solo_time("Alice", 6, "session-4", 45000, 25)
+        database.record_memory_solo_time("Alice", 4, "session-5", 10000, 12)
+        database.record_memory_solo_time("Alice", 4, "session-6", 14000, 11)
+        database.record_memory_solo_time("Bob", 4, "session-7", 13000, 10)
 
         self.assertTrue(first["is_record"])
         self.assertFalse(slower["is_record"])
         self.assertTrue(tie_break["is_record"])
         self.assertEqual(tie_break["moves"], 9)
         self.assertTrue(other_grid["is_record"])
-        fastest = database.get_memory_solo_leaderboard(4)[0]
-        self.assertEqual(fastest["elapsed_ms"], 12000)
-        self.assertEqual(fastest["moves"], 9)
+        top_five = database.get_memory_solo_leaderboard(4)
+        self.assertEqual(len(top_five), 5)
+        self.assertEqual(
+            [record["elapsed_ms"] for record in top_five],
+            [10000, 12000, 12000, 13000, 14000],
+        )
+        self.assertEqual(
+            sum(record["username"].casefold() == "alice" for record in top_five),
+            4,
+        )
+        self.assertEqual(top_five[1]["moves"], 9)
         self.assertEqual(len(database.get_memory_solo_leaderboard(6)), 1)
+
+    def test_existing_personal_records_are_kept_in_the_attempt_leaderboard(self):
+        with database.DatabaseContext() as db:
+            db.execute(
+                """INSERT INTO memory_solo_records
+                   (grid_size, username, normalized_username, elapsed_ms, moves, session_id)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (4, "Alice", "alice", 12000, 10, "legacy-session"),
+            )
+            database._migrate_multigame_schema(db)
+
+        leaderboard = database.get_memory_solo_leaderboard(4)
+        self.assertEqual(len(leaderboard), 1)
+        self.assertEqual(leaderboard[0]["username"], "Alice")
+        self.assertEqual(leaderboard[0]["elapsed_ms"], 12000)
 
     def test_multiplayer_flips_are_turn_based_and_reject_out_of_turn_calls(self):
         manager = MemoriesManager()
