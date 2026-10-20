@@ -113,6 +113,14 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Solo contre le bot", game_page.text)
         self.assertIn("Multijoueur", game_page.text)
 
+    def test_battleship_solo_can_configure_fleet_before_starting(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "battleship"
+        source = (static_dir / "app.js").read_text()
+
+        self.assertIn("solo ? 'Placez vos navires'", source)
+        self.assertIn("startButton.textContent = solo ? 'Lancer la bataille'", source)
+        self.assertIn("state = await post('/api/battleship/room/fleet'", source)
+
     def test_store_invitation_game_selector_includes_memories(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)

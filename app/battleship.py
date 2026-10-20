@@ -608,6 +608,9 @@ class BattleshipManager:
             room.winner_player_id = None
             if room.is_solo:
                 room.players[room.host_player_id].ready = False
+                for player_id, player in room.players.items():
+                    if player_id != room.host_player_id:
+                        player.ready = True
                 room.status = "lobby"
                 room.current_player_id = None
                 room.turn_number = 0

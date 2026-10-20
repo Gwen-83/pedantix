@@ -241,21 +241,39 @@ class BattleshipTests(unittest.TestCase):
             self.manager.set_ready(room.room_id, player_id, True)
         self.assertEqual(self.manager.start_room(room.room_id, "p1").status, "playing")
 
-    def test_solo_game_starts_with_standard_fleets_and_keeps_bot_fleet_hidden(self):
+    def test_solo_fleet_can_be_placed_before_starting_and_bot_fleet_stays_hidden(self):
         room = self.manager.create_solo("human", "Capitaine", "difficile")
         state = room.to_dict("human")
 
         self.assertTrue(room.is_solo)
         self.assertEqual(room.bot_difficulty, "difficile")
-        self.assertEqual(room.status, "playing")
-        self.assertEqual(room.current_player_id, "human")
+        self.assertEqual(room.status, "lobby")
+        self.assertIsNone(room.current_player_id)
+        self.assertTrue(state["can_start"])
         self.assertEqual(room.ship_lengths, SHIP_LENGTHS)
         self.assertEqual(len(room.players), 2)
         self.assertNotIn("fleet", state["players"][1])
         self.assertEqual(len(state["own_fleet"]), len(SHIP_LENGTHS))
 
+        fleet = simple_fleet()
+        self.manager.set_fleet(room.room_id, "human", fleet)
+        self.assertEqual(room.players["human"].fleet, fleet)
+        self.assertEqual(room.status, "lobby")
+
+        started = self.manager.start_room(room.room_id, "human")
+        self.assertEqual(started.status, "playing")
+        self.assertEqual(started.current_player_id, "human")
+        self.assertEqual(started.players["human"].fleet, fleet)
+
+    def test_solo_rooms_cannot_be_joined_by_another_player(self):
+        room = self.manager.create_solo("human", "Capitaine")
+
+        with self.assertRaisesRegex(ValueError, "ne peuvent pas être rejointes"):
+            self.manager.join_room(room.room_id, "intruder", "Visiteur")
+
     def test_solo_bot_takes_a_turn_after_a_miss_and_never_repeats_a_shot(self):
         room = self.manager.create_solo("human", "Capitaine", "moyen")
+        self.manager.start_room(room.room_id, "human")
         bot_id = next(player_id for player_id in room.players if player_id != "human")
         room.players[bot_id].fleet = simple_fleet()
         room, hit = self.manager.fire(room.room_id, "human", "A1")
@@ -330,12 +348,17 @@ class BattleshipTests(unittest.TestCase):
         self.assertIs(restarted, room)
         self.assertTrue(room.is_solo)
         self.assertEqual(room.bot_difficulty, "difficile")
-        self.assertEqual(room.status, "playing")
-        self.assertEqual(room.current_player_id, "human")
-        self.assertEqual(room.turn_number, 1)
+        self.assertEqual(room.status, "lobby")
+        self.assertIsNone(room.current_player_id)
+        self.assertEqual(room.turn_number, 0)
         self.assertIsNone(room.winner_player_id)
         self.assertEqual(room.players["human"].attacks, [])
         self.assertEqual(room.match_number, 2)
+        self.assertTrue(room.players[f"bot-{room.room_id}"].ready)
+
+        self.manager.start_room(room.room_id, "human")
+        self.assertEqual(room.status, "playing")
+        self.assertEqual(room.current_player_id, "human")
 
 
 if __name__ == "__main__":
