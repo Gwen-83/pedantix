@@ -118,6 +118,44 @@ class FermetureExpressApiTests(unittest.TestCase):
             personal_record.json()["record"]["elapsed_ms"], result["elapsed_ms"]
         )
 
+    def test_leaderboard_returns_only_top_five_and_refreshes_after_a_new_record(self):
+        for index in range(7):
+            username = f"ExpressPlayer{index}"
+            database.create_user(username, "password")
+            database.record_fermeture_express_time(
+                username,
+                f"existing-session-{index}",
+                7000 + index * 1000,
+                0,
+                0,
+            )
+
+        before = self.client.get("/api/fermeture-express/leaderboard").json()["records"]
+        self.assertEqual(len(before), 5)
+        self.assertEqual(
+            [record["elapsed_ms"] for record in before],
+            [7000, 8000, 9000, 10000, 11000],
+        )
+
+        response = self.client.post(
+            "/api/fermeture-express/solo/new", headers=self.alice_headers
+        )
+        session_id = response.json()["session_id"]
+        for task in TASKS:
+            response = self.client.post(
+                "/api/fermeture-express/solo/submit",
+                headers=self.alice_headers,
+                json={"session_id": session_id, "answer": task["answer"]},
+            )
+
+        after = self.client.get("/api/fermeture-express/leaderboard").json()["records"]
+        self.assertEqual(len(after), 5)
+        self.assertEqual(after[0]["username"], "ExpressAlice")
+        self.assertEqual(
+            [record["elapsed_ms"] for record in after],
+            sorted(record["elapsed_ms"] for record in after),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

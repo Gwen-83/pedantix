@@ -1762,7 +1762,7 @@ def record_fermeture_express_time(
         raise RuntimeError("Impossible d'enregistrer le record.") from exc
 
 
-def get_fermeture_express_leaderboard(limit: int = 20) -> List[Dict[str, Any]]:
+def get_fermeture_express_leaderboard(limit: int = 5) -> List[Dict[str, Any]]:
     try:
         with DatabaseContext() as db:
             db.execute(
@@ -1770,7 +1770,7 @@ def get_fermeture_express_leaderboard(limit: int = 20) -> List[Dict[str, Any]]:
                    FROM fermeture_express_records
                    ORDER BY elapsed_ms ASC, achieved_at ASC, LOWER(username) ASC
                    LIMIT ?""",
-                (max(1, min(int(limit), 100)),),
+                (max(1, min(int(limit), 5)),),
             )
             return [_jsonable(row) for row in db.fetchall()]
     except Exception as exc:
