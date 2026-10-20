@@ -254,23 +254,35 @@ class FrontendContractTests(unittest.TestCase):
                 ]
                 self.assertTrue(calls, f"{route_name} must offload synchronous game processing")
 
-    def test_geoguessr_maps_use_keyless_tiles_and_city_map_stays_within_native_zoom(self):
+    def test_geoguessr_map_overzooms_and_shows_keyless_physical_features(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
         source = (static_dir / "app.js").read_text()
         detailed_boundaries = self.client.get(
             "/static/games/geoguessr/data/countries_50m.geojson"
         )
+        rivers = self.client.get("/static/games/geoguessr/data/rivers_50m.geojson")
+        mountain_ranges = self.client.get(
+            "/static/games/geoguessr/data/mountain_ranges_50m.geojson"
+        )
 
         self.assertIn("World_Terrain_Base/MapServer/tile/{z}/{y}/{x}", source)
-        self.assertIn("maxNativeZoom: 13", source)
-        self.assertIn("const maxZoom = isPanorama ? 19 : 13", source)
+        self.assertIn("maxNativeZoom: 9", source)
+        self.assertIn("maxZoom: 19", source)
+        self.assertIn("const maxZoom = 19", source)
         self.assertIn("tile.openstreetmap.org/{z}/{x}/{y}.png", source)
         self.assertIn("data/countries_50m.geojson", source)
+        self.assertIn("rivers_50m.geojson", source)
+        self.assertIn("mountain_ranges_50m.geojson", source)
+        self.assertIn("fillColor: '#65a84a'", source)
+        self.assertIn("name_fr", source)
         self.assertIn("smoothFactor: 0.5", source)
         self.assertNotIn("basemaps.cartocdn.com", source)
-        self.assertNotIn("World_Physical_Map", source)
         self.assertEqual(detailed_boundaries.status_code, 200)
         self.assertIn('"name":"ne_50m_admin_0_countries"', detailed_boundaries.text)
+        self.assertEqual(rivers.status_code, 200)
+        self.assertGreater(len(rivers.json()["features"]), 200)
+        self.assertEqual(mountain_ranges.status_code, 200)
+        self.assertGreater(len(mountain_ranges.json()["features"]), 100)
 
     def test_geoguessr_solo_keeps_answer_map_framed_until_next_round(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"

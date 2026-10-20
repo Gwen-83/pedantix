@@ -182,6 +182,17 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 footer { padding-top: 18px; color: #707b8e; font-size: .72rem; text-align: center; }
 .leaflet-container { font-family: inherit; }
 .leaflet-control-attribution { font-size: 10px !important; }
+.geo-mountain-label { border: 0; background: transparent; white-space: nowrap; }
+.geo-mountain-label-text {
+  display: block;
+  transform: translate(-50%, -50%);
+  color: #314532;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-shadow: 0 0 3px #f5f4d9, 0 0 6px #f5f4d9, 1px 1px 1px #f5f4d9;
+  text-transform: uppercase;
+}
 .geo-guess-pin, .geo-target-pin { border: 0; background: transparent; font-size: 26px; line-height: 32px; text-align: center; }
 .geo-guess-pin { filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }
 .geo-target-pin { filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }

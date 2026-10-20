@@ -39,6 +39,9 @@
   let mapLabelsLayerFallback = false;
   let mapLabelsFallbackErrorShown = false;
   let mapCitiesLayer = null;
+  let physicalFeaturesLoading = null;
+  let physicalFeatureLayers = [];
+  let mountainRangeLabelMarkers = [];
   let selectedPosition = null;
   let pollingTimer = null;
   let roundCountdownTimer = null;
@@ -437,7 +440,7 @@
       showError(playError, 'La carte ne s’est pas chargée. Vérifiez votre connexion puis rechargez la page.');
       return false;
     }
-    map = L.map('geo-map', { worldCopyJump: true, minZoom: 2, maxZoom: 20 })
+    map = L.map('geo-map', { worldCopyJump: true, minZoom: 2, maxZoom: 19 })
       .setView([20, 0], 2);
     loadCountryBoundaries();
     map.on('click', (event) => {
@@ -448,6 +451,9 @@
       document.getElementById('geo-round-message').textContent =
         `Estimation sélectionnée : ${event.latlng.lat.toFixed(2)}, ${event.latlng.lng.toFixed(2)}. Vous pouvez encore la déplacer.`;
     });
+    map.on('zoomend', () => {
+      updatePhysicalFeatureVisibility(state?.variant === 'panorama');
+    });
     return true;
   }
 
@@ -456,8 +462,8 @@
       color: isPanorama ? '#63716f' : '#31444a',
       weight: isPanorama ? 1 : 0.9,
       opacity: isPanorama ? 0.9 : 0.76,
-      fillColor: '#58a83b',
-      fillOpacity: isPanorama ? 0 : 0.1,
+      fillColor: '#65a84a',
+      fillOpacity: isPanorama ? 0 : 0.22,
     };
   }
 
@@ -509,26 +515,102 @@
         mapCitiesLayer = L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
           {
-            maxNativeZoom: 13,
-            maxZoom: 13,
+            maxNativeZoom: 9,
+            maxZoom: 19,
             attribution: 'Sources : Esri, USGS, NOAA',
           },
         ).addTo(map);
       }
+      loadPhysicalFeatures();
     } else {
       if (mapCitiesLayer) map.removeLayer(mapCitiesLayer);
       mapCitiesLayer = null;
     }
 
-    const maxZoom = isPanorama ? 19 : 13;
+    const maxZoom = 19;
     map.setMaxZoom(maxZoom);
     if (map.getZoom() > maxZoom) map.setZoom(maxZoom);
+    updatePhysicalFeatureVisibility(isPanorama);
 
     countryBoundaryLayer?.setStyle(countryBoundaryStyle(isPanorama));
     const attribution = document.querySelector('.geo-map-actions > span');
     attribution.textContent = isPanorama
       ? 'Carte © OpenStreetMap · frontières © Natural Earth'
-      : 'Carte de relief sans noms de villes © Esri, USGS, NOAA · frontières © Natural Earth';
+      : 'Relief © Esri, USGS, NOAA · fleuves et massifs © Natural Earth · sans noms de villes';
+  }
+
+  function updatePhysicalFeatureVisibility(isPanorama) {
+    if (!map) return;
+    for (const layer of physicalFeatureLayers) {
+      if (isPanorama && map.hasLayer(layer)) map.removeLayer(layer);
+      else if (!isPanorama && !map.hasLayer(layer)) layer.addTo(map);
+    }
+
+    const showMountainLabels = !isPanorama && map.getZoom() >= 4;
+    for (const marker of mountainRangeLabelMarkers) {
+      if (showMountainLabels && !map.hasLayer(marker)) marker.addTo(map);
+      else if (!showMountainLabels && map.hasLayer(marker)) map.removeLayer(marker);
+    }
+  }
+
+  function loadPhysicalFeatures() {
+    if (physicalFeatureLayers.length || physicalFeaturesLoading) return;
+    const basePath = '/static/games/geoguessr/data/';
+    physicalFeaturesLoading = Promise.all(
+      ['rivers_50m.geojson', 'mountain_ranges_50m.geojson'].map((filename) =>
+        fetch(`${basePath}${filename}`).then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.json();
+        }),
+      ),
+    )
+      .then(([rivers, mountainRanges]) => {
+        const riverLayer = L.geoJSON(rivers, {
+          interactive: false,
+          style: (feature) => ({
+            color: '#328da4',
+            opacity: 0.88,
+            weight: feature.properties.scalerank <= 2 ? 1.8 : 1.2,
+          }),
+        });
+        const mountainRangeLayer = L.geoJSON(mountainRanges, {
+          interactive: false,
+          style: (feature) => ({
+            color: '#526b45',
+            opacity: 0.78,
+            weight: feature.properties.scalerank <= 2 ? 1.1 : 0.75,
+            dashArray: '4 4',
+            fillColor: '#83966b',
+            fillOpacity: 0.08,
+          }),
+          onEachFeature: (feature, layer) => {
+            if (feature.properties.scalerank > 2) return;
+            const label = document.createElement('span');
+            label.textContent = feature.properties.name_fr || feature.properties.name;
+            mountainRangeLabelMarkers.push(
+              L.marker(layer.getBounds().getCenter(), {
+                icon: L.divIcon({
+                  className: 'geo-mountain-label',
+                  html: label,
+                  iconSize: [0, 0],
+                  iconAnchor: [0, 0],
+                }),
+                interactive: false,
+                keyboard: false,
+              }),
+            );
+          },
+        });
+        physicalFeatureLayers = [mountainRangeLayer, riverLayer];
+        updatePhysicalFeatureVisibility(state?.variant === 'panorama');
+      })
+      .catch((error) => {
+        physicalFeaturesLoading = null;
+        showError(
+          playError,
+          `Impossible de charger les fleuves et chaînes de montagnes : ${error.message}`,
+        );
+      });
   }
 
   function loadCountryBoundaries() {
