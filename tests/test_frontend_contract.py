@@ -21,6 +21,7 @@ GAME_PAGES = (
     "/games/plongee/",
     "/games/bitoguessr/",
     "/games/memories/",
+    "/games/scribbl/",
 )
 
 
@@ -75,8 +76,8 @@ class FrontendContractTests(unittest.TestCase):
         page = PageContractParser()
         page.feed(response.text)
 
-        self.assertEqual(len(page.cards), 10)
-        self.assertEqual(page.count_text.strip(), "10 jeux")
+        self.assertEqual(len(page.cards), 11)
+        self.assertEqual(page.count_text.strip(), "11 jeux")
         self.assertEqual(len({card["href"] for card in page.cards}), len(page.cards))
 
     def test_every_game_page_and_its_local_scripts_and_stylesheets_load(self):
@@ -183,6 +184,18 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("setInterval(updateSoloClock, 100)", script)
         self.assertIn("memory-card-reveal", stylesheet)
         self.assertIn("memory-card-loading", stylesheet)
+
+    def test_scribbl_uses_a_realtime_socket_and_a_local_shared_canvas(self):
+        game_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "scribbl"
+        script = (game_dir / "app.js").read_text()
+        page = (game_dir / "index.html").read_text()
+
+        self.assertIn("new WebSocket(url)", script)
+        self.assertIn("canvas.addEventListener('pointermove'", script)
+        self.assertIn("type: 'stroke'", script)
+        self.assertIn("type: isGuess ? 'guess' : 'message'", script)
+        self.assertIn('id="scribbl-canvas"', page)
+        self.assertNotIn("setInterval(refreshRoom", script)
 
     def test_admin_usage_dashboard_displays_google_street_view_monthly_usage(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "admin"

@@ -19,6 +19,7 @@
         sudoku: '/games/sudoku/',
         geoguessr: '/games/geoguessr/',
         memories: '/games/memories/',
+        scribbl: '/games/scribbl/',
         undercover: '/games/undercover/',
         bitoguessr: '/games/bitoguessr/',
       }[requestedGame];
@@ -102,7 +103,7 @@
             <h2 id="store-library-title">La collection</h2>
             <p>Recherchez un jeu ou parcourez les catégories.</p>
           </div>
-          <span class="store-game-count" id="store-game-count">10 jeux</span>
+          <span class="store-game-count" id="store-game-count">11 jeux</span>
         </div>
 
         <div class="store-library-tools">
@@ -217,14 +218,15 @@
           </span>
           <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
         </a>
-        <article class="store-game-card store-game-card-soon" data-categories="party">
+        <a class="store-game-card store-game-card-available" href="/games/scribbl/" data-categories="party">
           <span class="store-game-icon" aria-hidden="true">🎨</span>
           <span class="store-game-info">
             <span class="store-game-title">Scribbl</span>
-            <span class="store-game-description">Dessinez, devinez et faites rire vos amis : un nouveau jeu arrive bientôt dans la ludothèque.</span>
-            <span class="store-coming-soon">Bientôt disponible</span>
+            <span class="store-game-description">Dessinez un mot secret, devinez ceux de vos amis et remportez la manche dans votre salon.</span>
+            <span class="store-game-tags"><span>Dessin</span><span>Multijoueur</span></span>
           </span>
-        </article>
+          <span class="store-play-button" aria-hidden="true">Jouer <span>→</span></span>
+        </a>
         </div>
         <p id="store-no-games" class="store-no-games" role="status" hidden>Aucun jeu ne correspond à votre recherche.</p>
       </section>
@@ -321,6 +323,7 @@
             <option value="geoguessr">GeoGuessr</option>
             <option value="plongee">Plongée</option>
             <option value="memories">Memory</option>
+            <option value="scribbl">Scribbl</option>
           </select>
           <button type="submit" id="store-invite-submit" class="store-auth-submit">Envoyer l’invitation</button>
         </form>

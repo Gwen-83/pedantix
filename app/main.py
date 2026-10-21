@@ -9,6 +9,7 @@ import hashlib
 import datetime
 import asyncio
 import threading
+import logging
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any, List, Literal
 from fastapi import FastAPI, HTTPException, Query, Header, WebSocket, WebSocketDisconnect, Request, Response
@@ -83,6 +84,10 @@ from app.bitoguessr import (
 )
 from app.plongee import plongee_manager
 from app.memories import memories_manager
+from app.scribbl import (
+    MAX_PLAYERS as SCRIBBL_MAX_PLAYERS,
+    scribbl_manager,
+)
 from app.game import GameManager, GameSession
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
@@ -90,10 +95,11 @@ from app.tunnel import tunnel_manager
 from app.antibot import anti_bot_guard
 
 app = FastAPI(title="Pédantix Local - Concours Multijoueur", version="2.0.0")
+logger = logging.getLogger(__name__)
 
 GAME_LAUNCH_SLUGS = {
     "motus", "undercover", "cemantix", "chiffrantix", "battleship",
-    "sudoku", "geoguessr", "bitoguessr", "plongee", "memories",
+    "sudoku", "geoguessr", "bitoguessr", "plongee", "memories", "scribbl",
 }
 GAME_PAUSE_MAINTENANCE_MESSAGE = (
     "Les parties sont en pause pour cause de maintenance. Réessayez plus tard."
@@ -281,7 +287,7 @@ class PresenceRequest(BaseModel):
     username: str = Field(min_length=1, max_length=24)
     game_id: Literal[
         "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship", "geoguessr",
-        "undercover", "bitoguessr", "plongee", "store", "memories",
+        "undercover", "bitoguessr", "plongee", "store", "memories", "scribbl",
     ]
 
 class StoreChatMessageRequest(BaseModel):
@@ -291,7 +297,7 @@ class StoreInvitationRequest(BaseModel):
     recipient_username: str = Field(min_length=2, max_length=24)
     game_id: Literal[
         "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
-        "geoguessr", "plongee", "memories"
+        "geoguessr", "plongee", "memories", "scribbl"
     ]
 
 class StoreInvitationActionRequest(BaseModel):
@@ -475,6 +481,16 @@ class UndercoverVoteRequest(UndercoverRoomPlayerRequest):
 
 class UndercoverGuessRequest(UndercoverRoomPlayerRequest):
     guess: str
+
+class ScribblPlayerRequest(BaseModel):
+    player_id: str = Field(min_length=1, max_length=100)
+    player_name: str = Field(min_length=1, max_length=40)
+
+class ScribblRoomRequest(ScribblPlayerRequest):
+    room_id: str = Field(min_length=1, max_length=6)
+
+class ScribblRoomCreateRequest(ScribblPlayerRequest):
+    rounds_per_player: Literal[1, 2, 3] = 2
 
 class GeoGuessrPlayerRequest(BaseModel):
     player_id: str
@@ -696,6 +712,13 @@ async def memories_page():
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page Mémories est introuvable.")
 
+@app.get("/games/scribbl/")
+async def scribbl_page():
+    index_path = os.path.join(STATIC_DIR, "games", "scribbl", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Scribbl est introuvable.")
+
 @app.get("/games/undercover/")
 async def undercover_page():
     index_path = os.path.join(STATIC_DIR, "games", "undercover", "index.html")
@@ -909,6 +932,7 @@ STORE_INVITATION_GAMES = {
     "geoguessr": ("GeoGuessr", geoguessr_manager, "geoguessr_player_id"),
     "plongee": ("Plongée", plongee_manager, "plongee_player_id"),
     "memories": ("Memory", memories_manager, "memories_player_id"),
+    "scribbl": ("Scribbl", scribbl_manager, "scribbl_player_id"),
 }
 STORE_ROOM_PLAYER_LIMITS = {
     "motus": 8,
@@ -921,6 +945,7 @@ STORE_ROOM_PLAYER_LIMITS = {
     "bitoguessr": 8,
     "plongee": 8,
     "memories": 8,
+    "scribbl": SCRIBBL_MAX_PLAYERS,
 }
 STORE_ACTIVE_ROOM_GAMES = {
     **STORE_INVITATION_GAMES,
@@ -1036,6 +1061,16 @@ def _leave_store_multiplayer_room(
                 status_code=400,
                 detail="Cette route ne permet de quitter que les salons multijoueurs.",
             )
+        if game_id == "scribbl":
+            if player_id not in room.players:
+                return {"status": "already_left"}
+            updated_room = manager.leave_room(room_id, player_id)
+            if updated_room is None:
+                with private_store_invitation_rooms_lock:
+                    private_store_invitation_rooms.discard((game_id, room.room_id))
+                return {"status": "left"}
+            _record_scribbl_room_results(updated_room)
+            return {"status": "left"}
         players = getattr(room, "players", None)
         if not isinstance(players, dict):
             raise RuntimeError(f"Le salon {game_id}/{room_id} n'a pas de liste de joueurs.")
@@ -1098,7 +1133,10 @@ async def leave_store_multiplayer_room(
 ):
     if game_id == "bitoguessr":
         _require_bitoguessr_access(request, req.player_id)
-    return _leave_store_multiplayer_room(game_id, req.room_id, req.player_id)
+    result = _leave_store_multiplayer_room(game_id, req.room_id, req.player_id)
+    if game_id == "scribbl":
+        await _broadcast_scribbl_state(req.room_id)
+    return result
 
 
 @app.get("/api/social/chat")
@@ -2255,6 +2293,240 @@ async def join_undercover_room(req: UndercoverRoomPlayerRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return room.to_dict(req.player_id)
+
+
+_scribbl_sockets: dict[str, dict[WebSocket, str]] = {}
+_scribbl_broadcast_locks: dict[str, asyncio.Lock] = {}
+
+
+def _scribbl_room_broadcast_lock(room_id: str) -> asyncio.Lock:
+    return _scribbl_broadcast_locks.setdefault(room_id.upper(), asyncio.Lock())
+
+
+def _record_scribbl_room_results(room) -> None:
+    if room.status != "finished" or room.stats_recorded or room.started_at is None:
+        return
+    room.stats_recorded = True
+    duration = max(0, int(time.time() - room.started_at))
+    winner_ids = set(room._winner_ids())
+    for player in room.players.values():
+        won = player.player_id in winner_ids
+        if player.score:
+            increment_player_score(player.name, player.score, "scribbl")
+        record_user_game_finish(
+            player.name,
+            won=won,
+            attempts=player.guesses,
+            points=player.score,
+            session_id=f"scribbl:{room.room_id}:{room.match_number}",
+            mode="multiplayer",
+            title="Scribbl",
+            duration_seconds=duration,
+            game_id="scribbl",
+            difficulty=f"{room.rounds_per_player} manche(s) par joueur",
+            metrics={
+                "score": player.score,
+                "correct_guesses": player.correct_guesses,
+                "guesses": player.guesses,
+                "turns_drawn": player.turns_drawn,
+                "rounds_per_player": room.rounds_per_player,
+            },
+        )
+
+
+async def _broadcast_scribbl_state(room_id: str) -> None:
+    async with _scribbl_room_broadcast_lock(room_id):
+        connections = list(_scribbl_sockets.get(room_id.upper(), {}).items())
+        for websocket, player_id in connections:
+            try:
+                room = scribbl_manager.get_room(room_id, player_id)
+                await websocket.send_json({
+                    "type": "state",
+                    "state": room.to_dict(player_id),
+                })
+            except KeyError:
+                await websocket.send_json({"type": "left"})
+            except (RuntimeError, WebSocketDisconnect, OSError) as exc:
+                logger.warning("Envoi Scribbl impossible au joueur %s : %s", player_id, exc)
+                _scribbl_sockets.get(room_id.upper(), {}).pop(websocket, None)
+                continue
+
+
+async def _broadcast_scribbl_event(
+    room_id: str, event: dict[str, Any], skip_player_id: str | None = None,
+) -> None:
+    async with _scribbl_room_broadcast_lock(room_id):
+        connections = list(_scribbl_sockets.get(room_id.upper(), {}).items())
+        for websocket, player_id in connections:
+            if player_id == skip_player_id:
+                continue
+            try:
+                await websocket.send_json(event)
+            except (RuntimeError, WebSocketDisconnect, OSError) as exc:
+                logger.warning("Événement Scribbl impossible au joueur %s : %s", player_id, exc)
+                _scribbl_sockets.get(room_id.upper(), {}).pop(websocket, None)
+                continue
+
+
+@app.get("/api/scribbl/rooms")
+async def list_scribbl_rooms(player_id: Optional[str] = Query(None)):
+    rooms = scribbl_manager.list_rooms(player_id)
+    for room in scribbl_manager.rooms.values():
+        _record_scribbl_room_results(room)
+    return {"rooms": _filter_private_invitation_rooms("scribbl", rooms)}
+
+
+@app.post("/api/scribbl/room/create")
+async def create_scribbl_room(req: ScribblRoomCreateRequest):
+    room = scribbl_manager.create_room(
+        req.player_id, req.player_name, req.rounds_per_player
+    )
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/scribbl/room/join")
+async def join_scribbl_room(req: ScribblRoomRequest):
+    _require_invitation_room_member("scribbl", req.room_id, req.player_id)
+    try:
+        room = scribbl_manager.join_room(req.room_id, req.player_id, req.player_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_scribbl_room_results(room)
+    await _broadcast_scribbl_state(room.room_id)
+    return room.to_dict(req.player_id)
+
+
+@app.get("/api/scribbl/room/{room_id}")
+async def get_scribbl_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = scribbl_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_scribbl_room_results(room)
+    return room.to_dict(player_id)
+
+
+@app.websocket("/ws/scribbl/{room_id}")
+async def scribbl_websocket(
+    websocket: WebSocket,
+    room_id: str,
+    player_id: str = Query(..., min_length=1, max_length=100),
+):
+    try:
+        room = scribbl_manager.get_room(room_id, player_id)
+    except KeyError:
+        await websocket.close(code=4404, reason="Salon ou joueur introuvable.")
+        return
+
+    await websocket.accept()
+    connections = _scribbl_sockets.setdefault(room.room_id, {})
+    connections[websocket] = player_id
+    try:
+        await websocket.send_json({
+            "type": "state",
+            "state": room.to_dict(player_id),
+        })
+        while True:
+            try:
+                message = await asyncio.wait_for(websocket.receive_json(), timeout=0.5)
+            except asyncio.TimeoutError:
+                if scribbl_manager.advance_timers(room.room_id):
+                    try:
+                        current_room = scribbl_manager.get_room(room.room_id, player_id)
+                    except KeyError:
+                        continue
+                    _record_scribbl_room_results(current_room)
+                    await _broadcast_scribbl_state(room.room_id)
+                continue
+
+            action = message.get("type") if isinstance(message, dict) else None
+            try:
+                if action == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    continue
+                if action == "start":
+                    async with _game_launch_process_lock():
+                        with global_game_launch_guard() as paused:
+                            if paused:
+                                raise ValueError(GAME_PAUSE_MAINTENANCE_MESSAGE)
+                            room = scribbl_manager.start_room(room.room_id, player_id)
+                    record_multigame_session_start(
+                        f"scribbl:{room.room_id}:{room.match_number}",
+                        "scribbl",
+                        "multiplayer",
+                        "Scribbl",
+                        f"{room.rounds_per_player} manche(s) par joueur",
+                    )
+                elif action == "choose":
+                    room = scribbl_manager.choose_word(
+                        room.room_id, player_id, int(message.get("index", -1))
+                    )
+                elif action == "stroke":
+                    event = scribbl_manager.add_stroke(
+                        room.room_id,
+                        player_id,
+                        message.get("points"),
+                        message.get("color"),
+                        float(message.get("width", 0)),
+                        bool(message.get("start")),
+                    )
+                    await _broadcast_scribbl_event(
+                        room.room_id, event, skip_player_id=player_id
+                    )
+                    continue
+                elif action == "clear":
+                    room = scribbl_manager.clear_canvas(room.room_id, player_id)
+                    await _broadcast_scribbl_event(
+                        room.room_id, {"type": "clear", "player_id": player_id}
+                    )
+                elif action == "guess":
+                    room, result = scribbl_manager.submit_guess(
+                        room.room_id, player_id, str(message.get("text", ""))
+                    )
+                    _record_scribbl_room_results(room)
+                    await _broadcast_scribbl_state(room.room_id)
+                    await websocket.send_json({"type": "guess_result", **result})
+                    continue
+                elif action == "message":
+                    room, _ = scribbl_manager.send_message(
+                        room.room_id, player_id, str(message.get("text", ""))
+                    )
+                elif action == "restart":
+                    async with _game_launch_process_lock():
+                        with global_game_launch_guard() as paused:
+                            if paused:
+                                raise ValueError(GAME_PAUSE_MAINTENANCE_MESSAGE)
+                            room = scribbl_manager.restart_room(room.room_id, player_id)
+                    record_multigame_session_start(
+                        f"scribbl:{room.room_id}:{room.match_number}",
+                        "scribbl",
+                        "multiplayer",
+                        "Scribbl",
+                        f"{room.rounds_per_player} manche(s) par joueur",
+                    )
+                else:
+                    raise ValueError("Action Scribbl inconnue.")
+            except KeyError as exc:
+                await websocket.send_json({"type": "error", "message": str(exc)})
+                continue
+            except (ValueError, PermissionError, TypeError) as exc:
+                await websocket.send_json({"type": "error", "message": str(exc)})
+                continue
+
+            _record_scribbl_room_results(room)
+            await _broadcast_scribbl_state(room.room_id)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Erreur WebSocket Scribbl dans le salon %s.", room.room_id)
+        raise
+    finally:
+        room_connections = _scribbl_sockets.get(room.room_id, {})
+        room_connections.pop(websocket, None)
+        if not room_connections:
+            _scribbl_sockets.pop(room.room_id, None)
 
 
 @app.get("/api/undercover/room/{room_id}")

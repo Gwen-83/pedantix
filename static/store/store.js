@@ -50,6 +50,7 @@
       || launchTarget.searchParams.get('game') === 'geoguessr'
       || launchTarget.searchParams.get('game') === 'plongee'
       || launchTarget.searchParams.get('game') === 'memories'
+      || launchTarget.searchParams.get('game') === 'scribbl'
       || launchTarget.searchParams.get('game') === 'undercover'
       || launchTarget.searchParams.has('assist')
       || launchTarget.searchParams.has('room')
@@ -66,6 +67,7 @@
       geoguessr: '/games/geoguessr/',
       plongee: '/games/plongee/',
       memories: '/games/memories/',
+      scribbl: '/games/scribbl/',
       undercover: '/games/undercover/',
       bitoguessr: '/games/bitoguessr/',
     }[launchTarget.searchParams.get('game')] || '/games/pedantix/';
@@ -73,7 +75,7 @@
   }
   const safeLaunchTarget = launchTarget
     && launchTarget.origin === window.location.origin
-    && ['/games/pedantix/', '/games/motus/', '/games/cemantix/', '/games/chiffrantix/', '/games/battleship/', '/games/sudoku/', '/games/geoguessr/', '/games/undercover/', '/games/bitoguessr/', '/games/plongee/', '/games/memories/'].includes(launchTarget.pathname)
+    && ['/games/pedantix/', '/games/motus/', '/games/cemantix/', '/games/chiffrantix/', '/games/battleship/', '/games/sudoku/', '/games/geoguessr/', '/games/undercover/', '/games/bitoguessr/', '/games/plongee/', '/games/memories/', '/games/scribbl/'].includes(launchTarget.pathname)
     ? launchTarget
     : null;
   let pendingLaunch = params.get('login') === '1' && !!safeLaunchTarget;
@@ -283,6 +285,7 @@
       chiffrantix: 'Chiffrantix', sudoku: 'Sudoku', battleship: 'Bataille navale',
       geoguessr: 'GeoGuessr', undercover: 'Undercover',
       bitoguessr: 'Bitoguessr', plongee: 'Plongée', memories: 'Memory',
+      scribbl: 'Scribbl',
     };
     invitations.forEach((invitation) => {
       const item = document.createElement('li');
@@ -402,6 +405,7 @@
       geoguessr: 'geoguessr_player_id',
       plongee: 'plongee_player_id',
       memories: 'memories_player_id',
+      scribbl: 'scribbl_player_id',
     };
     const storageKey = playerStorageKeys[invitation.game_id];
     if (!storageKey || !invitation.room_id || !invitation.sender_player_id) {

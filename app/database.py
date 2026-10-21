@@ -629,6 +629,7 @@ _GAME_CATALOG = (
     ("bitoguessr", "Bitoguessr"),
     ("plongee", "Plongée"),
     ("memories", "Memory"),
+    ("scribbl", "Scribbl"),
 )
 
 

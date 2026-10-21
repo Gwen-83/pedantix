@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="fr" data-presence-game="scribbl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#26312c">
+  <title>Scribbl — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+  <link rel="stylesheet" href="/static/games/scribbl/style.css">
+</head>
+<body>
+  <main class="scribbl-shell">
+    <header class="scribbl-header">
+      <a class="scribbl-back" href="/">← Ludothèque</a>
+      <div class="scribbl-brand"><span aria-hidden="true">✏️</span> SCRIBBL</div>
+      <span id="scribbl-player-name" class="scribbl-account"></span>
+      <label class="scribbl-theme" for="shared-theme-select">
+        <span aria-hidden="true">🎨</span>
+        <select id="shared-theme-select" aria-label="Thème de l’interface">
+          <option value="dark-colorful">Coloré sombre</option>
+          <option value="midnight">Nuit étoilée</option>
+          <option value="light-colorful">Coloré clair</option>
+          <option value="light-grey">Gris clair</option>
+          <option value="dark-grey">Charbon sombre</option>
+          <option value="parchment">Parchemin</option>
+        </select>
+      </label>
+    </header>
+
+    <section id="scribbl-home" class="scribbl-panel">
+      <p class="scribbl-kicker">Dessin · imagination · jeu en direct</p>
+      <h1>À vos crayons !</h1>
+      <p class="scribbl-intro">Dessinez le mot secret pendant que vos amis le devinent. Chaque seconde compte : plus vite ils trouvent, plus vous marquez de points.</p>
+      <div class="scribbl-home-grid">
+        <section class="scribbl-home-card">
+          <h2>Créer un salon</h2>
+          <label for="scribbl-rounds">Manches par joueur</label>
+          <select id="scribbl-rounds">
+            <option value="1">1 manche · partie rapide</option>
+            <option value="2" selected>2 manches · classique</option>
+            <option value="3">3 manches · longue</option>
+          </select>
+          <button id="scribbl-create" class="scribbl-button scribbl-button-primary">Créer un salon</button>
+        </section>
+        <section class="scribbl-home-card">
+          <h2>Rejoindre un salon</h2>
+          <label class="sr-only" for="scribbl-room-code">Code du salon</label>
+          <div class="scribbl-join">
+            <input id="scribbl-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+            <button id="scribbl-join" class="scribbl-button">Rejoindre</button>
+          </div>
+        </section>
+      </div>
+      <p id="scribbl-home-error" class="scribbl-error" role="alert" hidden></p>
+      <section class="scribbl-directory">
+        <div class="scribbl-section-heading">
+          <div><h2>Salons ouverts</h2><p>Retrouvez vos amis ou rejoignez une partie en attente.</p></div>
+          <button id="scribbl-refresh" class="scribbl-button">Actualiser</button>
+        </div>
+        <div id="scribbl-room-directory" class="scribbl-room-directory" aria-live="polite"></div>
+      </section>
+      <p class="scribbl-stats-note">Vos parties terminées alimentent vos statistiques de jeu. Aucun classement séparé.</p>
+    </section>
+
+    <section id="scribbl-game" class="scribbl-panel" hidden>
+      <div class="scribbl-game-heading">
+        <div>
+          <p id="scribbl-phase-label" class="scribbl-kicker">Salon d’attente</p>
+          <h1 id="scribbl-room-title">Salon</h1>
+        </div>
+        <button id="scribbl-leave" class="scribbl-button">Quitter</button>
+      </div>
+      <p id="scribbl-game-error" class="scribbl-error" role="alert" hidden></p>
+
+      <section id="scribbl-lobby" class="scribbl-lobby" hidden>
+        <div class="scribbl-invite">
+          <span>Code du salon</span><strong id="scribbl-invite-code"></strong>
+          <button id="scribbl-copy" class="scribbl-button">Copier le lien</button>
+        </div>
+        <p id="scribbl-lobby-message" class="scribbl-muted"></p>
+        <ul id="scribbl-lobby-players" class="scribbl-player-list"></ul>
+        <div class="scribbl-lobby-actions">
+          <span id="scribbl-round-summary"></span>
+          <button id="scribbl-start" class="scribbl-button scribbl-button-primary" hidden>Démarrer</button>
+        </div>
+      </section>
+
+      <section id="scribbl-play" hidden>
+        <div class="scribbl-roundbar">
+          <span id="scribbl-round-label"></span>
+          <div id="scribbl-countdown" class="scribbl-countdown" aria-live="polite">--</div>
+          <span id="scribbl-turn-label"></span>
+        </div>
+        <div id="scribbl-choice" class="scribbl-choice" hidden>
+          <p>Choisissez un mot à dessiner</p>
+          <div id="scribbl-word-choices"></div>
+        </div>
+        <div id="scribbl-reveal" class="scribbl-reveal" hidden></div>
+        <div class="scribbl-layout">
+          <section class="scribbl-drawing-area" aria-label="Zone de dessin">
+            <div class="scribbl-canvas-wrap">
+              <canvas id="scribbl-canvas" aria-label="Dessin partagé en direct"></canvas>
+              <div id="scribbl-canvas-placeholder" class="scribbl-canvas-placeholder" hidden>Le dessin apparaîtra ici</div>
+            </div>
+            <div id="scribbl-toolbar" class="scribbl-toolbar" hidden>
+              <div id="scribbl-palette" class="scribbl-palette" aria-label="Couleurs"></div>
+              <label class="scribbl-brush-control" for="scribbl-brush">Taille <input id="scribbl-brush" type="range" min="2" max="28" value="7"></label>
+              <button id="scribbl-eraser" class="scribbl-tool-button" aria-pressed="false">Gomme</button>
+              <button id="scribbl-clear" class="scribbl-tool-button">Effacer</button>
+            </div>
+          </section>
+          <aside class="scribbl-sidebar">
+            <section class="scribbl-score-panel">
+              <h2>Scores</h2>
+              <ol id="scribbl-score-list" class="scribbl-score-list"></ol>
+            </section>
+            <section class="scribbl-chat-panel">
+              <h2>Propositions et chat</h2>
+              <ol id="scribbl-chat-list" class="scribbl-chat-list" aria-live="polite" aria-relevant="additions"></ol>
+              <form id="scribbl-chat-form" class="scribbl-chat-form">
+                <label class="sr-only" for="scribbl-chat-input">Votre proposition ou message</label>
+                <input id="scribbl-chat-input" maxlength="180" autocomplete="off" placeholder="Devinez le mot…" required>
+                <button class="scribbl-button scribbl-button-primary" type="submit">Envoyer</button>
+              </form>
+            </section>
+          </aside>
+        </div>
+        <section id="scribbl-finished" class="scribbl-finished" hidden aria-live="polite">
+          <h2 id="scribbl-finished-title">Partie terminée</h2>
+          <p id="scribbl-finished-summary"></p>
+          <button id="scribbl-restart" class="scribbl-button scribbl-button-primary" hidden>Rejouer</button>
+        </section>
+      </section>
+    </section>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
+  <script src="/static/games/scribbl/app.js"></script>
+</body>
+</html>

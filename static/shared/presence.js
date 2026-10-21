@@ -12,6 +12,7 @@
     bitoguessr: 'Bitoguessr',
     plongee: 'Plongée',
     memories: 'Memory',
+    scribbl: 'Scribbl',
     store: 'La ludothèque',
   };
   const gameId = document.documentElement.dataset.presenceGame
@@ -40,6 +41,7 @@
     geoguessr: 'GeoGuessr',
     plongee: 'Plongée',
     memories: 'Memory',
+    scribbl: 'Scribbl',
   };
   const gamePlayerStorageKeys = {
     motus: 'motus_player_id',
@@ -50,6 +52,7 @@
     geoguessr: 'geoguessr_player_id',
     plongee: 'plongee_player_id',
     memories: 'memories_player_id',
+    scribbl: 'scribbl_player_id',
   };
 
   function socialHeaders(json = false) {

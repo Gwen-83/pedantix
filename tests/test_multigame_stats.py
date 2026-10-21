@@ -294,6 +294,7 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
             {
                 "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
                 "geoguessr", "undercover", "bitoguessr", "plongee", "memories",
+                "scribbl",
             },
         )
 

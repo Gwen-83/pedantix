@@ -94,7 +94,7 @@ class GlobalGamePauseTests(unittest.TestCase):
         ]
         for game in (
             "motus", "undercover", "cemantix", "chiffrantix", "battleship",
-            "sudoku", "geoguessr", "bitoguessr", "plongee", "memories",
+            "sudoku", "geoguessr", "bitoguessr", "plongee", "memories", "scribbl",
         ):
             launch_requests.extend([
                 ("POST", f"/api/{game}/solo/new"),
