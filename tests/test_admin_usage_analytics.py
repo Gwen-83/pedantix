@@ -77,6 +77,7 @@ class AdminUsageAnalyticsTests(unittest.TestCase):
         self.assertEqual(data["summary"]["unique_players"], 2)
         self.assertEqual(data["summary"]["participant_results"], 2)
         self.assertEqual(data["summary"]["player_seconds"], 380)
+        self.assertEqual(data["summary"]["player_hours"], 0.11)
         self.assertEqual(data["summary"]["wall_seconds"], 300)
         self.assertEqual(data["summary"]["wins"], 1)
         self.assertEqual(data["summary"]["win_rate_pct"], 50)
@@ -90,10 +91,17 @@ class AdminUsageAnalyticsTests(unittest.TestCase):
         self.assertEqual(battleship["sessions_finished"], 1)
         self.assertEqual(battleship["unique_players"], 2)
         self.assertEqual(battleship["player_seconds"], 380)
+        self.assertEqual(battleship["player_hours"], 0.11)
         self.assertEqual(battleship["wall_seconds"], 300)
         self.assertEqual(battleship["player_time_share_pct"], 100)
         self.assertEqual(battleship["avg_attempts"], 12)
         self.assertEqual(len(data["recent_sessions"]), 2)
+        finished_session = next(
+            session for session in data["recent_sessions"]
+            if session["session_id"] == "session-finished"
+        )
+        self.assertEqual(finished_session["players"], ["Alice", "Gwen"])
+        self.assertEqual(finished_session["player_seconds"], 380)
 
     def test_analytics_reports_current_google_street_view_quota_usage(self):
         self.assertTrue(database.reserve_geoguessr_google_usage(123, 4_000))

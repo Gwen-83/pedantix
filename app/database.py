@@ -879,10 +879,18 @@ def get_stats_overview() -> Dict[str, Any]:
                 """SELECT gc.game_id, gc.display_name, gc.enabled,
                           COUNT(DISTINCT gs.session_id) AS started_games,
                           COUNT(DISTINCT CASE WHEN gs.finished_at IS NOT NULL
-                                              THEN gs.session_id END) AS finished_games
+                                              THEN gs.session_id END) AS finished_games,
+                          COALESCE(game_usage.player_seconds, 0) AS player_seconds
                    FROM game_catalog gc
                    LEFT JOIN game_sessions gs ON gs.game_id = gc.game_id
+                   LEFT JOIN (
+                       SELECT gs.game_id, SUM(ugs.duration_seconds) AS player_seconds
+                       FROM game_sessions gs
+                       JOIN user_game_stats ugs ON ugs.session_id = gs.session_id
+                       GROUP BY gs.game_id
+                   ) game_usage ON game_usage.game_id = gc.game_id
                    GROUP BY gc.game_id, gc.display_name, gc.enabled
+                   , game_usage.player_seconds
                    ORDER BY gc.display_name"""
             )
             games = [
@@ -892,12 +900,22 @@ def get_stats_overview() -> Dict[str, Any]:
                     "enabled": bool(row["enabled"]),
                     "started_games": int(row["started_games"] or 0),
                     "finished_games": int(row["finished_games"] or 0),
+                    "player_seconds": int(row["player_seconds"] or 0),
+                    "player_hours": round(int(row["player_seconds"] or 0) / 3600, 2),
                 }
                 for row in db.fetchall()
             ]
+            started_games = sum(game["started_games"] for game in games)
+            finished_games = sum(game["finished_games"] for game in games)
+            player_seconds = sum(game["player_seconds"] for game in games)
             return {
-                "started_games": sum(game["started_games"] for game in games),
-                "finished_games": sum(game["finished_games"] for game in games),
+                "started_games": started_games,
+                "finished_games": finished_games,
+                "unfinished_games": max(0, started_games - finished_games),
+                "completion_rate_pct": round(finished_games / started_games * 100, 1)
+                if started_games else 0,
+                "player_seconds": player_seconds,
+                "player_hours": round(player_seconds / 3600, 2),
                 "games": games,
             }
     except Exception as e:
@@ -1045,7 +1063,10 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
         duration = max(0, int(row.get("duration_seconds") or 0))
         won = bool(row.get("won"))
         surrendered = bool(row.get("surrendered"))
-        game["participants"].add(username)
+        player_key = username.strip().casefold()
+        if not player_key:
+            continue
+        game["participants"].add(player_key)
         game["player_seconds"] += duration
         game["participant_results"] += 1
         game["wins"] += int(won)
@@ -1061,11 +1082,11 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
         mode_group["results"] += 1
         mode_group["wins"] += int(won)
         session["player_seconds"] += duration
-        session["players"].append(username)
+        session["players"].append(username.strip())
         day = session["started_at"].date().isoformat()
         daily = by_day[day]
         daily["player_seconds"] += duration
-        daily["players"].add(username)
+        daily["players"].add(player_key)
 
         difficulty = str(row.get("difficulty") or "Non renseignée")
         difficulty_group = difficulties.setdefault(
@@ -1082,8 +1103,8 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
         game["difficulties"][difficulty] = game["difficulties"].get(difficulty, 0) + 1
 
         player = players.setdefault(
-            username,
-            {"username": username, "games": 0, "wins": 0, "player_seconds": 0,
+            player_key,
+            {"username": username.strip(), "games": 0, "wins": 0, "player_seconds": 0,
              "points": 0, "attempts": 0, "surrenders": 0,
              "last_played_at": None, "games_by_id": {}},
         )
@@ -1156,7 +1177,10 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
                if key not in {"started_at", "finished_at", "players"}},
             "started_at": session["started_at"].isoformat(),
             "finished_at": session["finished_at"].isoformat() if session["finished_at"] else None,
-            "players": sorted(set(session["players"]), key=str.casefold),
+            "players": sorted(
+                {name.casefold(): name for name in session["players"] if name.strip()}.values(),
+                key=str.casefold,
+            ),
         })
 
     player_results = []

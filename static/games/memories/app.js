@@ -24,6 +24,7 @@
   let pollingTimer = null;
   let roomPollingInterval = null;
   let soloMismatchTimer = null;
+  let soloMismatchHideAt = null;
   let soloClockTimer = null;
   let soloStartedAt = null;
   let refreshing = false;
@@ -77,6 +78,7 @@
     roomPollingInterval = null;
     if (soloMismatchTimer) window.clearTimeout(soloMismatchTimer);
     soloMismatchTimer = null;
+    soloMismatchHideAt = null;
     if (soloClockTimer) window.clearInterval(soloClockTimer);
     soloClockTimer = null;
     refreshing = false;
@@ -99,7 +101,7 @@
       updateSoloClock();
       if (state.status === 'playing') {
         soloClockTimer = window.setInterval(updateSoloClock, 100);
-        scheduleSoloMismatchRefresh();
+        scheduleSoloMismatchHide();
       }
     }
   }
@@ -122,22 +124,48 @@
     document.getElementById('memory-time').textContent = formatPreciseTime(elapsed);
   }
 
-  function scheduleSoloMismatchRefresh(delayOverride = null) {
+  function scheduleSoloMismatchHide(delayOverride = null) {
     if (soloMismatchTimer) window.clearTimeout(soloMismatchTimer);
     soloMismatchTimer = null;
     if (
       mode !== 'solo'
       || state?.status !== 'playing'
       || state.pending_mismatch_until == null
-    ) return;
-    const untilDeadline = Math.max(
-      0,
-      state.pending_mismatch_until * 1000 - Date.now(),
-    );
-    soloMismatchTimer = window.setTimeout(
-      refreshSolo,
-      delayOverride ?? untilDeadline,
-    );
+    ) {
+      soloMismatchHideAt = null;
+      return;
+    }
+    if (soloMismatchHideAt == null) {
+      const remaining = Number(state.pending_mismatch_remaining_ms);
+      const delay = Number.isFinite(remaining)
+        ? Math.max(0, remaining)
+        : Math.max(0, state.pending_mismatch_until * 1000 - Date.now());
+      soloMismatchHideAt = Date.now() + delay;
+    }
+    const untilHide = Math.max(0, soloMismatchHideAt - Date.now());
+    soloMismatchTimer = window.setTimeout(() => {
+      if (!state || mode !== 'solo' || state.pending_mismatch_until == null) {
+        soloMismatchHideAt = null;
+        return;
+      }
+      if (busy) {
+        scheduleSoloMismatchHide(50);
+        return;
+      }
+      if (soloMismatchHideAt > Date.now()) {
+        scheduleSoloMismatchHide();
+        return;
+      }
+      state.cards.forEach((card) => {
+        if (card.matched) return;
+        card.face = null;
+        card.opened = false;
+      });
+      state.pending_mismatch_until = null;
+      state.pending_mismatch_remaining_ms = null;
+      soloMismatchHideAt = null;
+      render();
+    }, delayOverride ?? untilHide);
   }
 
   function setScreen(screen) {
@@ -205,7 +233,7 @@
     board.style.setProperty('--memory-grid-size', state.grid_size);
     const isOwnTurn = mode === 'solo' || state.turn_player_id === playerId;
     const locked = busy || state.status !== 'playing'
-      || state.pending_mismatch_until != null
+      || (state.pending_mismatch_until != null && mode !== 'solo')
       || (mode === 'room' && !isOwnTurn);
     const buttons = Array.from(board.children);
     if (
@@ -296,7 +324,7 @@
     let message;
     if (mode === 'solo') {
       message = state.pending_mismatch_until != null
-        ? 'Pas de paire : observez les cartes avant qu’elles se retournent.'
+        ? 'Pas de paire : cliquez sur une autre carte pour retourner immédiatement les deux cartes.'
         : 'Retournez deux cartes pour retrouver une paire.';
     } else if (state.pending_mismatch_until != null) {
       message = 'Pas de paire : les cartes vont se retourner, puis la main passera.';
@@ -308,26 +336,6 @@
     document.getElementById('memory-game-message').textContent = message;
     renderBoard();
     if (state.status === 'finished') renderFinished();
-  }
-
-  async function refreshSolo() {
-    if (!state || mode !== 'solo' || refreshing || busy) return;
-    refreshing = true;
-    try {
-      state = await request(
-        `/api/memories/solo/${encodeURIComponent(state.game_id)}?player_id=${encodeURIComponent(playerId)}`,
-      );
-      render();
-      if (state.status === 'finished') {
-        stopPolling();
-        refreshSoloLeaderboard();
-      } else scheduleSoloMismatchRefresh();
-    } catch (error) {
-      showError('memory-game-error', error);
-      scheduleSoloMismatchRefresh(1000);
-    } finally {
-      refreshing = false;
-    }
   }
 
   async function refreshRoom() {
@@ -376,7 +384,7 @@
       board.children[index]?.classList.remove('is-loading');
       roomStateRevision = requestRevision + 1;
       render();
-      if (mode === 'solo') scheduleSoloMismatchRefresh();
+      if (mode === 'solo') scheduleSoloMismatchHide();
       if (mode === 'solo' && state.status === 'finished') {
         stopPolling();
         refreshSoloLeaderboard();

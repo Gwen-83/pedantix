@@ -65,6 +65,7 @@ class MemoriesManagerTests(unittest.TestCase):
             self.manager.flip_solo(game.game_id, "alice", second)
             state = game.to_dict()
         self.assertEqual(game.pending_mismatch_until, 100 + MISMATCH_REVEAL_SECONDS)
+        self.assertEqual(state["pending_mismatch_remaining_ms"], 1200)
         self.assertEqual(len(state["cards"]), 16)
         self.assertEqual(state["cards"][first]["face"], game.cards[first])
         with patch("app.memories.time.time", return_value=101.0):
@@ -75,6 +76,46 @@ class MemoriesManagerTests(unittest.TestCase):
         ):
             self.assertIsNone(game.to_dict()["cards"][first]["face"])
         self.assertEqual(game.moves, 1)
+
+    def test_solo_click_on_another_card_cancels_pending_mismatch(self):
+        game = self.manager.create_solo("alice", "Alice", 4)
+        first = 0
+        second = next(
+            index for index, face in enumerate(game.cards) if face != game.cards[first]
+        )
+        third = next(index for index in range(len(game.cards)) if index not in (first, second))
+        with patch("app.memories.time.time", return_value=100):
+            self.manager.flip_solo(game.game_id, "alice", first)
+            self.manager.flip_solo(game.game_id, "alice", second)
+        self.assertEqual(game.moves, 1)
+        self.assertIsNotNone(game.pending_mismatch_until)
+
+        with patch("app.memories.time.time", return_value=100.5):
+            self.manager.flip_solo(game.game_id, "alice", third)
+            state = game.to_dict()
+            self.assertIsNone(game.pending_mismatch_until)
+            self.assertEqual(game.opened, [third])
+            self.assertIsNone(state["cards"][first]["face"])
+            self.assertIsNone(state["cards"][second]["face"])
+            self.assertEqual(state["cards"][third]["face"], game.cards[third])
+        self.assertEqual(game.moves, 1)
+
+    def test_solo_click_on_pending_mismatch_card_does_not_cancel_it(self):
+        game = self.manager.create_solo("alice", "Alice", 4)
+        first = 0
+        second = next(
+            index for index, face in enumerate(game.cards) if face != game.cards[first]
+        )
+        with patch("app.memories.time.time", return_value=100):
+            self.manager.flip_solo(game.game_id, "alice", first)
+            self.manager.flip_solo(game.game_id, "alice", second)
+
+        with patch("app.memories.time.time", return_value=100.5):
+            with self.assertRaisesRegex(ValueError, "déjà retournée"):
+                self.manager.flip_solo(game.game_id, "alice", first)
+
+        self.assertEqual(game.opened, [first, second])
+        self.assertIsNotNone(game.pending_mismatch_until)
 
     def test_solo_rejects_invalid_grid_and_duplicate_card_flips(self):
         with self.assertRaises(ValueError):

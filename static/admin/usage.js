@@ -165,10 +165,24 @@
     container.append(svg, legend);
   }
 
-  function renderBars(targetId, rows, labelFor, valueFor) {
+  function renderBars(targetId, rows, labelFor, valueFor, unit = 'parties') {
     const container = document.getElementById(targetId);
     container.replaceChildren();
     const max = Math.max(1, ...rows.map(valueFor));
+    const axis = document.createElement('div');
+    axis.className = 'usage-bar-axis';
+    axis.setAttribute('aria-hidden', 'true');
+    [max, Math.floor(max / 2), 0].forEach((tick, index, ticks) => {
+      if (index > 0 && tick === ticks[index - 1]) return;
+      const label = document.createElement('span');
+      label.textContent = number(tick);
+      axis.append(label);
+    });
+    const plot = document.createElement('div');
+    plot.className = 'usage-bars';
+    plot.dataset.unit = unit;
+    plot.setAttribute('role', 'img');
+    plot.setAttribute('aria-label', `${unit} par période, échelle verticale de 0 à ${max}`);
     rows.forEach((row) => {
       const item = document.createElement('div');
       item.className = 'usage-bar-item';
@@ -180,8 +194,9 @@
       label.className = 'usage-bar-label';
       label.textContent = labelFor(row);
       item.append(bar, label);
-      container.append(item);
+      plot.append(item);
     });
+    container.append(axis, plot);
   }
 
   function renderGames(rows) {
@@ -249,7 +264,7 @@
     recent.replaceChildren();
     data.recent_sessions.forEach((session) => appendRow(recent, [
       dateTime(session.started_at), session.game_name, session.mode,
-      session.difficulty, session.players.join(', ') || '—',
+      session.difficulty, session.players.join(', ') || 'Aucun résultat joueur enregistré',
       formatDuration(session.player_seconds), formatDuration(session.wall_seconds),
       session.finished_at ? 'Terminée' : 'En cours / abandonnée',
     ]));

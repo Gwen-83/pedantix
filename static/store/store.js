@@ -176,6 +176,8 @@
       document.getElementById('store-stat-games').textContent = String(gameLinks.length);
       document.getElementById('store-stat-started').textContent = Number(data.started_games || 0).toLocaleString('fr-FR');
       document.getElementById('store-stat-finished').textContent = Number(data.finished_games || 0).toLocaleString('fr-FR');
+      document.getElementById('store-stat-unfinished').textContent = Number(data.unfinished_games || 0).toLocaleString('fr-FR');
+      document.getElementById('store-stat-hours').textContent = `${Number(data.player_hours || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} h`;
       const gamesById = new Map((data.games || []).map(game => [game.game_id, game]));
       gameLinks.forEach(link => {
         const gameId = new URL(link.href).pathname.split('/').filter(Boolean).at(-1);
@@ -184,10 +186,13 @@
 
         const activity = document.createElement('span');
         activity.className = 'store-game-activity';
-        activity.textContent = `${Number(stats.finished_games || 0).toLocaleString('fr-FR')} partie${stats.finished_games === 1 ? '' : 's'} terminée${stats.finished_games === 1 ? '' : 's'}`;
+        const finished = Number(stats.finished_games || 0);
+        const started = Number(stats.started_games || 0);
+        const playerHours = Number(stats.player_hours || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+        activity.textContent = `${finished.toLocaleString('fr-FR')} / ${started.toLocaleString('fr-FR')} sessions terminées · ${playerHours} h joueur`;
         link.querySelector('.store-game-info').append(activity);
       });
-      status.textContent = 'Statistiques actualisées à partir des parties enregistrées.';
+      status.textContent = `${Number(data.unfinished_games || 0).toLocaleString('fr-FR')} sessions lancées sans fin enregistrée. Le temps cumulé additionne les durées de jeu de chaque joueur.`;
     } catch (error) {
       status.textContent = 'Les statistiques sont momentanément indisponibles.';
       console.error('Chargement des statistiques de la ludothèque impossible :', error);

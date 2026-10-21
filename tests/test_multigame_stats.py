@@ -328,8 +328,12 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
 
         self.assertEqual(sudoku["started_games"], 2)
         self.assertEqual(sudoku["finished_games"], 1)
+        self.assertEqual(sudoku["player_seconds"], 240)
+        self.assertEqual(sudoku["player_hours"], 0.07)
         self.assertEqual(overview["started_games"], baseline["started_games"] + 2)
         self.assertEqual(overview["finished_games"], baseline["finished_games"] + 1)
+        self.assertEqual(overview["unfinished_games"], baseline["unfinished_games"] + 1)
+        self.assertEqual(overview["player_seconds"], baseline["player_seconds"] + 240)
 
     def test_started_but_unfinished_session_is_counted_separately(self):
         database._record_multigame_session_start_sync(

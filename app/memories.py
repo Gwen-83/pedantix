@@ -88,6 +88,9 @@ class MemoryGame:
             "elapsed_ms": elapsed_ms,
             "record": self.best_record,
             "pending_mismatch_until": self.pending_mismatch_until,
+            "pending_mismatch_remaining_ms": max(
+                0, round((self.pending_mismatch_until - time.time()) * 1000)
+            ) if self.pending_mismatch_until is not None else None,
         }
 
 
@@ -232,7 +235,11 @@ class MemoriesManager:
             if game.status != "playing":
                 raise ValueError("Cette partie est terminée.")
             if game.pending_mismatch_until is not None:
-                raise ValueError("Patientez le temps de retourner les cartes.")
+                if index in game.opened:
+                    raise ValueError("Cette carte est déjà retournée.")
+                self._validate_flip(game.cards, [], game.matched, index)
+                game.opened.clear()
+                game.pending_mismatch_until = None
             self._validate_flip(game.cards, game.opened, game.matched, index)
             game.opened.append(index)
             if len(game.opened) == 2:
