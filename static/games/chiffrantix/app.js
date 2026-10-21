@@ -43,6 +43,7 @@
   const playerName = (localStorage.getItem('pedantix_player_name')
     || localStorage.getItem('pedantix_auth_user')
     || 'Joueur').trim().slice(0, 24);
+  const leaderboardDifficultySelect = document.getElementById('chiffrantix-leaderboard-difficulty');
 
   let state = null;
   let gameType = null;
@@ -52,6 +53,51 @@
   let roomRefreshGeneration = 0;
 
   document.getElementById('chiffrantix-player-name').textContent = playerName;
+
+  function formatLeaderboardTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+  }
+
+  async function refreshLeaderboard() {
+    const list = document.getElementById('chiffrantix-leaderboard');
+    const title = document.getElementById('chiffrantix-leaderboard-title');
+    const difficulty = leaderboardDifficultySelect.value;
+    title.textContent = `Classement solo · ${DIFFICULTY_LABELS[difficulty]}`;
+    try {
+      const data = await request(
+        `/api/game-leaderboard?game_id=chiffrantix&difficulty=${encodeURIComponent(difficulty)}`,
+      );
+      list.replaceChildren();
+      if (!data.records.length) {
+        const empty = document.createElement('li');
+        empty.className = 'shared-solo-leaderboard-empty';
+        empty.textContent = 'Aucune question résolue pour le moment.';
+        list.append(empty);
+        return;
+      }
+      data.records.forEach((record, index) => {
+        const item = document.createElement('li');
+        const rank = document.createElement('span');
+        rank.className = 'shared-solo-leaderboard-rank';
+        rank.textContent = `${index + 1}.`;
+        const name = document.createElement('span');
+        name.className = 'shared-solo-leaderboard-player';
+        name.textContent = record.player_name;
+        const detail = document.createElement('span');
+        detail.className = 'shared-solo-leaderboard-detail';
+        detail.textContent = `${record.attempts} proposition${record.attempts === 1 ? '' : 's'} · ${formatLeaderboardTime(record.duration_seconds)}`;
+        item.append(rank, name, detail);
+        list.append(item);
+      });
+    } catch (error) {
+      list.replaceChildren();
+      const item = document.createElement('li');
+      item.className = 'shared-solo-leaderboard-empty';
+      item.textContent = `Classement indisponible : ${error.message}`;
+      list.append(item);
+    }
+  }
 
   async function request(path, options = {}) {
     const response = await fetch(`${apiBase}${path}`, {
@@ -123,6 +169,7 @@
     document.getElementById('chiffrantix-previous-game').hidden =
       !localStorage.getItem('chiffrantix_solo_game_id');
     history.replaceState(null, '', window.location.pathname);
+    refreshLeaderboard();
     refreshRoomDirectory();
   }
 
@@ -678,6 +725,7 @@
   }
 
   document.getElementById('chiffrantix-solo-button').addEventListener('click', startSolo);
+  leaderboardDifficultySelect.addEventListener('change', refreshLeaderboard);
   document.getElementById('chiffrantix-new-solo').addEventListener('click', startSolo);
   document.getElementById('chiffrantix-next-button').addEventListener('click', startSolo);
   document.getElementById('chiffrantix-resume-solo').addEventListener('click', resumeSolo);
@@ -699,6 +747,7 @@
   guessForm.addEventListener('submit', submitGuess);
 
   showHome(false);
+  refreshLeaderboard();
   const requestedRoom = params.get('room');
   const activeMode = localStorage.getItem('chiffrantix_active_game_mode');
   const activeRoom = localStorage.getItem('chiffrantix_active_room_id');

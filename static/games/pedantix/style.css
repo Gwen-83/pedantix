@@ -430,6 +430,50 @@ article.game-container {
   overflow: hidden;
 }
 
+.pedantix-solo-leaderboard {
+  width: 100%;
+  margin-top: 0.8rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--summary-border);
+  border-radius: 14px;
+  background: var(--summary-bg);
+  color: var(--summary-color);
+}
+
+body:not(.solo-mode) .pedantix-solo-leaderboard { display: none; }
+
+.pedantix-solo-leaderboard h2 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.pedantix-solo-leaderboard p {
+  margin: 0.35rem 0 0.6rem;
+  color: var(--game-muted, #b7c0ca);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.pedantix-solo-leaderboard ol {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.4rem;
+  font-size: 0.73rem;
+}
+
+.pedantix-solo-leaderboard li {
+  padding: 0.35rem 0.45rem;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pedantix-solo-leaderboard li span {
+  display: block;
+  color: var(--game-muted, #b7c0ca);
+  font-size: 0.66rem;
+}
+
 .summary-top-banner {
   display: flex;
   align-items: center;

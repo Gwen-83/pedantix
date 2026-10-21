@@ -57,6 +57,17 @@
         <button type="button" id="plongee-solo-start" class="plongee-primary">Commencer la plongée <span>→</span></button>
         <button type="button" id="plongee-solo-resume" class="plongee-secondary" hidden>Reprendre ma partie</button>
       </div>
+      <section class="shared-solo-leaderboard" aria-labelledby="plongee-leaderboard-title">
+        <div class="shared-solo-leaderboard-heading">
+          <div>
+            <h2 id="plongee-leaderboard-title">Meilleures plongées</h2>
+            <p>Meilleurs scores solo sur une partie complète.</p>
+          </div>
+        </div>
+        <ol id="plongee-leaderboard" class="shared-solo-leaderboard-list" aria-live="polite">
+          <li>Chargement du classement…</li>
+        </ol>
+      </section>
       <div id="plongee-multi-actions" class="plongee-multi-actions" hidden>
         <button type="button" id="plongee-room-create" class="plongee-primary">Créer un salon <span>→</span></button>
         <form id="plongee-room-join-form" class="plongee-join-form">

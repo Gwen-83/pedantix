@@ -61,6 +61,17 @@
           <span class="sudoku-arrow" aria-hidden="true">→</span>
         </button>
       </div>
+      <section class="shared-solo-leaderboard" aria-labelledby="sudoku-leaderboard-title">
+        <div class="shared-solo-leaderboard-heading">
+          <div>
+            <h2 id="sudoku-leaderboard-title">Meilleurs temps · Moyen</h2>
+            <p>Parties solo résolues, classées par temps puis par erreurs.</p>
+          </div>
+        </div>
+        <ol id="sudoku-leaderboard" class="shared-solo-leaderboard-list" aria-live="polite">
+          <li>Chargement du classement…</li>
+        </ol>
+      </section>
       <p id="sudoku-home-error" class="sudoku-error" role="alert" hidden></p>
       <p id="sudoku-previous-game" class="sudoku-previous-game" hidden>
         <button type="button" id="sudoku-resume-solo" class="sudoku-text-button">Reprendre ma partie solo</button>

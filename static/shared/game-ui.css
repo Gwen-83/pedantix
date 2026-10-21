@@ -171,6 +171,85 @@ main.sudoku-shell { width: min(1020px, 100%); }
   font-size: 0.72rem;
 }
 
+.shared-solo-leaderboard {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--game-border);
+}
+
+body[data-shared-mode="multi"] .shared-solo-leaderboard,
+body[data-shared-mode="multi"] .geo-leaderboard {
+  display: none;
+}
+
+.shared-solo-leaderboard-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shared-solo-leaderboard-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.shared-solo-leaderboard-heading p {
+  margin: 4px 0 0;
+  color: var(--game-muted);
+  font-size: 0.78rem;
+}
+
+.shared-solo-leaderboard select {
+  min-height: 36px;
+  padding: 5px 26px 5px 8px;
+  border: 1px solid var(--game-border);
+  border-radius: 9px;
+  background: var(--game-panel-raised);
+  color: var(--game-text);
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+.shared-solo-leaderboard-list {
+  display: grid;
+  gap: 8px;
+  margin: 13px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shared-solo-leaderboard-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--game-border);
+  border-radius: 10px;
+  background: var(--game-panel-raised);
+}
+
+.shared-solo-leaderboard-rank {
+  min-width: 1.6em;
+  color: var(--game-accent);
+  font-weight: 800;
+}
+
+.shared-solo-leaderboard-player { font-weight: 800; }
+
+.shared-solo-leaderboard-detail,
+.shared-solo-leaderboard-empty {
+  margin-left: auto;
+  color: var(--game-muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.shared-solo-leaderboard .shared-solo-leaderboard-empty {
+  justify-content: flex-start;
+  margin-left: 0;
+}
+
 [class$="-panel"] {
   border-color: var(--game-border);
   border-radius: 22px;

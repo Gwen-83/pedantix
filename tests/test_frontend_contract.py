@@ -88,6 +88,20 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("Sessions non terminées", response.text)
         self.assertNotIn("Temps de jeu cumulé", response.text)
 
+    def test_store_shows_featured_solo_leaderboards_in_left_column(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="store-featured-leaderboards"', response.text)
+
+        styles = (
+            Path(__file__).resolve().parents[1] / "static" / "store" / "store.css"
+        ).read_text()
+        script = (
+            Path(__file__).resolve().parents[1] / "static" / "store" / "store.js"
+        ).read_text()
+        self.assertIn("230px minmax(0, 1fr) 270px", styles)
+        self.assertIn("/api/leaderboards/featured", script)
+
     def test_every_game_page_and_its_local_scripts_and_stylesheets_load(self):
         for path in GAME_PAGES:
             with self.subTest(game_page=path):
@@ -118,6 +132,26 @@ class FrontendContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "static" / "admin" / "usage.html"
         ).read_text()
         self.assertIn('/static/shared/presence.js', admin_page)
+
+    def test_requested_solo_game_leaderboards_are_present_and_load_their_api(self):
+        root = Path(__file__).resolve().parents[1]
+        contracts = {
+            "plongee": ("plongee-leaderboard", "game_id=plongee"),
+            "sudoku": ("sudoku-leaderboard", "game_id=sudoku"),
+            "chiffrantix": ("chiffrantix-leaderboard", "game_id=chiffrantix"),
+            "pedantix": ("pedantix-leaderboard", "game_id=pedantix"),
+        }
+        for game, (leaderboard_id, api_query) in contracts.items():
+            with self.subTest(game=game):
+                page = (root / "static" / "games" / game / "index.html").read_text()
+                script = (root / "static" / "games" / game / "app.js").read_text()
+                self.assertIn(f'id="{leaderboard_id}"', page)
+                self.assertIn("/api/game-leaderboard", script)
+                self.assertIn(api_query, script)
+        shared_styles = (
+            root / "static" / "shared" / "game-ui.css"
+        ).read_text()
+        self.assertIn('body[data-shared-mode="multi"] .shared-solo-leaderboard', shared_styles)
 
         presence_script = (
             Path(__file__).resolve().parents[1] / "static" / "shared" / "presence.js"

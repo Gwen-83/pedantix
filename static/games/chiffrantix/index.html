@@ -102,6 +102,23 @@
         <span><i class="chiffrantix-hot"></i>80–99 : brûlant (case rose/rouge)</span>
         <span><i class="chiffrantix-found"></i>100 : mot révélé !</span>
       </div>
+      <section class="shared-solo-leaderboard" aria-labelledby="chiffrantix-leaderboard-title">
+        <div class="shared-solo-leaderboard-heading">
+          <div>
+            <h2 id="chiffrantix-leaderboard-title">Classement solo · Moyen</h2>
+            <p>Parties résolues, classées par nombre de propositions puis par temps.</p>
+          </div>
+          <label class="sr-only" for="chiffrantix-leaderboard-difficulty">Difficulté du classement</label>
+          <select id="chiffrantix-leaderboard-difficulty" aria-label="Difficulté du classement Chiffrantix">
+            <option value="facile">Facile</option>
+            <option value="moyen" selected>Moyen</option>
+            <option value="difficile">Difficile</option>
+          </select>
+        </div>
+        <ol id="chiffrantix-leaderboard" class="shared-solo-leaderboard-list" aria-live="polite">
+          <li>Chargement du classement…</li>
+        </ol>
+      </section>
     </section>
 
     <section id="chiffrantix-play" class="chiffrantix-panel chiffrantix-play-panel" hidden>

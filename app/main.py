@@ -59,6 +59,7 @@ from app.database import (
     is_gate_unlocked,
     record_memory_solo_time,
     get_memory_solo_leaderboard,
+    get_solo_game_leaderboard,
 )
 from app.secret_gate import (
     secret_gate_manager,
@@ -4553,6 +4554,102 @@ async def leaderboard_scores(game_id: str = Query("pedantix")):
         return get_top_player_scores(game_id=game_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/game-leaderboard")
+async def solo_game_leaderboard(
+    game_id: str = Query(...),
+    difficulty: Optional[str] = Query(None),
+):
+    difficulties = {
+        "plongee": {"classique"},
+        "sudoku": {"facile", "moyen", "difficile"},
+        "chiffrantix": {"facile", "moyen", "difficile"},
+        "pedantix": {"facile", "moyen", "difficile"},
+    }
+    if game_id not in difficulties:
+        raise HTTPException(status_code=400, detail="Jeu inconnu.")
+    selected_difficulty = difficulty
+    if game_id == "plongee" and selected_difficulty is None:
+        selected_difficulty = "classique"
+    if selected_difficulty not in difficulties[game_id]:
+        raise HTTPException(status_code=400, detail="Niveau de difficulté invalide.")
+    try:
+        return {
+            "records": get_solo_game_leaderboard(game_id, selected_difficulty),
+        }
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/leaderboards/featured")
+async def featured_solo_leaderboards():
+    groups = [
+        ("pedantix", "Pédantix", "/games/pedantix/", ("facile", "moyen", "difficile")),
+        ("chiffrantix", "Chiffrantix", "/games/chiffrantix/", ("facile", "moyen", "difficile")),
+        ("sudoku", "Sudoku", "/games/sudoku/", ("facile", "moyen", "difficile")),
+        ("plongee", "Plongée", "/games/plongee/", ("classique",)),
+        ("memories", "Memory", "/games/memories/", ("4x4", "6x6")),
+        ("geoguessr", "GeoGuessr", "/games/geoguessr/", ("",)),
+    ]
+    featured = []
+    try:
+        for game_id, title, href, difficulties in groups:
+            leaders = []
+            for difficulty in difficulties:
+                leader = None
+                if game_id == "memories":
+                    records = get_memory_solo_leaderboard(int(difficulty[0]), limit=1)
+                    record = records[0] if records else None
+                    if record:
+                        leader = {
+                            "player_name": record["username"],
+                            "score": record["elapsed_ms"],
+                            "detail": f'{record["elapsed_ms"]} ms · {record["moves"]} coups',
+                        }
+                elif game_id == "geoguessr":
+                    records = get_top_geoguessr_scores(limit=1)
+                    record = records[0] if records else None
+                    if record:
+                        leader = {
+                            "player_name": record["player_name"],
+                            "score": record["score"],
+                            "detail": f'{int(record["score"]):,} pts'.replace(",", " "),
+                        }
+                else:
+                    records = get_solo_game_leaderboard(game_id, difficulty, limit=1)
+                    record = records[0] if records else None
+                    if record:
+                        if game_id == "plongee":
+                            detail = f'{record["points"]} pts'
+                        elif game_id == "sudoku":
+                            detail = (
+                                f'{record["duration_seconds"]} s · '
+                                f'{record["attempts"]} erreur(s)'
+                            )
+                        else:
+                            detail = (
+                                f'{record["attempts"]} coups · '
+                                f'{record["duration_seconds"]} s'
+                            )
+                        leader = {
+                            "player_name": record["player_name"],
+                            "score": record["points"],
+                            "detail": detail,
+                        }
+                leaders.append({
+                    "difficulty": difficulty,
+                    "leader": leader if record else None,
+                })
+            featured.append({
+                "game_id": game_id,
+                "title": title,
+                "href": href,
+                "leaders": leaders,
+            })
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"games": featured}
 
 
 @app.post("/api/game/unmask")

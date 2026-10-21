@@ -102,6 +102,10 @@
   const roomErrorNextSibling = roomError?.nextSibling;
   let lastTrigger = null;
 
+  const initialMode = modeButtons.find((button) => button.classList.contains('active'))
+    ?.dataset.sharedGameMode || 'solo';
+  document.body.dataset.sharedMode = initialMode;
+
   function trapDialogFocus(event, activeDialog) {
     if (event.key !== 'Tab') return;
     if (!activeDialog) return;
@@ -145,6 +149,7 @@
   modeButtons.forEach((button) => {
     button.addEventListener('click', () => {
       const mode = button.dataset.sharedGameMode;
+      document.body.dataset.sharedMode = mode;
       modeButtons.forEach((candidate) => {
         const selected = candidate.dataset.sharedGameMode === mode;
         candidate.classList.toggle('active', selected);

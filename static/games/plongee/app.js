@@ -24,6 +24,41 @@
   document.getElementById('plongee-player-name').textContent = playerName;
   document.getElementById('plongee-solo-resume').hidden = !localStorage.getItem(gameIdKey);
 
+  async function refreshLeaderboard() {
+    const list = document.getElementById('plongee-leaderboard');
+    try {
+      const data = await request('/api/game-leaderboard?game_id=plongee&difficulty=classique');
+      list.replaceChildren();
+      if (!data.records.length) {
+        const empty = document.createElement('li');
+        empty.className = 'shared-solo-leaderboard-empty';
+        empty.textContent = 'Aucune plongée terminée pour le moment.';
+        list.append(empty);
+        return;
+      }
+      data.records.forEach((record, index) => {
+        const item = document.createElement('li');
+        const rank = document.createElement('span');
+        rank.className = 'shared-solo-leaderboard-rank';
+        rank.textContent = `${index + 1}.`;
+        const name = document.createElement('span');
+        name.className = 'shared-solo-leaderboard-player';
+        name.textContent = record.player_name;
+        const detail = document.createElement('span');
+        detail.className = 'shared-solo-leaderboard-detail';
+        detail.textContent = `${record.points} pts · ${record.metrics.rounds} manches`;
+        item.append(rank, name, detail);
+        list.append(item);
+      });
+    } catch (error) {
+      list.replaceChildren();
+      const item = document.createElement('li');
+      item.className = 'shared-solo-leaderboard-empty';
+      item.textContent = `Classement indisponible : ${error.message}`;
+      list.append(item);
+    }
+  }
+
   async function request(path, options = {}) {
     const response = await fetch(`${apiBase}${path}`, {
       ...options,
@@ -68,10 +103,12 @@
     home.hidden = false;
     hideError(homeError);
     history.replaceState(null, '', window.location.pathname);
+    refreshLeaderboard();
     refreshRooms();
   }
 
   function setMode(mode) {
+    document.body.dataset.sharedMode = mode === 'multi' ? 'multi' : 'solo';
     document.querySelectorAll('[data-mode]').forEach((button) => {
       const selected = button.dataset.mode === mode;
       button.classList.toggle('active', selected);
@@ -413,6 +450,7 @@
   }, 1000);
 
   setMode(params.has('room') ? 'multi' : 'solo');
+  refreshLeaderboard();
   if (params.has('room')) joinRoom(params.get('room'));
   else refreshRooms();
 })();

@@ -718,6 +718,10 @@ def _migrate_multigame_schema(db: DatabaseContext) -> None:
         "ON user_game_stats(game_id, username, finished_at DESC)"
     )
     db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_game_stats_solo_leaderboard "
+        "ON user_game_stats(game_id, difficulty, mode, won)"
+    )
+    db.execute(
         "CREATE INDEX IF NOT EXISTS idx_game_sessions_game_finished "
         "ON game_sessions(game_id, finished_at DESC)"
     )
@@ -1879,7 +1883,7 @@ def get_top_geoguessr_scores(limit: int = 5) -> List[Dict[str, Any]]:
             db.execute(
                 """SELECT username AS player_name, MAX(points) AS score
                    FROM user_game_stats
-                   WHERE game_id = ?
+                   WHERE game_id = ? AND mode = 'solo'
                    GROUP BY username
                    ORDER BY score DESC, LOWER(username) ASC
                    LIMIT ?""",
@@ -1889,6 +1893,47 @@ def get_top_geoguessr_scores(limit: int = 5) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.warning(f"get_top_geoguessr_scores: {e}")
         return []
+
+
+def get_solo_game_leaderboard(
+    game_id: str, difficulty: str, limit: int = 5,
+) -> List[Dict[str, Any]]:
+    ranking_order = {
+        "plongee": "points DESC, duration_seconds ASC, attempts ASC, finished_at ASC",
+        "sudoku": "duration_seconds ASC, attempts ASC, finished_at ASC",
+        "chiffrantix": "attempts ASC, duration_seconds ASC, finished_at ASC",
+        "pedantix": "attempts ASC, duration_seconds ASC, finished_at ASC",
+    }
+    if game_id not in ranking_order:
+        raise ValueError("Jeu inconnu.")
+
+    order = ranking_order[game_id]
+    try:
+        with DatabaseContext() as db:
+            db.execute(
+                f"""SELECT player_name, points, attempts, duration_seconds,
+                           difficulty, metrics_json, finished_at
+                    FROM (
+                        SELECT username AS player_name, points, attempts,
+                               duration_seconds, difficulty, metrics_json,
+                               finished_at,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY LOWER(username)
+                                   ORDER BY {order}
+                               ) AS player_rank
+                        FROM user_game_stats
+                        WHERE game_id = ? AND mode = 'solo' AND won = 1
+                          AND difficulty = ?
+                    ) ranked
+                    WHERE player_rank = 1
+                    ORDER BY {order}, LOWER(player_name) ASC
+                    LIMIT ?""",
+                (game_id, difficulty, max(1, min(int(limit), 100))),
+            )
+            return [_user_game_row(row) for row in db.fetchall()]
+    except Exception as e:
+        logger.warning(f"get_solo_game_leaderboard ({game_id}): {e}")
+        raise RuntimeError("Impossible de charger le classement.") from e
 
 
 def record_memory_solo_time(

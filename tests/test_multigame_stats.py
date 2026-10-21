@@ -188,6 +188,20 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
                 0,
                 "geoguessr",
             )
+        database._record_user_game_finish_sync(
+            "Multiplayer",
+            False,
+            5,
+            50_000,
+            "geoguessr:multiplayer:game-1",
+            "multiplayer",
+            "GeoGuessr",
+            False,
+            120,
+            0,
+            0,
+            "geoguessr",
+        )
 
         leaderboard = database.get_top_geoguessr_scores()
 

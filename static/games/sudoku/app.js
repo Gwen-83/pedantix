@@ -34,6 +34,51 @@
 
   document.getElementById('sudoku-player-name').textContent = playerName;
 
+  function formatLeaderboardTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+  }
+
+  async function refreshLeaderboard() {
+    const list = document.getElementById('sudoku-leaderboard');
+    const title = document.getElementById('sudoku-leaderboard-title');
+    const difficulty = difficultySelect.value;
+    title.textContent = `Meilleurs temps · ${difficulty[0].toUpperCase()}${difficulty.slice(1)}`;
+    try {
+      const data = await request(
+        `/api/game-leaderboard?game_id=sudoku&difficulty=${encodeURIComponent(difficulty)}`,
+      );
+      list.replaceChildren();
+      if (!data.records.length) {
+        const empty = document.createElement('li');
+        empty.className = 'shared-solo-leaderboard-empty';
+        empty.textContent = 'Aucune partie résolue pour le moment.';
+        list.append(empty);
+        return;
+      }
+      data.records.forEach((record, index) => {
+        const item = document.createElement('li');
+        const rank = document.createElement('span');
+        rank.className = 'shared-solo-leaderboard-rank';
+        rank.textContent = `${index + 1}.`;
+        const name = document.createElement('span');
+        name.className = 'shared-solo-leaderboard-player';
+        name.textContent = record.player_name;
+        const detail = document.createElement('span');
+        detail.className = 'shared-solo-leaderboard-detail';
+        detail.textContent = `${formatLeaderboardTime(record.duration_seconds)} · ${record.attempts} erreur${record.attempts === 1 ? '' : 's'}`;
+        item.append(rank, name, detail);
+        list.append(item);
+      });
+    } catch (error) {
+      list.replaceChildren();
+      const item = document.createElement('li');
+      item.className = 'shared-solo-leaderboard-empty';
+      item.textContent = `Classement indisponible : ${error.message}`;
+      list.append(item);
+    }
+  }
+
   async function request(path, options = {}) {
     const response = await fetch(`${apiBase}${path}`, {
       ...options,
@@ -102,6 +147,7 @@
     document.getElementById('sudoku-previous-game').hidden =
       !localStorage.getItem('sudoku_solo_game_id');
     history.replaceState(null, '', window.location.pathname);
+    refreshLeaderboard();
     refreshRoomDirectory();
   }
 
@@ -745,6 +791,7 @@
   }
 
   document.getElementById('sudoku-solo-button').addEventListener('click', createSolo);
+  difficultySelect.addEventListener('change', refreshLeaderboard);
   document.getElementById('sudoku-resume-solo').addEventListener('click', resumeSolo);
   document.getElementById('sudoku-create-room').addEventListener('click', createRoom);
   document.getElementById('sudoku-join-room').addEventListener('click', () => joinRoom(roomInput.value));
@@ -795,4 +842,5 @@
     localStorage.removeItem('sudoku_active_room_id');
     showHome(false);
   }
+  refreshLeaderboard();
 })();

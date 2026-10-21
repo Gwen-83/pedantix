@@ -200,6 +200,56 @@
     }
   }
 
+  async function loadFeaturedLeaderboards() {
+    const container = document.getElementById('store-featured-leaderboards');
+    try {
+      const response = await fetch(apiUrl('/api/leaderboards/featured'));
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Classements indisponibles.');
+      container.replaceChildren();
+      data.games.forEach((game) => {
+        const section = document.createElement('section');
+        section.className = 'store-featured-game';
+        const title = document.createElement('a');
+        title.className = 'store-featured-game-title';
+        title.href = game.href;
+        title.textContent = game.title;
+        section.append(title);
+        game.leaders.forEach(({ difficulty, leader }) => {
+          const row = document.createElement('div');
+          row.className = 'store-featured-leader';
+          const label = document.createElement('span');
+          label.textContent = difficulty === 'classique'
+            ? 'Top 1'
+            : difficulty === '4x4' || difficulty === '6x6'
+              ? `Grille ${difficulty}`
+              : difficulty[0].toUpperCase() + difficulty.slice(1);
+          row.append(label);
+          if (leader) {
+            const name = document.createElement('strong');
+            name.textContent = leader.player_name;
+            name.title = leader.detail;
+            row.append(name);
+          } else {
+            const empty = document.createElement('span');
+            empty.className = 'store-featured-leader-empty';
+            empty.textContent = 'Aucun score';
+            row.append(empty);
+          }
+          section.append(row);
+        });
+        container.append(section);
+      });
+    } catch (error) {
+      container.replaceChildren();
+      const failure = document.createElement('p');
+      failure.className = 'store-social-empty';
+      failure.textContent = 'Les meilleurs scores sont momentanément indisponibles.';
+      container.append(failure);
+      console.error('Chargement des meilleurs scores impossible :', error);
+    }
+  }
+
   function socialHeaders(json = false) {
     const headers = {};
     if (json) headers['Content-Type'] = 'application/json';
@@ -679,5 +729,6 @@
   syncAccount();
   filterGames();
   loadStoreStats();
+  loadFeaturedLeaderboards();
   if (params.get('login') === '1') openDialog(!!safeLaunchTarget);
 })();

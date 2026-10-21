@@ -176,6 +176,7 @@ class PedantixApp {
       if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
     }
     this.updateDifficultyUI(this.currentDifficulty);
+    this.refreshSoloLeaderboard();
 
     // Only join multiplayer rooms selected explicitly or opened through an invitation.
     if (this.isSoloMode || this.roomId) {
@@ -252,6 +253,8 @@ class PedantixApp {
       collapseBtn: document.getElementById('collapse'),
       guessesTbody: document.getElementById('guesses'),
       btnSideNew: document.getElementById('btn-side-new'),
+      soloLeaderboardTitle: document.getElementById('pedantix-leaderboard-title'),
+      soloLeaderboard: document.getElementById('pedantix-leaderboard'),
       sidebarDiffIndicator: document.getElementById('sidebar-diff-indicator'),
       sidebarDiffPill: document.getElementById('sidebar-diff-pill'),
       yesterdayBox: document.getElementById('yesterday-box'),
@@ -3682,6 +3685,7 @@ class PedantixApp {
       this.showToast('Erreur de connexion au serveur.');
     } finally {
       this.isLoadingSoloDiff = false;
+      this.refreshSoloLeaderboard();
       if (this.dom.btnSoloDiffChoices) {
         this.dom.btnSoloDiffChoices.forEach(b => {
           b.disabled = false;
@@ -3689,6 +3693,45 @@ class PedantixApp {
         });
       }
     }
+  }
+
+  async refreshSoloLeaderboard() {
+    if (!this.dom.soloLeaderboard || !this.dom.soloLeaderboardTitle) return;
+    const labels = { facile: 'Facile', moyen: 'Moyen', difficile: 'Difficile' };
+    const difficulty = this.currentDifficulty;
+    this.dom.soloLeaderboardTitle.textContent = `Meilleurs scores · ${labels[difficulty] || difficulty}`;
+    try {
+      const response = await fetch(this.getApiUrl(
+        `/api/game-leaderboard?game_id=pedantix&difficulty=${encodeURIComponent(difficulty)}`
+      ));
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || 'Impossible de charger le classement.');
+      this.dom.soloLeaderboard.replaceChildren();
+      if (!data.records?.length) {
+        const empty = document.createElement('li');
+        empty.textContent = 'Aucune partie gagnée pour le moment.';
+        this.dom.soloLeaderboard.appendChild(empty);
+        return;
+      }
+      data.records.forEach((record) => {
+        const item = document.createElement('li');
+        item.append(document.createTextNode(record.player_name));
+        const detail = document.createElement('span');
+        detail.textContent = `${record.attempts} coups · ${this.formatLeaderboardTime(record.duration_seconds)}`;
+        item.appendChild(detail);
+        this.dom.soloLeaderboard.appendChild(item);
+      });
+    } catch (error) {
+      this.dom.soloLeaderboard.replaceChildren();
+      const item = document.createElement('li');
+      item.textContent = `Classement indisponible : ${error.message}`;
+      this.dom.soloLeaderboard.appendChild(item);
+    }
+  }
+
+  formatLeaderboardTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
   }
 
   async setRoomDifficulty(diff) {
@@ -4566,6 +4609,7 @@ class PedantixApp {
     if (data.is_won && !this.isWon) {
       this.isWon = true;
       this.handleVictory();
+      this.refreshSoloLeaderboard();
     }
   }
 
