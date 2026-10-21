@@ -646,15 +646,47 @@ def _diverse_city_order(
         if (city[0], city[1]) not in used_cities:
             by_country.setdefault(city[1], []).append(city)
 
-    countries = list(by_country)
-    random.shuffle(countries)
-    countries.sort(key=lambda country: country in used_countries)
     for cities in by_country.values():
         random.shuffle(cities)
+    representatives = {
+        country: cities[-1] for country, cities in by_country.items()
+    }
+    countries = list(by_country)
+    random.shuffle(countries)
+    ordered_countries: List[str] = []
+    for already_used in (False, True):
+        candidates = [
+            country for country in countries
+            if (country in used_countries) is already_used
+        ]
+        while candidates:
+            if not ordered_countries:
+                selected_country = random.choice(candidates)
+            else:
+                distances = {
+                    country: min(
+                        distance_km(
+                            representatives[country][3],
+                            representatives[country][4],
+                            representatives[previous][3],
+                            representatives[previous][4],
+                        )
+                        for previous in ordered_countries
+                    )
+                    for country in candidates
+                }
+                farthest_distance = max(distances.values())
+                farthest_countries = [
+                    country for country, distance in distances.items()
+                    if distance == farthest_distance
+                ]
+                selected_country = random.choice(farthest_countries)
+            ordered_countries.append(selected_country)
+            candidates.remove(selected_country)
 
     ordered = []
     while any(by_country.values()):
-        for country in countries:
+        for country in ordered_countries:
             if by_country[country]:
                 ordered.append(by_country[country].pop())
     return ordered

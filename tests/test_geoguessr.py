@@ -106,6 +106,16 @@ class GeoGuessrTests(unittest.TestCase):
             )
             city_keys = [(city[0], city[1]) for city in ordered]
             self.assertEqual(len(city_keys), len(set(city_keys)), region)
+        world_opening = _diverse_city_order("world")[:5]
+        self.assertEqual(len({city[1] for city in world_opening}), 5)
+        self.assertGreater(
+            min(
+                distance_km(first[3], first[4], second[3], second[4])
+                for index, first in enumerate(world_opening)
+                for second in world_opening[index + 1:]
+            ),
+            1_000,
+        )
 
     def test_solo_rounds_hide_coordinates_until_guess_and_can_be_resumed(self):
         game = self.manager.create_solo("alice", "Alice", "france")
