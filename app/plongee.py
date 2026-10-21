@@ -39,16 +39,21 @@ def _load_prompts() -> List[Dict[str, Any]]:
         answers = prompt.get("answers")
         if not isinstance(answers, list) or not answers:
             raise ValueError(f"La question {prompt['id']} doit proposer des réponses.")
-        answer_count = len(answers)
-        prompt["answers"] = [
-            {
-                "answer": answer,
-                "score": round(25 + 70 * index / max(1, answer_count - 1)),
-            }
-            if isinstance(answer, str)
-            else answer
-            for index, answer in enumerate(answers)
-        ]
+        answer_count = sum(isinstance(answer, str) for answer in answers)
+        answer_index = 0
+        normalized_answers = []
+        for answer in answers:
+            if isinstance(answer, str):
+                normalized_answers.append({
+                    "answer": answer,
+                    "score": round(
+                        25 + 70 * answer_index / max(1, answer_count - 1)
+                    ),
+                })
+                answer_index += 1
+            else:
+                normalized_answers.append(answer)
+        prompt["answers"] = normalized_answers
     return prompts
 
 
