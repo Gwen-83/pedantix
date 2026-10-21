@@ -229,20 +229,23 @@
           };
           label.textContent = difficultyLabels[difficulty] || 'Tous niveaux';
           row.append(label);
+          const result = document.createElement('span');
+          result.className = 'store-featured-leader-result';
           if (leader) {
             const name = document.createElement('strong');
             name.textContent = leader.player_name;
-            row.append(name);
+            result.append(name);
             const detail = document.createElement('span');
             detail.className = 'store-featured-leader-detail';
             detail.textContent = leader.detail;
-            row.append(detail);
+            result.append(detail);
           } else {
             const empty = document.createElement('span');
             empty.className = 'store-featured-leader-empty';
             empty.textContent = 'Aucun score';
-            row.append(empty);
+            result.append(empty);
           }
+          row.append(result);
           section.append(row);
         });
         container.append(section);
