@@ -24,7 +24,7 @@
   let pollingTimer = null;
   let renderedGuesses = '';
   let roomBusy = false;
-  let entry = [];
+  let entry = '';
   let lockedLetters = {};
 
   document.getElementById('motus-player-name').textContent = playerName;
@@ -162,7 +162,8 @@
     document.getElementById('motus-game-title').textContent = state.status === 'finished'
       ? 'Partie terminée'
       : 'Trouvez le mot';
-    document.getElementById('motus-hint').textContent = `Le mot fait ${state.word_length} lettres. Sa première lettre est révélée. Vous avez ${state.max_attempts} essais.`;
+    document.getElementById('motus-hint').textContent =
+      `Le mot fait ${state.word_length} lettres. Sa première lettre est imposée ; les autres lettres révélées restent des indices facultatifs. Vous avez ${state.max_attempts} essais.`;
     document.getElementById('motus-lobby').hidden = !isRoom || state.status !== 'lobby';
     document.getElementById('motus-round').hidden = state.status === 'lobby';
     if (isRoom && state.status === 'lobby') renderLobby();
@@ -203,10 +204,7 @@
     const guessesKey = JSON.stringify(player.guesses);
     if (guessesKey !== renderedGuesses) {
       lockedLetters = getLockedLetters(player.guesses, state.first_letter);
-      entry = Array(state.word_length).fill('');
-      for (const [index, letter] of Object.entries(lockedLetters)) {
-        entry[Number(index)] = letter;
-      }
+      entry = state.first_letter;
       renderKeyboard(player.guesses);
       renderedGuesses = guessesKey;
     }
@@ -215,10 +213,9 @@
     const isSpectator = player.is_spectator;
     const roundFinished = isSpectator || player.finished || state.status === 'finished';
     guessInput.disabled = roundFinished;
-    const displayedEntry = entry.map((letter) => letter || ' ').join('');
-    if (guessInput.value !== displayedEntry) guessInput.value = displayedEntry;
+    if (guessInput.value !== entry) guessInput.value = entry;
     guessForm.querySelector('button').disabled =
-      roundFinished || entry.some((letter) => !letter);
+      roundFinished || entry.length !== state.word_length;
     guessInput.placeholder = `${state.first_letter}_____`;
     renderBoard(player.guesses, state.first_letter, state.max_attempts, entry);
 
@@ -380,26 +377,12 @@
     }
   }
 
-  function nextEditableIndex(startIndex) {
-    for (let index = Math.max(0, startIndex); index < entry.length; index += 1) {
-      if (index > 0 && !entry[index]) return index;
-    }
-    for (let index = 1; index < Math.min(startIndex, entry.length); index += 1) {
-      if (index > 0 && !entry[index]) return index;
-    }
-    return entry.length;
-  }
-
-  function effectiveEntry() {
-    return entry.map((letter, idx) => letter || lockedLetters[idx] || '');
-  }
-
   function updateEntry(nextIndex) {
-    guessInput.value = entry.map((letter) => letter || ' ').join('');
+    guessInput.value = entry;
     renderBoard(state.player.guesses, state.first_letter, state.max_attempts, entry);
-    const full = effectiveEntry();
     guessForm.querySelector('button').disabled =
-      state.player.finished || state.player.is_spectator || full.some((letter) => !letter);
+      state.player.finished || state.player.is_spectator
+      || entry.length !== state.word_length;
     guessInput.focus();
     guessInput.setSelectionRange(nextIndex, nextIndex);
   }
@@ -407,53 +390,43 @@
   function insertEntryText(text, start, end) {
     const letters = normalizeInput(text);
     if (!letters) return;
-    if (start !== end) {
-      for (let index = start; index < end; index += 1) {
-        if (index > 0) entry[index] = '';
-      }
+    if (start === 0 && end >= entry.length) {
+      entry = applyFirstLetter(letters);
+      updateEntry(entry.length);
+      return;
     }
-    let index = Math.max(start, 1);
-    if (letters.length === state.word_length && letters[0] === state.first_letter) {
-      index = 0;
+    if (letters[0] === state.first_letter && letters.length === state.word_length) {
+      entry = letters;
+      updateEntry(entry.length);
+      return;
     }
-    for (const letter of letters) {
-      if (index >= entry.length) break;
-      if (index === 0) {
-        index += 1;
-        continue;
-      }
-      entry[index] = letter;
-      index += 1;
-    }
-    updateEntry(nextEditableIndex(index));
+    const insertionPoint = Math.max(1, start);
+    const endPoint = Math.max(insertionPoint, end);
+    const nextEntry = (
+      entry.slice(0, insertionPoint)
+      + letters
+      + entry.slice(endPoint)
+    ).slice(0, state.word_length);
+    entry = nextEntry[0] === state.first_letter
+      ? nextEntry
+      : `${state.first_letter}${nextEntry.slice(1)}`;
+    updateEntry(Math.min(insertionPoint + letters.length, entry.length));
   }
 
   function deleteEntryText(start, end, direction) {
-    let changed = false;
-    let nextIndex = start;
+    let deleteStart = start;
+    let deleteEnd = end;
     if (start !== end) {
-      for (let index = start; index < end; index += 1) {
-        if (index > 0) {
-          entry[index] = '';
-          changed = true;
-        }
-      }
+      deleteStart = Math.max(1, start);
     } else {
-      let index = direction < 0 ? start - 1 : start;
-      while (
-        index >= 0
-        && index < entry.length
-        && (index === 0 || !entry[index])
-      ) {
-        index += direction;
-      }
-      if (index >= 0 && index < entry.length) {
-        entry[index] = '';
-        changed = true;
-        nextIndex = index;
-      }
+      const index = direction < 0 ? start - 1 : start;
+      if (index <= 0 || index >= entry.length) return;
+      deleteStart = index;
+      deleteEnd = index + 1;
     }
-    if (changed) updateEntry(nextIndex);
+    if (deleteStart >= deleteEnd) return;
+    entry = entry.slice(0, deleteStart) + entry.slice(deleteEnd);
+    updateEntry(deleteStart);
   }
 
   function editEntry(inputEvent) {
@@ -470,6 +443,20 @@
       inputEvent.preventDefault();
       deleteEntryText(start, end, 1);
     }
+  }
+
+  function handleNativeInput() {
+    if (!state || guessInput.disabled) return;
+    const cursor = guessInput.selectionStart ?? guessInput.value.length;
+    entry = applyFirstLetter(normalizeInput(guessInput.value));
+    updateEntry(Math.min(cursor, entry.length));
+  }
+
+  function applyFirstLetter(letters) {
+    const word = letters.startsWith(state.first_letter)
+      ? letters
+      : `${state.first_letter}${letters.slice(1)}`;
+    return (word || state.first_letter).slice(0, state.word_length);
   }
 
   function renderBoardFromState() {
@@ -615,12 +602,11 @@
     event.preventDefault();
     if (!state || state.player.finished || state.player.is_spectator) return;
     hideError(playError);
-    const full = effectiveEntry();
-    if (full.some((letter) => !letter)) {
+    if (entry.length !== state.word_length) {
       showError(playError, 'Complétez les cases vides avant de valider.');
       return;
     }
-    const guess = full.join('');
+    const guess = entry;
     const submit = guessForm.querySelector('button');
     setBusy(submit, true, '…');
     try {
@@ -702,6 +688,7 @@
   });
   guessForm.addEventListener('submit', submitGuess);
   guessInput.addEventListener('beforeinput', editEntry);
+  guessInput.addEventListener('input', handleNativeInput);
   keyboard.addEventListener('click', (event) => {
     const button = event.target.closest('button');
     if (!button || guessInput.disabled) return;

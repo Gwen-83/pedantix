@@ -183,7 +183,17 @@ button.motus-mode-card:hover { transform: translateY(-2px); border-color: rgba(2
 .motus-tile.motus-entry-tile { border-color: #737f94; }
 .motus-round-message { min-height: 24px; margin: 14px 0; color: #cbd5e1; text-align: center; font-size: 0.88rem; }
 .motus-guess-form { display: flex; max-width: 420px; gap: 8px; margin: 0 auto 15px; }
-.motus-guess-form input { flex: 1; padding: 11px 13px; font-size: 1rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.motus-guess-form input {
+  flex: 1;
+  padding: 11px 13px;
+  color: #f8fafc;
+  caret-color: #f8fafc;
+  font-size: 1rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: none;
+  font-variant-ligatures: none;
+}
 .motus-keyboard { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 5px; max-width: 480px; margin: 0 auto; }
 .motus-key {
   min-height: 39px;

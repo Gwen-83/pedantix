@@ -35,6 +35,18 @@ class MotusTests(unittest.TestCase):
         self.assertEqual(game.status, "finished")
         self.assertEqual(game.to_dict()["target"], "TALENT")
 
+    def test_revealed_letters_are_hints_and_do_not_restrict_later_guesses(self):
+        game = self.manager.create_solo("player-1", "Joueur")
+
+        game, _ = self.manager.guess_solo(game.game_id, "player-1", "tartes")
+        self.assertEqual(game.player.guesses[0]["feedback"][1], "correct")
+
+        game, result = self.manager.guess_solo(game.game_id, "player-1", "tonton")
+
+        self.assertFalse(result["solved"])
+        self.assertEqual(game.player.guesses[1]["word"], "tonton")
+        self.assertEqual(game.player.guesses[1]["word"][1], "o")
+
     def test_difficulty_controls_attempts_and_room_directory(self):
         game = self.manager.create_solo("player-1", "Joueur", "facile")
         self.assertEqual(game.to_dict()["max_attempts"], 8)
