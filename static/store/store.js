@@ -219,17 +219,24 @@
           const row = document.createElement('div');
           row.className = 'store-featured-leader';
           const label = document.createElement('span');
-          label.textContent = difficulty === 'classique'
-            ? 'Top 1'
-            : difficulty === '4x4' || difficulty === '6x6'
-              ? `Grille ${difficulty}`
-              : difficulty[0].toUpperCase() + difficulty.slice(1);
+          const difficultyLabels = {
+            classique: 'Top 1',
+            '4x4': 'Grille 4 × 4',
+            '6x6': 'Grille 6 × 6',
+            facile: 'Facile',
+            moyen: 'Moyen',
+            difficile: 'Difficile',
+          };
+          label.textContent = difficultyLabels[difficulty] || 'Tous niveaux';
           row.append(label);
           if (leader) {
             const name = document.createElement('strong');
             name.textContent = leader.player_name;
-            name.title = leader.detail;
             row.append(name);
+            const detail = document.createElement('span');
+            detail.className = 'store-featured-leader-detail';
+            detail.textContent = leader.detail;
+            row.append(detail);
           } else {
             const empty = document.createElement('span');
             empty.className = 'store-featured-leader-empty';

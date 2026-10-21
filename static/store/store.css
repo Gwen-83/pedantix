@@ -332,17 +332,9 @@ html.store-mode .game-store {
 }
 
 
-.store-content-grid {
-  display: grid;
-  grid-template-columns: 230px minmax(0, 1fr) 270px;
-  align-items: start;
-  gap: 22px;
-}
-
 .store-featured-leaderboards {
-  position: sticky;
-  top: 18px;
-  padding: 17px;
+  margin: 0 0 34px;
+  padding: 20px;
   border: 1px solid var(--game-border);
   border-radius: 18px;
   background: var(--game-panel);
@@ -364,6 +356,7 @@ html.store-mode .game-store {
 
 .store-featured-leaderboard-list {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
 }
 
@@ -388,28 +381,38 @@ html.store-mode .game-store {
 }
 
 .store-featured-leader {
-  display: flex;
-  justify-content: space-between;
-  gap: 6px;
+  display: grid;
+  gap: 3px;
   color: var(--game-muted);
   font-size: 0.68rem;
   line-height: 1.4;
 }
 
 .store-featured-leader + .store-featured-leader {
-  margin-top: 4px;
+  margin-top: 7px;
 }
 
 .store-featured-leader strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
   color: var(--game-text);
-  text-align: right;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.store-featured-leader-detail {
+  color: var(--game-muted);
+  font-size: 0.64rem;
 }
 
 .store-featured-leader-empty {
   color: var(--game-muted);
   font-size: 0.68rem;
+}
+
+.store-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 270px;
+  align-items: start;
+  gap: 22px;
 }
 
 .store-online-panel {
@@ -1012,8 +1015,8 @@ html.store-mode .game-store {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .store-featured-leaderboards {
-    position: static;
+  .store-featured-leaderboard-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .store-online-panel {
@@ -1027,6 +1030,10 @@ html.store-mode .game-store {
 }
 
 @media (max-width: 520px) {
+  .store-featured-leaderboard-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .store-online-list {
     grid-template-columns: 1fr;
   }

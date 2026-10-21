@@ -145,4 +145,5 @@ class SoloGameLeaderboardTests(unittest.TestCase):
         self.assertEqual(easy["leader"]["player_name"], "Bob")
         self.assertEqual(hard["leader"]["player_name"], "Alice")
         self.assertEqual(games["geoguessr"]["leaders"][0]["leader"]["player_name"], "Noah")
+        self.assertEqual(games["geoguessr"]["leaders"][0]["difficulty"], "")
         self.assertEqual(games["memories"]["leaders"][0]["leader"]["player_name"], "Mina")

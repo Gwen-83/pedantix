@@ -92,6 +92,14 @@ class FrontendContractTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn('id="store-featured-leaderboards"', response.text)
+        self.assertLess(
+            response.text.index('class="store-overview"'),
+            response.text.index('class="store-featured-leaderboards"'),
+        )
+        self.assertLess(
+            response.text.index('class="store-featured-leaderboards"'),
+            response.text.index('class="store-content-grid"'),
+        )
 
         styles = (
             Path(__file__).resolve().parents[1] / "static" / "store" / "store.css"
@@ -99,8 +107,10 @@ class FrontendContractTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1] / "static" / "store" / "store.js"
         ).read_text()
-        self.assertIn("230px minmax(0, 1fr) 270px", styles)
+        self.assertIn('grid-template-columns: repeat(3, minmax(0, 1fr))', styles)
         self.assertIn("/api/leaderboards/featured", script)
+        self.assertIn("difficultyLabels[difficulty] || 'Tous niveaux'", script)
+        self.assertNotIn("difficulty[0].toUpperCase()", script)
 
     def test_every_game_page_and_its_local_scripts_and_stylesheets_load(self):
         for path in GAME_PAGES:
