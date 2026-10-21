@@ -117,6 +117,40 @@ class MemoriesManagerTests(unittest.TestCase):
         self.assertEqual(game.opened, [first, second])
         self.assertIsNotNone(game.pending_mismatch_until)
 
+    def test_solo_finishes_from_a_valid_local_flip_sequence(self):
+        game = self.manager.create_solo("alice", "Alice", 4)
+        flips = []
+        flipped = set()
+        for left in range(len(game.cards)):
+            if left in flipped:
+                continue
+            right = next(
+                index for index in range(left + 1, len(game.cards))
+                if game.cards[index] == game.cards[left]
+            )
+            flips.extend((left, right))
+            flipped.update((left, right))
+
+        finished = self.manager.finish_solo(
+            game.game_id, "alice", flips, elapsed_ms=15_281
+        )
+
+        self.assertEqual(finished.status, "finished")
+        self.assertEqual(finished.moves, 8)
+        self.assertEqual(finished.points, 800)
+        self.assertEqual(finished.matched, set(range(16)))
+        self.assertEqual(finished.to_dict()["elapsed_ms"], 15_281)
+
+    def test_solo_rejects_incomplete_local_flip_sequence_without_mutating_game(self):
+        game = self.manager.create_solo("alice", "Alice", 4)
+
+        with self.assertRaisesRegex(ValueError, "ne termine pas"):
+            self.manager.finish_solo(game.game_id, "alice", [0, 1], 1000)
+
+        self.assertEqual(game.status, "playing")
+        self.assertEqual(game.matched, set())
+        self.assertEqual(game.moves, 0)
+
     def test_solo_rejects_invalid_grid_and_duplicate_card_flips(self):
         with self.assertRaises(ValueError):
             self.manager.create_solo("alice", "Alice", 5)
@@ -206,6 +240,10 @@ class MemoriesApiTests(unittest.TestCase):
         with (
             patch.object(main_app, "memories_manager", manager),
             patch.object(main_app, "record_multigame_session_start"),
+            patch.object(main_app, "record_memory_solo_time", return_value={
+                "username": "Solo", "elapsed_ms": 15_281, "moves": 8,
+                "is_record": True,
+            }) as save_record,
             patch.object(main_app, "record_user_game_finish"),
             patch.object(main_app, "increment_player_score"),
         ):
@@ -231,6 +269,38 @@ class MemoriesApiTests(unittest.TestCase):
             self.assertEqual(solo.status_code, 200)
             self.assertEqual(solo.json()["total_pairs"], 8)
             self.assertTrue(all(card["face"] is None for card in solo.json()["cards"]))
+            self.assertEqual(len(solo.json()["deck"]), 16)
+            solo_game = manager.get_solo(solo.json()["game_id"], "solo")
+            flips = []
+            for face in dict.fromkeys(solo_game.cards):
+                flips.extend(
+                    index for index, card in enumerate(solo_game.cards)
+                    if card == face
+                )
+            result = client.post("/api/memories/solo/finish", json={
+                "game_id": solo_game.game_id,
+                "player_id": "solo",
+                "player_name": "Solo",
+                "flips": flips,
+                "elapsed_ms": 15_281,
+            })
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.json()["status"], "finished")
+            self.assertEqual(result.json()["elapsed_ms"], 15_281)
+            self.assertTrue(result.json()["result_saved"])
+            save_record.assert_called_once_with(
+                "Solo", 4, f"memories:{solo_game.game_id}", 15_281, 8
+            )
+            retry = client.post("/api/memories/solo/finish", json={
+                "game_id": solo_game.game_id,
+                "player_id": "solo",
+                "player_name": "Solo",
+                "flips": [],
+                "elapsed_ms": 15_281,
+            })
+            self.assertEqual(retry.status_code, 200)
+            self.assertTrue(retry.json()["result_saved"])
+            save_record.assert_called_once()
 
             room = client.post("/api/memories/room/create", json={
                 "player_id": "host", "player_name": "Hôte", "grid_size": 6,
@@ -281,7 +351,33 @@ class MemoriesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["record"]["is_record"])
         self.assertEqual(response.json()["elapsed_ms"], 2345)
+        self.assertEqual(len(response.json()["deck"]), 16)
         self.assertEqual(save_record.call_args.args[3:], (2345, 8))
+
+    def test_finished_solo_game_remains_resumable_if_record_save_fails(self):
+        manager = MemoriesManager()
+        game = manager.create_solo("solo", "Solo", 4)
+        game.status = "finished"
+        game.finished_at = game.started_at + 15.281
+        game.matched.update(range(len(game.cards)))
+        game.moves = 8
+        with (
+            patch.object(main_app, "memories_manager", manager),
+            patch.object(
+                main_app,
+                "record_memory_solo_time",
+                side_effect=RuntimeError("database unavailable"),
+            ),
+        ):
+            response = TestClient(app).get(
+                f"/api/memories/solo/{game.game_id}?player_id=solo"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "finished")
+        self.assertEqual(response.json()["record_save_error"], "database unavailable")
+        self.assertEqual(len(response.json()["deck"]), 16)
+        self.assertFalse(response.json()["result_saved"])
 
 
 class MemorySoloRecordTests(unittest.TestCase):

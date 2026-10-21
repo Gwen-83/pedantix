@@ -61,13 +61,13 @@ class MemoryGame:
     stats_recorded: bool = False
     best_record: Optional[dict[str, Any]] = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, include_deck: bool = False) -> dict[str, Any]:
         _resolve_mismatch(self)
         finished_time = self.finished_at if self.finished_at is not None else time.time()
         elapsed_ms = max(
             0, round((finished_time - self.started_at) * 1000)
         )
-        return {
+        state = {
             "game_id": self.game_id,
             "status": self.status,
             "grid_size": self.grid_size,
@@ -91,7 +91,11 @@ class MemoryGame:
             "pending_mismatch_remaining_ms": max(
                 0, round((self.pending_mismatch_until - time.time()) * 1000)
             ) if self.pending_mismatch_until is not None else None,
+            "result_saved": self.stats_recorded,
         }
+        if include_deck:
+            state["deck"] = self.cards.copy()
+        return state
 
 
 @dataclass
@@ -231,21 +235,57 @@ class MemoriesManager:
     def flip_solo(self, game_id: str, player_id: str, index: int) -> MemoryGame:
         with self.lock:
             game = self.get_solo(game_id, player_id)
-            _resolve_mismatch(game)
-            if game.status != "playing":
-                raise ValueError("Cette partie est terminée.")
-            if game.pending_mismatch_until is not None:
-                if index in game.opened:
-                    raise ValueError("Cette carte est déjà retournée.")
-                self._validate_flip(game.cards, [], game.matched, index)
-                game.opened.clear()
-                game.pending_mismatch_until = None
-            self._validate_flip(game.cards, game.opened, game.matched, index)
-            game.opened.append(index)
-            if len(game.opened) == 2:
-                game.moves += 1
-                self._resolve_pair(game)
+            self._flip_solo_game(game, index)
             return game
+
+    def finish_solo(
+        self,
+        game_id: str,
+        player_id: str,
+        flips: list[int],
+        elapsed_ms: int,
+    ) -> MemoryGame:
+        with self.lock:
+            game = self.get_solo(game_id, player_id)
+            if game.status == "finished":
+                return game
+            if game.moves or game.opened or game.matched:
+                raise ValueError("Cette partie a déjà été jouée sur le serveur.")
+
+            replay = MemoryGame(
+                game.game_id, game.player_id, game.player_name,
+                game.grid_size, game.cards, started_at=game.started_at,
+            )
+            for index in flips:
+                self._flip_solo_game(replay, index)
+            if replay.status != "finished":
+                raise ValueError("La séquence ne termine pas la partie.")
+
+            replay.finished_at = replay.started_at + max(0, elapsed_ms) / 1000
+            game.opened = replay.opened
+            game.matched = replay.matched
+            game.moves = replay.moves
+            game.points = replay.points
+            game.status = replay.status
+            game.finished_at = replay.finished_at
+            return game
+
+    @staticmethod
+    def _flip_solo_game(game: MemoryGame, index: int) -> None:
+        _resolve_mismatch(game)
+        if game.status != "playing":
+            raise ValueError("Cette partie est terminée.")
+        if game.pending_mismatch_until is not None:
+            if index in game.opened:
+                raise ValueError("Cette carte est déjà retournée.")
+            MemoriesManager._validate_flip(game.cards, [], game.matched, index)
+            game.opened.clear()
+            game.pending_mismatch_until = None
+        MemoriesManager._validate_flip(game.cards, game.opened, game.matched, index)
+        game.opened.append(index)
+        if len(game.opened) == 2:
+            game.moves += 1
+            MemoriesManager._resolve_pair(game)
 
     def create_room(
         self, player_id: str, player_name: str, grid_size: int = 4,

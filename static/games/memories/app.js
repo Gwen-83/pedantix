@@ -27,6 +27,9 @@
   let soloMismatchHideAt = null;
   let soloClockTimer = null;
   let soloStartedAt = null;
+  let soloFlips = [];
+  let soloLocalMode = false;
+  let soloResultSaving = false;
   let refreshing = false;
   let roomStateRevision = 0;
 
@@ -97,7 +100,9 @@
     if (mode === 'room') {
       scheduleRoomPolling();
     } else if (mode === 'solo') {
-      soloStartedAt = Date.now() - (state.elapsed_ms ?? state.elapsed_seconds * 1000);
+      if (soloStartedAt == null) {
+        soloStartedAt = Date.now() - (state.elapsed_ms ?? state.elapsed_seconds * 1000);
+      }
       updateSoloClock();
       if (state.status === 'playing') {
         soloClockTimer = window.setInterval(updateSoloClock, 100);
@@ -168,25 +173,207 @@
     }, delayOverride ?? untilHide);
   }
 
+  function readSoloProgress(gameId) {
+    const saved = localStorage.getItem('memories_solo_progress');
+    if (!saved) return null;
+    try {
+      const progress = JSON.parse(saved);
+      if (
+        progress.game_id === gameId
+        && Number.isFinite(progress.started_at)
+        && Array.isArray(progress.flips)
+        && progress.flips.length <= 2000
+        && progress.flips.every((index) => Number.isInteger(index))
+      ) return progress;
+      return null;
+    } catch (error) {
+      console.warn('Progression Memory locale illisible :', error);
+      localStorage.removeItem('memories_solo_progress');
+      return null;
+    }
+  }
+
+  function saveSoloProgress() {
+    if (!soloLocalMode || !state || soloStartedAt == null) return;
+    localStorage.setItem('memories_solo_progress', JSON.stringify({
+      game_id: state.game_id,
+      started_at: soloStartedAt,
+      flips: soloFlips,
+    }));
+  }
+
+  function resetLocalSoloState() {
+    state.cards = state.deck.map((face, index) => ({
+      index,
+      face: null,
+      matched: false,
+      opened: false,
+    }));
+    state.status = 'playing';
+    state.matched_pairs = 0;
+    state.moves = 0;
+    state.points = 0;
+    state.pending_mismatch_until = null;
+    state.pending_mismatch_remaining_ms = null;
+    state.finished_at = null;
+    state.result_saved = false;
+  }
+
+  function applyLocalSoloFlip(index, record = true, shouldRender = true) {
+    if (
+      !state
+      || !soloLocalMode
+      || state.status !== 'playing'
+      || !Number.isInteger(index)
+      || index < 0
+      || index >= state.cards.length
+    ) return false;
+
+    const card = state.cards[index];
+    if (state.pending_mismatch_until != null) {
+      if (card.opened || card.matched) return false;
+      state.cards.forEach((openCard) => {
+        if (openCard.opened && !openCard.matched) {
+          openCard.face = null;
+          openCard.opened = false;
+        }
+      });
+      state.pending_mismatch_until = null;
+      state.pending_mismatch_remaining_ms = null;
+      soloMismatchHideAt = null;
+    }
+    if (card.matched || card.opened) return false;
+
+    card.face = state.deck[index];
+    card.opened = true;
+    if (record) soloFlips.push(index);
+    const openedCards = state.cards.filter((item) => item.opened && !item.matched);
+    if (openedCards.length === 2) {
+      state.moves += 1;
+      const [first, second] = openedCards;
+      if (first.face === second.face) {
+        first.matched = true;
+        second.matched = true;
+        first.opened = false;
+        second.opened = false;
+        state.matched_pairs += 1;
+        state.points += 100;
+        if (state.matched_pairs === state.total_pairs) {
+          state.status = 'finished';
+          state.elapsed_ms = Math.max(0, Date.now() - soloStartedAt);
+          state.elapsed_seconds = Math.floor(state.elapsed_ms / 1000);
+        }
+      } else {
+        state.pending_mismatch_until = Date.now() / 1000 + 1.2;
+        state.pending_mismatch_remaining_ms = 1200;
+      }
+    }
+
+    if (record) saveSoloProgress();
+    if (shouldRender) {
+      render();
+      if (state.status === 'finished') {
+        stopPolling();
+        void finishSoloResult();
+      } else {
+        scheduleSoloMismatchHide();
+      }
+    }
+    return true;
+  }
+
+  async function finishSoloResult() {
+    if (
+      !state
+      || !soloLocalMode
+      || state.status !== 'finished'
+      || state.result_saved
+      || soloResultSaving
+    ) return;
+    soloResultSaving = true;
+    const deck = state.deck;
+    clearError('memory-game-error');
+    try {
+      const result = await post('/api/memories/solo/finish', {
+        ...playerPayload(),
+        game_id: state.game_id,
+        flips: soloFlips,
+        elapsed_ms: state.elapsed_ms,
+      });
+      state = { ...result, deck };
+      render();
+      refreshSoloLeaderboard();
+    } catch (error) {
+      showError('memory-game-error', error);
+    } finally {
+      soloResultSaving = false;
+      render();
+    }
+  }
+
   function setScreen(screen) {
     home.hidden = screen !== 'home';
     setup.hidden = screen !== 'setup';
     gamePanel.hidden = screen !== 'game';
   }
 
-  function enterGame(nextMode, nextState) {
+  function enterGame(nextMode, nextState, soloProgress = null) {
     mode = nextMode;
     state = nextState;
     soloStartedAt = null;
+    soloFlips = [];
+    soloLocalMode = false;
+    soloResultSaving = false;
+    if (mode === 'solo' && Array.isArray(state.deck)) {
+      if (state.status === 'finished') {
+        if (!state.result_saved) {
+          soloLocalMode = true;
+          soloStartedAt = Date.now() - (state.elapsed_ms || 0);
+          soloFlips = readSoloProgress(state.game_id)?.flips ?? [];
+        }
+      } else if (state.status === 'playing') {
+        const savedProgress = soloProgress?.game_id === state.game_id
+          ? soloProgress
+          : readSoloProgress(state.game_id);
+        const cleanServerGame = state.moves === 0
+          && state.matched_pairs === 0
+          && !state.cards.some((card) => card.opened || card.matched);
+        if (cleanServerGame) {
+          soloLocalMode = true;
+          soloStartedAt = savedProgress?.started_at ?? Date.now() - (state.elapsed_ms || 0);
+          soloFlips = savedProgress?.flips ?? [];
+          const serverState = { ...state, cards: state.cards };
+          resetLocalSoloState();
+          const restored = soloFlips.every((index) => applyLocalSoloFlip(index, false, false));
+          if (restored) {
+            saveSoloProgress();
+          } else {
+            console.error('La progression Memory locale ne correspond pas à la partie.');
+            state = serverState;
+            soloLocalMode = false;
+            soloFlips = [];
+            soloStartedAt = null;
+            localStorage.removeItem('memories_solo_progress');
+          }
+        }
+      }
+    }
     setScreen('game');
     document.getElementById('memory-mode-label').textContent =
       mode === 'solo' ? 'Concours solo chronométré' : `Multijoueur · salon ${state.room_id}`;
     document.getElementById('memory-round-heading').textContent =
       `${state.grid_size} × ${state.grid_size} · ${state.total_pairs} paires`;
     render();
+    if (state.record_save_error) {
+      showError('memory-game-error', new Error(state.record_save_error));
+    }
     startPolling();
     if (mode === 'room') localStorage.setItem('memories_active_room_id', state.room_id);
     else localStorage.setItem('memories_solo_game_id', state.game_id);
+    if (mode === 'solo' && soloLocalMode && state.status === 'finished') {
+      stopPolling();
+      void finishSoloResult();
+    }
   }
 
   function renderLobby() {
@@ -282,6 +469,8 @@
       document.getElementById('memory-finished-summary').textContent =
         `${state.matched_pairs} paires en ${formatPreciseTime(state.elapsed_ms)} et ${state.moves} coups.`;
       document.getElementById('memory-replay').hidden = false;
+      document.getElementById('memory-retry-save').hidden =
+        !soloLocalMode || state.result_saved || soloResultSaving;
       return;
     }
     const winners = new Set(state.winner_ids);
@@ -364,6 +553,11 @@
 
   async function flipCard(index) {
     if (!state || busy) return;
+    if (mode === 'solo' && soloLocalMode) {
+      clearError('memory-game-error');
+      applyLocalSoloFlip(index);
+      return;
+    }
     const roomId = state.room_id;
     const gameId = state.game_id;
     const requestRevision = ++roomStateRevision;
@@ -408,7 +602,9 @@
       const nextState = await post('/api/memories/solo/new', {
         ...playerPayload(), grid_size: gridSize,
       });
-      enterGame('solo', nextState);
+      localStorage.removeItem('memories_solo_progress');
+      const progress = { game_id: nextState.game_id, started_at: Date.now(), flips: [] };
+      enterGame('solo', nextState, progress);
       history.replaceState(null, '', `${window.location.pathname}?mode=solo`);
     } catch (error) {
       showError('memory-home-error', error);
@@ -595,6 +791,7 @@
     mode = null;
     localStorage.removeItem('memories_active_room_id');
     localStorage.removeItem('memories_solo_game_id');
+    localStorage.removeItem('memories_solo_progress');
     history.replaceState(null, '', window.location.pathname);
     setScreen('home');
     refreshRooms();
@@ -648,6 +845,7 @@
     if (mode === 'solo') startSolo();
     else restartRoom();
   });
+  document.getElementById('memory-retry-save').addEventListener('click', finishSoloResult);
   document.getElementById('memory-copy-invite').addEventListener('click', async (event) => {
     const url = new URL(window.location.href);
     url.search = new URLSearchParams({ room: state.room_id }).toString();

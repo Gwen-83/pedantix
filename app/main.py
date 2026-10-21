@@ -532,6 +532,11 @@ class MemoriesSoloFlipRequest(MemoriesPlayerRequest):
     game_id: str = Field(min_length=1, max_length=64)
     index: int = Field(ge=0, le=35)
 
+class MemoriesSoloFinishRequest(MemoriesPlayerRequest):
+    game_id: str = Field(min_length=1, max_length=64)
+    flips: List[int] = Field(max_items=2000)
+    elapsed_ms: int = Field(ge=0, le=3_600_000)
+
 class MemoriesReadyRequest(MemoriesRoomRequest):
     ready: bool = True
 
@@ -3386,7 +3391,7 @@ async def create_memories_solo(req: MemoriesSoloCreateRequest):
         "Memory",
         f"{game.grid_size}x{game.grid_size}",
     )
-    return game.to_dict()
+    return game.to_dict(include_deck=True)
 
 
 @app.get("/api/memories/solo/leaderboard")
@@ -3408,6 +3413,25 @@ async def get_memories_solo(game_id: str, player_id: str = Query(...)):
         game = memories_manager.get_solo(game_id, player_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    record_save_error = None
+    try:
+        _record_memories_solo_result(game)
+    except RuntimeError as exc:
+        record_save_error = str(exc)
+    state = game.to_dict(include_deck=True)
+    if record_save_error:
+        state["record_save_error"] = record_save_error
+    return state
+
+
+@app.post("/api/memories/solo/flip")
+async def flip_memories_solo(req: MemoriesSoloFlipRequest):
+    try:
+        game = memories_manager.flip_solo(req.game_id, req.player_id, req.index)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         _record_memories_solo_result(game)
     except RuntimeError as exc:
@@ -3415,10 +3439,15 @@ async def get_memories_solo(game_id: str, player_id: str = Query(...)):
     return game.to_dict()
 
 
-@app.post("/api/memories/solo/flip")
-async def flip_memories_solo(req: MemoriesSoloFlipRequest):
+@app.post("/api/memories/solo/finish")
+async def finish_memories_solo(req: MemoriesSoloFinishRequest):
     try:
-        game = memories_manager.flip_solo(req.game_id, req.player_id, req.index)
+        game = memories_manager.finish_solo(
+            req.game_id,
+            req.player_id,
+            req.flips,
+            req.elapsed_ms,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
