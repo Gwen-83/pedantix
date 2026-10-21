@@ -440,7 +440,17 @@
       showError(playError, 'La carte ne s’est pas chargée. Vérifiez votre connexion puis rechargez la page.');
       return false;
     }
-    map = L.map('geo-map', { worldCopyJump: true, minZoom: 2, maxZoom: 19 })
+    map = L.map('geo-map', {
+      worldCopyJump: true,
+      minZoom: 2,
+      maxZoom: 19,
+      dragging: true,
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      touchZoom: true,
+      keyboard: true,
+      zoomControl: true,
+    })
       .setView([20, 0], 2);
     loadCountryBoundaries();
     map.on('click', (event) => {
@@ -471,12 +481,13 @@
     const layer = L.tileLayer(
       useFallback
         ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'
-        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        : 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
       {
+        subdomains: ['a', 'b', 'c'],
         maxZoom: 19,
         attribution: useFallback
           ? '&copy; Esri &mdash; Sources: HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), OpenStreetMap contributors, and the GIS User Community'
-          : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+          : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap France</a>',
       },
     );
     layer.on('tileerror', () => {
@@ -535,7 +546,7 @@
     countryBoundaryLayer?.setStyle(countryBoundaryStyle(isPanorama));
     const attribution = document.querySelector('.geo-map-actions > span');
     attribution.textContent = isPanorama
-      ? 'Carte © OpenStreetMap · frontières © Natural Earth'
+      ? 'Carte © OpenStreetMap France · frontières © Natural Earth'
       : 'Relief © Esri, USGS, NOAA · fleuves et massifs © Natural Earth · sans noms de villes';
   }
 
