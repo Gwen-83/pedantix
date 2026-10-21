@@ -1,5 +1,12 @@
 (() => {
   const apiBase = window.PEDANTIX_CONFIG?.BACKEND_URL?.replace(/\/+$/, '') || '';
+  const cardSymbols = [
+    '🍎', '🚀', '🌈', '🐳', '🎸', '🌻', '🦊', '⚽',
+    '🍉', '🦋', '🎈', '🌙', '🐙', '🍄', '🎁', '🧩',
+    '🦁', '🍩', '🚲', '⭐️', '🐢', '🎨', '🌵', '🍓',
+    '🛸', '🐼', '🎲', '🌺', '🦉', '🍋', '🏀', '🎧',
+    '🐸', '🍪', '⛵', '💎',
+  ];
   const home = document.getElementById('memory-home');
   const setup = document.getElementById('memory-multiplayer-setup');
   const gamePanel = document.getElementById('memory-game');
@@ -179,11 +186,23 @@
     try {
       const progress = JSON.parse(saved);
       if (
-        progress.game_id === gameId
+        (!gameId || progress.game_id === gameId)
         && Number.isFinite(progress.started_at)
         && Array.isArray(progress.flips)
         && progress.flips.length <= 2000
         && progress.flips.every((index) => Number.isInteger(index))
+        && (
+          !Array.isArray(progress.deck)
+          || (
+            [4, 6].includes(progress.grid_size)
+            && progress.deck.length === progress.grid_size ** 2
+            && progress.deck.every((symbol) => cardSymbols.includes(symbol))
+            && new Set(progress.deck).size === progress.grid_size ** 2 / 2
+            && progress.deck.every(
+              (symbol) => progress.deck.filter((face) => face === symbol).length === 2,
+            )
+          )
+        )
       ) return progress;
       return null;
     } catch (error) {
@@ -197,9 +216,43 @@
     if (!soloLocalMode || !state || soloStartedAt == null) return;
     localStorage.setItem('memories_solo_progress', JSON.stringify({
       game_id: state.game_id,
+      grid_size: state.grid_size,
+      deck: state.deck,
       started_at: soloStartedAt,
       flips: soloFlips,
+      elapsed_ms: state.status === 'finished' ? state.elapsed_ms : null,
     }));
+  }
+
+  function createLocalDeck(gridSize) {
+    const symbols = cardSymbols.slice(0, gridSize * gridSize / 2);
+    const deck = [...symbols, ...symbols];
+    for (let index = deck.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [deck[index], deck[swapIndex]] = [deck[swapIndex], deck[index]];
+    }
+    return deck;
+  }
+
+  function createLocalSoloState(gridSize, deck, gameId) {
+    return {
+      game_id: gameId,
+      status: 'playing',
+      grid_size: gridSize,
+      deck,
+      cards: deck.map((face, index) => ({
+        index, face: null, matched: false, opened: false,
+      })),
+      matched_pairs: 0,
+      total_pairs: deck.length / 2,
+      moves: 0,
+      points: 0,
+      elapsed_seconds: 0,
+      elapsed_ms: 0,
+      pending_mismatch_until: null,
+      pending_mismatch_remaining_ms: null,
+      result_saved: false,
+    };
   }
 
   function resetLocalSoloState() {
@@ -297,10 +350,13 @@
       const result = await post('/api/memories/solo/finish', {
         ...playerPayload(),
         game_id: state.game_id,
+        grid_size: state.grid_size,
+        deck,
         flips: soloFlips,
         elapsed_ms: state.elapsed_ms,
       });
       state = { ...result, deck };
+      localStorage.removeItem('memories_solo_progress');
       render();
       refreshSoloLeaderboard();
     } catch (error) {
@@ -325,36 +381,32 @@
     soloLocalMode = false;
     soloResultSaving = false;
     if (mode === 'solo' && Array.isArray(state.deck)) {
-      if (state.status === 'finished') {
-        if (!state.result_saved) {
-          soloLocalMode = true;
-          soloStartedAt = Date.now() - (state.elapsed_ms || 0);
-          soloFlips = readSoloProgress(state.game_id)?.flips ?? [];
-        }
-      } else if (state.status === 'playing') {
-        const savedProgress = soloProgress?.game_id === state.game_id
-          ? soloProgress
-          : readSoloProgress(state.game_id);
-        const cleanServerGame = state.moves === 0
-          && state.matched_pairs === 0
-          && !state.cards.some((card) => card.opened || card.matched);
-        if (cleanServerGame) {
-          soloLocalMode = true;
-          soloStartedAt = savedProgress?.started_at ?? Date.now() - (state.elapsed_ms || 0);
-          soloFlips = savedProgress?.flips ?? [];
-          const serverState = { ...state, cards: state.cards };
-          resetLocalSoloState();
-          const restored = soloFlips.every((index) => applyLocalSoloFlip(index, false, false));
-          if (restored) {
-            saveSoloProgress();
-          } else {
-            console.error('La progression Memory locale ne correspond pas à la partie.');
-            state = serverState;
-            soloLocalMode = false;
-            soloFlips = [];
-            soloStartedAt = null;
-            localStorage.removeItem('memories_solo_progress');
+      const savedProgress = soloProgress?.game_id === state.game_id
+        ? soloProgress
+        : readSoloProgress(state.game_id);
+      const cleanServerGame = state.moves === 0
+        && state.matched_pairs === 0
+        && !state.cards.some((card) => card.opened || card.matched);
+      if (state.status === 'playing' && cleanServerGame) {
+        soloLocalMode = true;
+        soloStartedAt = savedProgress?.started_at ?? Date.now() - (state.elapsed_ms || 0);
+        soloFlips = savedProgress?.flips ?? [];
+        const serverState = { ...state, cards: state.cards };
+        resetLocalSoloState();
+        const restored = soloFlips.every((index) => applyLocalSoloFlip(index, false, false));
+        if (restored) {
+          if (state.status === 'finished' && Number.isFinite(savedProgress?.elapsed_ms)) {
+            state.elapsed_ms = savedProgress.elapsed_ms;
+            state.elapsed_seconds = Math.floor(state.elapsed_ms / 1000);
           }
+          saveSoloProgress();
+        } else {
+          console.error('La progression Memory locale ne correspond pas à la partie.');
+          state = serverState;
+          soloLocalMode = false;
+          soloFlips = [];
+          soloStartedAt = null;
+          localStorage.removeItem('memories_solo_progress');
         }
       }
     }
@@ -599,12 +651,22 @@
     clearError('memory-home-error');
     try {
       const gridSize = Number(document.getElementById('memory-grid-size').value);
-      const nextState = await post('/api/memories/solo/new', {
-        ...playerPayload(), grid_size: gridSize,
-      });
-      localStorage.removeItem('memories_solo_progress');
-      const progress = { game_id: nextState.game_id, started_at: Date.now(), flips: [] };
+      const deck = createLocalDeck(gridSize);
+      const nextState = createLocalSoloState(
+        gridSize,
+        deck,
+        globalThis.crypto?.randomUUID?.()
+          || `memories-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const progress = {
+        game_id: nextState.game_id,
+        grid_size: gridSize,
+        deck,
+        started_at: Date.now(),
+        flips: [],
+      };
       enterGame('solo', nextState, progress);
+      saveSoloProgress();
       history.replaceState(null, '', `${window.location.pathname}?mode=solo`);
     } catch (error) {
       showError('memory-home-error', error);
@@ -773,6 +835,13 @@
   }
 
   async function showHome() {
+    if (mode === 'solo' && state?.status === 'finished' && !state.result_saved) {
+      showError(
+        'memory-game-error',
+        new Error('Enregistrez ce résultat avant de quitter la partie.'),
+      );
+      return;
+    }
     if (mode === 'room' && state?.room_id) {
       stopPolling();
       try {
@@ -823,6 +892,7 @@
   document.getElementById('memory-open-multiplayer').addEventListener('click', () => {
     home.hidden = true;
     setup.hidden = false;
+    refreshRooms();
   });
   document.getElementById('memory-setup-back').addEventListener('click', () => {
     setup.hidden = true;
@@ -842,7 +912,8 @@
   document.getElementById('memory-leave').addEventListener('click', showHome);
   document.getElementById('memory-home-button').addEventListener('click', showHome);
   document.getElementById('memory-replay').addEventListener('click', () => {
-    if (mode === 'solo') startSolo();
+    if (mode === 'solo' && !state?.result_saved) finishSoloResult();
+    else if (mode === 'solo') startSolo();
     else restartRoom();
   });
   document.getElementById('memory-retry-save').addEventListener('click', finishSoloResult);
@@ -861,9 +932,19 @@
   const params = new URLSearchParams(window.location.search);
   const requestedRoom = params.get('room');
   const requestedMode = params.get('mode');
-  refreshSoloLeaderboard();
+  if (!requestedRoom && requestedMode !== 'solo') refreshSoloLeaderboard();
   if (requestedRoom) openRoomFromUrl(requestedRoom);
-  else if (requestedMode === 'solo' && localStorage.getItem('memories_solo_game_id')) {
-    resumeSoloFromUrl(localStorage.getItem('memories_solo_game_id'));
-  } else refreshRooms();
+  else if (requestedMode === 'solo') {
+    const progress = readSoloProgress();
+    if (progress?.deck) {
+      const localState = createLocalSoloState(
+        progress.grid_size,
+        progress.deck,
+        progress.game_id,
+      );
+      enterGame('solo', localState, progress);
+    } else if (localStorage.getItem('memories_solo_game_id')) {
+      resumeSoloFromUrl(localStorage.getItem('memories_solo_game_id'));
+    }
+  }
 })();

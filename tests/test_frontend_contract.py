@@ -176,7 +176,10 @@ class FrontendContractTests(unittest.TestCase):
         stylesheet = (games_dir / "style.css").read_text()
 
         self.assertNotIn("setInterval(refreshSolo", script)
-        self.assertIn("scheduleSoloMismatchRefresh", script)
+        self.assertIn("scheduleSoloMismatchHide", script)
+        self.assertIn("createLocalDeck(gridSize)", script)
+        self.assertNotIn("await post('/api/memories/solo/new'", script)
+        self.assertIn("if (card.opened || card.matched) return false;", script)
         self.assertIn("setInterval(updateSoloClock, 100)", script)
         self.assertIn("memory-card-reveal", stylesheet)
         self.assertIn("memory-card-loading", stylesheet)

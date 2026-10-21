@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 import app.database as database
 from app import main as main_app
 from app.main import app
-from app.memories import MISMATCH_REVEAL_SECONDS, MemoriesManager
+from app.memories import CARD_SYMBOLS, MISMATCH_REVEAL_SECONDS, MemoriesManager
 
 
 class MemoriesManagerTests(unittest.TestCase):
@@ -141,6 +141,26 @@ class MemoriesManagerTests(unittest.TestCase):
         self.assertEqual(finished.matched, set(range(16)))
         self.assertEqual(finished.to_dict()["elapsed_ms"], 15_281)
 
+    def test_solo_can_finish_a_client_generated_deck_without_creating_server_game(self):
+        deck = list(CARD_SYMBOLS[:8]) * 2
+        flips = []
+        for symbol in CARD_SYMBOLS[:8]:
+            flips.extend(index for index, face in enumerate(deck) if face == symbol)
+
+        finished = self.manager.finish_local_solo(
+            "local-game", "alice", "Alice", 4, deck, flips, elapsed_ms=9000
+        )
+
+        self.assertEqual(finished.status, "finished")
+        self.assertEqual(finished.moves, 8)
+        self.assertEqual(finished.to_dict()["elapsed_ms"], 9000)
+        self.assertIs(self.manager.get_solo("local-game", "alice"), finished)
+        with self.assertRaisesRegex(ValueError, "paires valides"):
+            self.manager.finish_local_solo(
+                "invalid-game", "alice", "Alice", 4, [CARD_SYMBOLS[0]] * 16,
+                flips, elapsed_ms=9000,
+            )
+
     def test_solo_rejects_incomplete_local_flip_sequence_without_mutating_game(self):
         game = self.manager.create_solo("alice", "Alice", 4)
 
@@ -235,6 +255,52 @@ class MemoriesManagerTests(unittest.TestCase):
 
 
 class MemoriesApiTests(unittest.TestCase):
+    def test_local_solo_result_is_validated_and_saved_without_a_start_request(self):
+        manager = MemoriesManager()
+        deck = list(CARD_SYMBOLS[:8]) * 2
+        flips = [
+            index
+            for symbol in CARD_SYMBOLS[:8]
+            for index, face in enumerate(deck)
+            if face == symbol
+        ]
+        with (
+            patch.object(main_app, "memories_manager", manager),
+            patch.object(main_app, "record_multigame_session_start"),
+            patch.object(main_app, "record_memory_solo_time", return_value={
+                "username": "Solo", "elapsed_ms": 9000, "moves": 8,
+                "is_record": True,
+            }) as save_record,
+            patch.object(main_app, "record_user_game_finish"),
+            patch.object(main_app, "increment_player_score"),
+        ):
+            client = TestClient(app)
+            result = client.post("/api/memories/solo/finish", json={
+                "game_id": "local-game",
+                "player_id": "solo",
+                "player_name": "Solo",
+                "grid_size": 4,
+                "deck": deck,
+                "flips": flips,
+                "elapsed_ms": 9000,
+            })
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.json()["status"], "finished")
+            self.assertTrue(result.json()["result_saved"])
+            save_record.assert_called_once_with(
+                "Solo", 4, "memories:local-game", 9000, 8
+            )
+            invalid = client.post("/api/memories/solo/finish", json={
+                "game_id": "invalid-game",
+                "player_id": "solo",
+                "player_name": "Solo",
+                "grid_size": 4,
+                "deck": [CARD_SYMBOLS[0]] * 16,
+                "flips": flips,
+                "elapsed_ms": 9000,
+            })
+            self.assertEqual(invalid.status_code, 400)
+
     def test_solo_and_multiplayer_routes_expose_memories_game(self):
         manager = MemoriesManager()
         with (

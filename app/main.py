@@ -536,6 +536,8 @@ class MemoriesSoloFinishRequest(MemoriesPlayerRequest):
     game_id: str = Field(min_length=1, max_length=64)
     flips: List[int] = Field(max_items=2000)
     elapsed_ms: int = Field(ge=0, le=3_600_000)
+    grid_size: Optional[Literal[4, 6]] = None
+    deck: Optional[List[str]] = Field(default=None, max_items=36)
 
 class MemoriesReadyRequest(MemoriesRoomRequest):
     ready: bool = True
@@ -3442,16 +3444,37 @@ async def flip_memories_solo(req: MemoriesSoloFlipRequest):
 @app.post("/api/memories/solo/finish")
 async def finish_memories_solo(req: MemoriesSoloFinishRequest):
     try:
-        game = memories_manager.finish_solo(
-            req.game_id,
-            req.player_id,
-            req.flips,
-            req.elapsed_ms,
-        )
+        if req.deck is not None:
+            if req.grid_size is None:
+                raise ValueError("La taille de grille est requise avec le paquet local.")
+            game = memories_manager.finish_local_solo(
+                req.game_id,
+                req.player_id,
+                req.player_name,
+                req.grid_size,
+                req.deck,
+                req.flips,
+                req.elapsed_ms,
+            )
+        else:
+            game = memories_manager.finish_solo(
+                req.game_id,
+                req.player_id,
+                req.flips,
+                req.elapsed_ms,
+            )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if req.deck is not None:
+        record_multigame_session_start(
+            f"memories:{game.game_id}",
+            "memories",
+            "solo",
+            "Memory",
+            f"{game.grid_size}x{game.grid_size}",
+        )
     try:
         _record_memories_solo_result(game)
     except RuntimeError as exc:

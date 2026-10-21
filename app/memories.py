@@ -2,6 +2,7 @@ import random
 import threading
 import time
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -268,6 +269,54 @@ class MemoriesManager:
             game.points = replay.points
             game.status = replay.status
             game.finished_at = replay.finished_at
+            return game
+
+    def finish_local_solo(
+        self,
+        game_id: str,
+        player_id: str,
+        player_name: str,
+        grid_size: int,
+        deck: list[str],
+        flips: list[int],
+        elapsed_ms: int,
+    ) -> MemoryGame:
+        with self.lock:
+            if grid_size not in VALID_GRID_SIZES:
+                raise ValueError("Choisissez une grille de 4 × 4 ou de 6 × 6.")
+            if len(deck) != grid_size * grid_size:
+                raise ValueError("La grille ne contient pas le bon nombre de cartes.")
+            symbols = Counter(deck)
+            if (
+                any(symbol not in CARD_SYMBOLS for symbol in symbols)
+                or len(symbols) != grid_size * grid_size // 2
+                or any(count != 2 for count in symbols.values())
+            ):
+                raise ValueError("La grille doit contenir des paires valides.")
+
+            existing = self.solo_games.get(game_id)
+            if existing:
+                if existing.player_id != player_id:
+                    raise KeyError("Partie introuvable.")
+                if existing.cards != deck or existing.grid_size != grid_size:
+                    raise ValueError("La grille ne correspond pas à cette partie.")
+                return self.finish_solo(game_id, player_id, flips, elapsed_ms)
+
+            started_at = time.time() - max(0, elapsed_ms) / 1000
+            game = MemoryGame(
+                game_id,
+                player_id,
+                _clean_name(player_name),
+                grid_size,
+                deck.copy(),
+                started_at=started_at,
+            )
+            for index in flips:
+                self._flip_solo_game(game, index)
+            if game.status != "finished":
+                raise ValueError("La séquence ne termine pas la partie.")
+            game.finished_at = started_at + max(0, elapsed_ms) / 1000
+            self.solo_games[game_id] = game
             return game
 
     @staticmethod

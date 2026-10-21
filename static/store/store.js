@@ -14,6 +14,7 @@
   const logoutButton = document.getElementById('store-logout-button');
   const adminUsageLink = document.getElementById('store-admin-usage-link');
   const gameLinks = [...document.querySelectorAll('.store-game-card-available')];
+  const gameCards = [...document.querySelectorAll('.store-game-card-available, .store-game-card-soon')];
   const gameSearch = document.getElementById('store-game-search');
   const gameCount = document.getElementById('store-game-count');
   const noGamesMessage = document.getElementById('store-no-games');
@@ -150,19 +151,19 @@
       ?.dataset.storeFilter || 'all';
     let visibleCount = 0;
 
-    gameLinks.forEach(link => {
-      const searchableText = normalizeSearchText(link.textContent);
-      const categories = (link.dataset.categories || '').split(/\s+/);
+    gameCards.forEach(card => {
+      const searchableText = normalizeSearchText(card.textContent);
+      const categories = (card.dataset.categories || '').split(/\s+/);
       const matchesSearch = !search || searchableText.includes(search);
       const matchesCategory = activeFilter === 'all' || categories.includes(activeFilter);
       const visible = matchesSearch && matchesCategory;
-      link.hidden = !visible;
+      card.hidden = !visible;
       if (visible) visibleCount += 1;
     });
 
-    gameCount.textContent = visibleCount === gameLinks.length
+    gameCount.textContent = visibleCount === gameCards.length
       ? `${visibleCount} jeu${visibleCount === 1 ? '' : 'x'}`
-      : `${visibleCount} / ${gameLinks.length} jeux`;
+      : `${visibleCount} / ${gameCards.length} jeux`;
     noGamesMessage.hidden = visibleCount > 0;
   }
 
