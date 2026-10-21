@@ -80,6 +80,14 @@ class FrontendContractTests(unittest.TestCase):
         self.assertEqual(page.count_text.strip(), "11 jeux")
         self.assertEqual(len({card["href"] for card in page.cards}), len(page.cards))
 
+    def test_store_hides_unfinished_sessions_and_cumulative_play_time(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('id="store-stat-unfinished"', response.text)
+        self.assertNotIn('id="store-stat-hours"', response.text)
+        self.assertNotIn("Sessions non terminées", response.text)
+        self.assertNotIn("Temps de jeu cumulé", response.text)
+
     def test_every_game_page_and_its_local_scripts_and_stylesheets_load(self):
         for path in GAME_PAGES:
             with self.subTest(game_page=path):

@@ -288,6 +288,9 @@
 .usage-table-wrap th { color: var(--game-muted); font-size: .72rem; font-weight: 700; }
 .usage-table-wrap tbody tr:last-child td { border-bottom: 0; }
 .usage-table-wrap td:first-child { font-weight: 700; }
+.usage-table-wrap details > summary { color: var(--game-accent); cursor: pointer; font-weight: 700; }
+.usage-table-wrap .usage-player-games { min-width: 900px; margin-top: 10px; }
+.usage-table-wrap .usage-player-games p { margin: 6px 0; white-space: normal; }
 
 .usage-share {
   display: grid;

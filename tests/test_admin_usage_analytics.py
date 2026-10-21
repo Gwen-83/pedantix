@@ -102,6 +102,47 @@ class AdminUsageAnalyticsTests(unittest.TestCase):
         )
         self.assertEqual(finished_session["players"], ["Alice", "Gwen"])
         self.assertEqual(finished_session["player_seconds"], 380)
+        self.assertEqual(len(finished_session["player_results"]), 2)
+        alice = next(player for player in data["players"] if player["username"] == "Alice")
+        self.assertEqual(alice["player_seconds"], 200)
+        self.assertEqual(alice["game_stats"][0]["game_id"], "battleship")
+        self.assertEqual(alice["game_stats"][0]["player_seconds"], 200)
+        self.assertEqual(alice["game_stats"][0]["points"], 20)
+
+    def test_analytics_includes_orphaned_memory_results_with_detailed_player_stats(self):
+        finished = datetime.now(timezone.utc).replace(microsecond=0)
+        with database.DatabaseContext() as db:
+            db.execute(
+                """INSERT INTO user_game_stats
+                   (username, session_id, game_id, mode, difficulty, metrics_json, title,
+                    won, surrendered, attempts, duration_seconds, points, finished_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    "Alice", "memories:orphaned-result", "memories", "solo", "4x4",
+                    '{"grid_size":4,"pairs":8,"moves":12,"elapsed_ms":42000}',
+                    "Memory", 1, 0, 12, 42, 800, finished.isoformat(),
+                ),
+            )
+
+        response = self.client.get(
+            "/api/admin/usage-analytics?period=30", headers=self.gwen_headers
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        memory_session = next(
+            session for session in data["recent_sessions"]
+            if session["session_id"] == "memories:orphaned-result"
+        )
+        self.assertEqual(memory_session["game_name"], "Memory")
+        self.assertEqual(memory_session["players"], ["Alice"])
+        self.assertEqual(memory_session["player_seconds"], 42)
+        self.assertEqual(memory_session["player_results"][0]["metrics"]["elapsed_ms"], 42000)
+        alice = next(player for player in data["players"] if player["username"] == "Alice")
+        memory_stats = next(game for game in alice["game_stats"] if game["game_id"] == "memories")
+        self.assertEqual(memory_stats["points"], 800)
+        self.assertEqual(memory_stats["metrics"]["avg_elapsed_seconds"], 42)
+        self.assertEqual(memory_stats["metrics"]["avg_moves"], 12)
 
     def test_analytics_reports_current_google_street_view_quota_usage(self):
         self.assertTrue(database.reserve_geoguessr_google_usage(123, 4_000))

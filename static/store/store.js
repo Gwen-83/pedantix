@@ -179,8 +179,6 @@
       document.getElementById('store-stat-games').textContent = String(gameLinks.length);
       document.getElementById('store-stat-started').textContent = Number(data.started_games || 0).toLocaleString('fr-FR');
       document.getElementById('store-stat-finished').textContent = Number(data.finished_games || 0).toLocaleString('fr-FR');
-      document.getElementById('store-stat-unfinished').textContent = Number(data.unfinished_games || 0).toLocaleString('fr-FR');
-      document.getElementById('store-stat-hours').textContent = `${Number(data.player_hours || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} h`;
       const gamesById = new Map((data.games || []).map(game => [game.game_id, game]));
       gameLinks.forEach(link => {
         const gameId = new URL(link.href).pathname.split('/').filter(Boolean).at(-1);

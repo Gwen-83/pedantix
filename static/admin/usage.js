@@ -34,6 +34,15 @@
       : new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
   }
 
+  function formatMetrics(metrics) {
+    return Object.entries(metrics || {}).map(([key, value]) => {
+      const formatted = value && typeof value === 'object'
+        ? JSON.stringify(value)
+        : value == null ? '—' : String(value);
+      return `${key.replaceAll('_', ' ')} : ${formatted}`;
+    });
+  }
+
   function makeCell(row, value) {
     const cell = document.createElement('td');
     cell.textContent = value == null || value === '' ? '—' : String(value);
@@ -252,19 +261,87 @@
 
     const players = document.getElementById('usage-players');
     players.replaceChildren();
-    data.players.forEach((player) => appendRow(players, [
-      player.username, number(player.games), number(player.wins), `${player.win_rate_pct}%`,
-      player.avg_attempts, number(player.surrenders),
-      `${formatDuration(player.player_seconds)} (${player.player_hours} h)`,
-      number(player.points), gameNames.get(player.favorite_game) || player.favorite_game,
-      dateTime(player.last_played_at),
-    ]));
+    data.players.forEach((player) => {
+      const row = document.createElement('tr');
+      [
+        player.username, number(player.games), number(player.wins), `${player.win_rate_pct}%`,
+        player.avg_attempts, number(player.surrenders),
+        `${formatDuration(player.player_seconds)} (${player.player_hours} h)`,
+        number(player.points), gameNames.get(player.favorite_game) || player.favorite_game,
+        dateTime(player.last_played_at),
+      ].forEach((value) => makeCell(row, value));
+      const detailsCell = document.createElement('td');
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Voir par jeu';
+      details.append(summary);
+      const gameTable = document.createElement('table');
+      gameTable.className = 'usage-player-games';
+      const gameHead = document.createElement('thead');
+      const heading = document.createElement('tr');
+      ['Jeu', 'Parties', 'Victoires', 'Temps de jeu', 'Tentatives moy.', 'Abandons', 'Points', 'Statistiques détaillées']
+        .forEach((label) => {
+          const cell = document.createElement('th');
+          cell.textContent = label;
+          heading.append(cell);
+        });
+      gameHead.append(heading);
+      gameTable.append(gameHead);
+      const gameBody = document.createElement('tbody');
+      (player.game_stats || []).forEach((game) => {
+        const gameRow = document.createElement('tr');
+        [
+          game.game_name, number(game.games), `${number(game.wins)} (${game.win_rate_pct}%)`,
+          formatDuration(game.player_seconds), game.avg_attempts, number(game.surrenders),
+          number(game.points),
+        ].forEach((value) => makeCell(gameRow, value));
+        const metricsCell = document.createElement('td');
+        const metricParts = formatMetrics(game.metrics);
+        const resultDetails = document.createElement('details');
+        const resultSummary = document.createElement('summary');
+        resultSummary.textContent = metricParts.length
+          ? metricParts.join(' · ')
+          : 'Voir les résultats récents';
+        resultDetails.append(resultSummary);
+        (game.recent_results || []).forEach((result) => {
+          const resultLine = document.createElement('p');
+          const resultMetrics = formatMetrics(result.metrics);
+          resultLine.textContent = [
+            dateTime(result.finished_at),
+            result.won ? 'Victoire' : 'Défaite',
+            formatDuration(result.duration_seconds),
+            `${number(result.points)} pts`,
+            result.difficulty,
+            ...resultMetrics,
+          ].filter(Boolean).join(' · ');
+          resultDetails.append(resultLine);
+        });
+        metricsCell.append(resultDetails);
+        gameRow.append(metricsCell);
+        gameBody.append(gameRow);
+      });
+      gameTable.append(gameBody);
+      details.append(gameTable);
+      detailsCell.append(details);
+      row.append(detailsCell);
+      players.append(row);
+    });
 
     const recent = document.getElementById('usage-recent');
     recent.replaceChildren();
     data.recent_sessions.forEach((session) => appendRow(recent, [
       dateTime(session.started_at), session.game_name, session.mode,
-      session.difficulty, session.players.join(', ') || 'Aucun résultat joueur enregistré',
+      session.difficulty,
+      (session.player_results || []).map((result) => {
+        const metrics = formatMetrics(result.metrics);
+        return [
+          `${result.username} (${result.won ? 'victoire' : 'défaite'}`,
+          formatDuration(result.duration_seconds),
+          `${number(result.points)} pts`,
+          result.difficulty,
+          ...metrics,
+        ].filter(Boolean).join(' · ') + ')';
+      }).join(' | ') || session.players.join(', ') || 'Aucun résultat joueur enregistré',
       formatDuration(session.player_seconds), formatDuration(session.wall_seconds),
       session.finished_at ? 'Terminée' : 'En cours / abandonnée',
     ]));

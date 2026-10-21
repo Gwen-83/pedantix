@@ -961,12 +961,16 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
 
             stats_sql = (
                 "SELECT u.session_id, u.username, u.game_id, u.mode, u.difficulty, "
-                "u.won, u.surrendered, u.attempts, u.duration_seconds, u.points, u.finished_at "
-                "FROM user_game_stats u JOIN game_sessions s ON s.session_id = u.session_id"
+                "u.won, u.surrendered, u.attempts, u.duration_seconds, u.points, "
+                "u.metrics_json, u.title, u.finished_at "
+                "FROM user_game_stats u LEFT JOIN game_sessions s ON s.session_id = u.session_id"
             )
             if start:
-                stats_sql += " WHERE s.created_at >= ?"
-                db.execute(stats_sql, params)
+                stats_sql += (
+                    " WHERE s.created_at >= ? "
+                    "OR (s.session_id IS NULL AND u.finished_at >= ?)"
+                )
+                db.execute(stats_sql, (params[0], params[0]))
             else:
                 db.execute(stats_sql)
             stats_rows = [dict(row) for row in db.fetchall()]
@@ -1051,6 +1055,7 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
             "finished_at": finished_at,
             "wall_seconds": wall_seconds,
             "players": [],
+            "player_results": [],
             "player_seconds": 0,
         }
 
@@ -1058,7 +1063,46 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
         session_id = str(row["session_id"])
         session = sessions.get(session_id)
         if not session:
-            continue
+            finished_at = _parse_analytics_datetime(row.get("finished_at"))
+            if not finished_at or (start and finished_at < start):
+                continue
+            game_id = str(row.get("game_id") or "unknown")
+            game = games.setdefault(game_id, new_game(game_id))
+            mode = str(row.get("mode") or "unknown")
+            session = sessions.setdefault(
+                session_id,
+                {
+                    "session_id": session_id,
+                    "game_id": game_id,
+                    "game_name": game["name"],
+                    "title": str(row.get("title") or game["name"]),
+                    "mode": mode,
+                    "difficulty": row.get("difficulty"),
+                    "started_at": finished_at,
+                    "finished_at": finished_at,
+                    "wall_seconds": 0,
+                    "players": [],
+                    "player_results": [],
+                    "player_seconds": 0,
+                },
+            )
+            game["sessions_started"] += 1
+            game["sessions_finished"] += 1
+            mode_group = modes.setdefault(
+                mode, {"mode": mode, "sessions": 0, "finished_sessions": 0,
+                       "player_seconds": 0, "results": 0, "wins": 0}
+            )
+            mode_group["sessions"] += 1
+            mode_group["finished_sessions"] += 1
+            daily = by_day.setdefault(
+                finished_at.date().isoformat(),
+                {"date": finished_at.date().isoformat(), "sessions_started": 0,
+                 "sessions_finished": 0, "player_seconds": 0, "players": set()},
+            )
+            daily["sessions_started"] += 1
+            daily["sessions_finished"] += 1
+            by_hour[finished_at.hour] += 1
+            by_weekday[finished_at.weekday()] += 1
         game = games[session["game_id"]]
         username = str(row.get("username") or "")
         duration = max(0, int(row.get("duration_seconds") or 0))
@@ -1084,6 +1128,20 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
         mode_group["wins"] += int(won)
         session["player_seconds"] += duration
         session["players"].append(username.strip())
+        try:
+            metrics = json.loads(row.get("metrics_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            metrics = {}
+        session["player_results"].append({
+            "username": username.strip(),
+            "won": won,
+            "surrendered": surrendered,
+            "attempts": max(0, int(row.get("attempts") or 0)),
+            "duration_seconds": duration,
+            "points": int(row.get("points") or 0),
+            "difficulty": row.get("difficulty"),
+            "metrics": metrics if isinstance(metrics, dict) else {},
+        })
         day = session["started_at"].date().isoformat()
         daily = by_day[day]
         daily["player_seconds"] += duration
@@ -1118,6 +1176,47 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
         player["games_by_id"][session["game_id"]] = (
             player["games_by_id"].get(session["game_id"], 0) + 1
         )
+        player_game = player.setdefault("game_stats", {}).setdefault(
+            session["game_id"],
+            {
+                "game_id": session["game_id"],
+                "game_name": session["game_name"],
+                "games": 0,
+                "wins": 0,
+                "player_seconds": 0,
+                "points": 0,
+                "attempts": 0,
+                "surrenders": 0,
+                "difficulty_breakdown": {},
+                "metric_rows": [],
+                "recent_results": [],
+            },
+        )
+        player_game["games"] += 1
+        player_game["wins"] += int(won)
+        player_game["player_seconds"] += duration
+        player_game["points"] += int(row.get("points") or 0)
+        player_game["attempts"] += max(0, int(row.get("attempts") or 0))
+        player_game["surrenders"] += int(surrendered)
+        player_game["difficulty_breakdown"][str(row.get("difficulty") or "Non renseignée")] = (
+            player_game["difficulty_breakdown"].get(
+                str(row.get("difficulty") or "Non renseignée"), 0
+            ) + 1
+        )
+        player_game["metric_rows"].append({"metrics_json": row.get("metrics_json")})
+        player_game["recent_results"].append({
+            "finished_at": (
+                _parse_analytics_datetime(row.get("finished_at")) or session["started_at"]
+            ).isoformat(),
+            "mode": mode,
+            "difficulty": row.get("difficulty"),
+            "won": won,
+            "surrendered": surrendered,
+            "attempts": max(0, int(row.get("attempts") or 0)),
+            "duration_seconds": duration,
+            "points": int(row.get("points") or 0),
+            "metrics": metrics if isinstance(metrics, dict) else {},
+        })
         played_at = _parse_analytics_datetime(row.get("finished_at")) or session["started_at"]
         if not player["last_played_at"] or played_at > player["last_played_at"]:
             player["last_played_at"] = played_at
@@ -1182,13 +1281,27 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
                 {name.casefold(): name for name in session["players"] if name.strip()}.values(),
                 key=str.casefold,
             ),
+            "player_results": session["player_results"],
         })
 
     player_results = []
     for player in players.values():
+        detailed_games = []
+        for game in player["game_stats"].values():
+            game["metrics"] = _summarize_game_metrics(
+                game["game_id"], game["metric_rows"]
+            )
+            game["win_rate_pct"] = round(game["wins"] / game["games"] * 100, 1)
+            game["avg_attempts"] = round(game["attempts"] / game["games"], 1)
+            game["recent_results"].sort(
+                key=lambda result: result["finished_at"], reverse=True
+            )
+            game["recent_results"] = game["recent_results"][:10]
+            game.pop("metric_rows")
+            detailed_games.append(game)
         player_results.append({
             **{key: value for key, value in player.items()
-               if key not in {"last_played_at", "games_by_id"}},
+               if key not in {"last_played_at", "games_by_id", "game_stats"}},
             "win_rate_pct": round(player["wins"] / player["games"] * 100, 1)
             if player["games"] else 0,
             "avg_attempts": round(player["attempts"] / player["games"], 1)
@@ -1199,6 +1312,9 @@ def get_admin_usage_analytics(period: str = "90") -> Dict[str, Any]:
             "favorite_game": max(
                 player["games_by_id"], key=player["games_by_id"].get
             ) if player["games_by_id"] else None,
+            "game_stats": sorted(
+                detailed_games, key=lambda game: (-game["player_seconds"], game["game_name"].casefold())
+            ),
         })
     player_results.sort(key=lambda player: (-player["player_seconds"], -player["games"]))
 
@@ -2339,6 +2455,17 @@ def _summarize_game_metrics(game_id: str, metric_rows: List[Dict[str, Any]]) -> 
         return {
             "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
             "best_score": max(scores) if scores else None,
+        }
+    if game_id == "memories":
+        elapsed = numbers("elapsed_ms")
+        moves = numbers("moves")
+        pairs = numbers("pairs")
+        return {
+            "avg_elapsed_seconds": round(sum(elapsed) / len(elapsed) / 1000, 1)
+            if elapsed else None,
+            "best_elapsed_seconds": round(min(elapsed) / 1000, 1) if elapsed else None,
+            "avg_moves": round(sum(moves) / len(moves), 1) if moves else None,
+            "avg_pairs": round(sum(pairs) / len(pairs), 1) if pairs else None,
         }
     if game_id == "geoguessr":
         scores = numbers("score")
