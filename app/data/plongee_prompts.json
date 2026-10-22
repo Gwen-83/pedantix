@@ -841,6 +841,54 @@
           "ctenophore"
         ],
         "score": 79
+      },
+      {
+        "answer": "phoque moine",
+        "score": 65
+      },
+      {
+        "answer": "phoque léopard",
+        "score": 55
+      },
+      {
+        "answer": "dauphin de Commerson",
+        "score": 72
+      },
+      {
+        "answer": "poisson-lime",
+        "score": 70
+      },
+      {
+        "answer": "tortue luth",
+        "score": 30
+      },
+      {
+        "answer": "tortue caouanne",
+        "score": 48
+      },
+      {
+        "answer": "baleine de Minke",
+        "score": 50
+      },
+      {
+        "answer": "phoque gris",
+        "score": 32
+      },
+      {
+        "answer": "moule bleue",
+        "score": 20
+      },
+      {
+        "answer": "crevette-mante",
+        "score": 70
+      },
+      {
+        "answer": "étoile de mer épineuse",
+        "score": 68
+      },
+      {
+        "answer": "tortue verte",
+        "score": 22
       }
     ]
   },
@@ -1547,6 +1595,77 @@
       {
         "answer": "sapote jaune",
         "score": 80
+      },
+      {
+        "answer": "lucuma",
+        "score": 72
+      },
+      {
+        "answer": "noni",
+        "score": 78
+      },
+      {
+        "answer": "camu-camu",
+        "score": 85
+      },
+      {
+        "answer": "fruit du baobab",
+        "score": 70
+      },
+      {
+        "answer": "kaki pomme",
+        "score": 38
+      },
+      {
+        "answer": "noix de kola",
+        "score": 70
+      },
+      {
+        "answer": "cabosse de cacao",
+        "score": 62
+      },
+      {
+        "answer": "sapote rouge",
+        "score": 75
+      },
+      {
+        "answer": "spondias",
+        "score": 83
+      },
+      {
+        "answer": "jujube",
+        "score": 58
+      },
+      {
+        "answer": "lansium",
+        "aliases": [
+          "langsat"
+        ],
+        "score": 78
+      },
+      {
+        "answer": "rambai",
+        "score": 88
+      },
+      {
+        "answer": "santol",
+        "score": 82
+      },
+      {
+        "answer": "bignay",
+        "score": 86
+      },
+      {
+        "answer": "marang",
+        "score": 80
+      },
+      {
+        "answer": "pulasan",
+        "score": 80
+      },
+      {
+        "answer": "barbadine",
+        "score": 72
       }
     ]
   },
@@ -1900,12 +2019,52 @@
           "guitare 7 cordes"
         ],
         "score": 53
+      },
+      {
+        "answer": "erhu",
+        "score": 55
+      },
+      {
+        "answer": "guzheng",
+        "score": 62
+      },
+      {
+        "answer": "shamisen",
+        "score": 65
+      },
+      {
+        "answer": "biwa",
+        "score": 75
+      },
+      {
+        "answer": "kanklės",
+        "score": 82
+      },
+      {
+        "answer": "guitare hawaïenne",
+        "score": 36
+      },
+      {
+        "answer": "violon chinois",
+        "score": 60
+      },
+      {
+        "answer": "violon d’amour",
+        "score": 76
+      },
+      {
+        "answer": "bandonéon",
+        "score": 39
+      },
+      {
+        "answer": "balafon",
+        "score": 55
       }
     ]
   },
   {
     "id": "espace",
-    "prompt": "Citez une planète ou un satellite naturel du système solaire.",
+    "prompt": "Citez une planète, une planète naine ou un satellite naturel du système solaire.",
     "answers": [
       {
         "answer": "Mars",
@@ -2261,6 +2420,134 @@
           "laomedie"
         ],
         "score": 80
+      },
+      {
+        "answer": "Vanth",
+        "score": 90
+      },
+      {
+        "answer": "Weywot",
+        "score": 92
+      },
+      {
+        "answer": "Ilmarë",
+        "score": 94
+      },
+      {
+        "answer": "Dysnomie",
+        "score": 75
+      },
+      {
+        "answer": "Carpo",
+        "score": 88
+      },
+      {
+        "answer": "Valetudo",
+        "score": 94
+      },
+      {
+        "answer": "Euporie",
+        "score": 97
+      },
+      {
+        "answer": "Thelxinoe",
+        "score": 97
+      },
+      {
+        "answer": "Sinope",
+        "score": 88
+      },
+      {
+        "answer": "Cressida",
+        "score": 84
+      },
+      {
+        "answer": "Cordelia",
+        "score": 90
+      },
+      {
+        "answer": "Ophelia",
+        "score": 83
+      },
+      {
+        "answer": "Juliet",
+        "score": 81
+      },
+      {
+        "answer": "Portia",
+        "score": 78
+      },
+      {
+        "answer": "Rosalind",
+        "score": 88
+      },
+      {
+        "answer": "Cupid",
+        "score": 92
+      },
+      {
+        "answer": "Mab",
+        "score": 92
+      },
+      {
+        "answer": "Prospero",
+        "score": 89
+      },
+      {
+        "answer": "Setebos",
+        "score": 94
+      },
+      {
+        "answer": "Hippocamp",
+        "score": 86
+      },
+      {
+        "answer": "Aegir",
+        "score": 98
+      },
+      {
+        "answer": "Tarqeq",
+        "score": 97
+      },
+      {
+        "answer": "Kiviuq",
+        "score": 94
+      },
+      {
+        "answer": "Paaliaq",
+        "score": 95
+      },
+      {
+        "answer": "Albiorix",
+        "score": 92
+      },
+      {
+        "answer": "Anthe",
+        "score": 98
+      },
+      {
+        "answer": "Methone",
+        "score": 96
+      },
+      {
+        "answer": "Pallene",
+        "score": 93
+      },
+      {
+        "answer": "Daphnis",
+        "score": 95
+      },
+      {
+        "answer": "Aegaeon",
+        "score": 98
+      },
+      {
+        "answer": "Hiʻiaka",
+        "score": 92
+      },
+      {
+        "answer": "Namaka",
+        "score": 95
       }
     ]
   },
@@ -2513,6 +2800,46 @@
       {
         "answer": "solitaire de Rodrigues",
         "score": 89
+      },
+      {
+        "answer": "manchot empereur",
+        "score": 10
+      },
+      {
+        "answer": "manchot royal",
+        "score": 25
+      },
+      {
+        "answer": "manchot Adélie",
+        "score": 35
+      },
+      {
+        "answer": "manchot papou",
+        "score": 45
+      },
+      {
+        "answer": "canard de Laysan",
+        "score": 77
+      },
+      {
+        "answer": "alca géant",
+        "score": 80
+      },
+      {
+        "answer": "manchot de Humboldt",
+        "score": 45
+      },
+      {
+        "answer": "manchot à jugulaire",
+        "score": 55
+      },
+      {
+        "answer": "manchot des Galápagos",
+        "score": 72
+      },
+      {
+        "answer": "grand pingouin",
+        "score": 65
       }
     ]
   },
@@ -3003,6 +3330,38 @@
           "écologue"
         ],
         "score": 66
+      },
+      {
+        "answer": "guide de randonnée",
+        "score": 30
+      },
+      {
+        "answer": "jardinier-paysagiste",
+        "score": 13
+      },
+      {
+        "answer": "arboriste-grimpeur",
+        "score": 36
+      },
+      {
+        "answer": "animateur nature",
+        "score": 28
+      },
+      {
+        "answer": "gardien de refuge",
+        "score": 52
+      },
+      {
+        "answer": "paysagiste concepteur",
+        "score": 36
+      },
+      {
+        "answer": "sylviculteur",
+        "score": 55
+      },
+      {
+        "answer": "technicien forestier",
+        "score": 45
       }
     ]
   },
@@ -3525,6 +3884,29 @@
           "algue comestible"
         ],
         "score": 43
+      },
+      {
+        "answer": "chou vert",
+        "score": 8
+      },
+      {
+        "answer": "pomme de terre douce",
+        "aliases": [
+          "patate douce"
+        ],
+        "score": 10
+      },
+      {
+        "answer": "chou-fleur violet",
+        "score": 48
+      },
+      {
+        "answer": "blette",
+        "score": 18
+      },
+      {
+        "answer": "chou portugais",
+        "score": 60
       }
     ]
   },
@@ -4232,6 +4614,50 @@
           "agility canine"
         ],
         "score": 20
+      },
+      {
+        "answer": "kin-ball",
+        "score": 65
+      },
+      {
+        "answer": "sepak takraw",
+        "score": 82
+      },
+      {
+        "answer": "pickleball",
+        "score": 25
+      },
+      {
+        "answer": "canicross",
+        "score": 42
+      },
+      {
+        "answer": "disc golf",
+        "score": 40
+      },
+      {
+        "answer": "futsal",
+        "score": 35
+      },
+      {
+        "answer": "savate",
+        "score": 38
+      },
+      {
+        "answer": "paddle",
+        "score": 25
+      },
+      {
+        "answer": "polo kayak",
+        "score": 73
+      },
+      {
+        "answer": "rugby subaquatique",
+        "score": 87
+      },
+      {
+        "answer": "ultimate frisbee",
+        "score": 35
       }
     ]
   },
@@ -4926,6 +5352,50 @@
           "navaho"
         ],
         "score": 77
+      },
+      {
+        "answer": "manx",
+        "score": 80
+      },
+      {
+        "answer": "frioulan",
+        "score": 78
+      },
+      {
+        "answer": "cantonais",
+        "score": 12
+      },
+      {
+        "answer": "hakka",
+        "score": 38
+      },
+      {
+        "answer": "akan",
+        "score": 50
+      },
+      {
+        "answer": "oromo",
+        "score": 48
+      },
+      {
+        "answer": "créole réunionnais",
+        "score": 55
+      },
+      {
+        "answer": "créole mauricien",
+        "score": 55
+      },
+      {
+        "answer": "wallon",
+        "score": 72
+      },
+      {
+        "answer": "ladin",
+        "score": 82
+      },
+      {
+        "answer": "tibétain",
+        "score": 42
       }
     ]
   },
@@ -5203,6 +5673,50 @@
       {
         "answer": "rose indien",
         "score": 33
+      },
+      {
+        "answer": "bleu canard",
+        "score": 28
+      },
+      {
+        "answer": "vert sapin",
+        "score": 24
+      },
+      {
+        "answer": "rose fuchsia",
+        "score": 21
+      },
+      {
+        "answer": "rose saumon",
+        "score": 24
+      },
+      {
+        "answer": "rouge brique",
+        "score": 25
+      },
+      {
+        "answer": "rouge carmin",
+        "score": 35
+      },
+      {
+        "answer": "gris perle",
+        "score": 30
+      },
+      {
+        "answer": "gris ardoise",
+        "score": 40
+      },
+      {
+        "answer": "blanc cassé",
+        "score": 32
+      },
+      {
+        "answer": "brun acajou",
+        "score": 50
+      },
+      {
+        "answer": "vert émeraude",
+        "score": 20
       }
     ]
   },
@@ -5491,6 +6005,82 @@
           "panorpe"
         ],
         "score": 66
+      },
+      {
+        "answer": "staphylin",
+        "score": 55
+      },
+      {
+        "answer": "puceron noir",
+        "score": 40
+      },
+      {
+        "answer": "puceron vert",
+        "score": 35
+      },
+      {
+        "answer": "fourmi rouge",
+        "score": 20
+      },
+      {
+        "answer": "abeille maçonne",
+        "score": 56
+      },
+      {
+        "answer": "sphinx tête de mort",
+        "score": 62
+      },
+      {
+        "answer": "papillon monarque",
+        "score": 12
+      },
+      {
+        "answer": "coccinelle asiatique",
+        "score": 24
+      },
+      {
+        "answer": "bourdon terrestre",
+        "score": 20
+      },
+      {
+        "answer": "punaise verte",
+        "score": 28
+      },
+      {
+        "answer": "punaise des bois",
+        "score": 25
+      },
+      {
+        "answer": "punaise rouge",
+        "score": 35
+      },
+      {
+        "answer": "grande sauterelle verte",
+        "score": 24
+      },
+      {
+        "answer": "mouche à viande",
+        "score": 40
+      },
+      {
+        "answer": "fourmi noire",
+        "score": 16
+      },
+      {
+        "answer": "fourmi pharaon",
+        "score": 55
+      },
+      {
+        "answer": "frelon asiatique",
+        "score": 22
+      },
+      {
+        "answer": "frelon européen",
+        "score": 25
+      },
+      {
+        "answer": "bombyx",
+        "score": 48
       }
     ]
   },
@@ -5903,6 +6493,58 @@
           "glycine du Japon"
         ],
         "score": 64
+      },
+      {
+        "answer": "achillée",
+        "score": 40
+      },
+      {
+        "answer": "mimosa",
+        "score": 12
+      },
+      {
+        "answer": "campanule",
+        "score": 38
+      },
+      {
+        "answer": "cyclamen",
+        "score": 32
+      },
+      {
+        "answer": "iris japonais",
+        "score": 57
+      },
+      {
+        "answer": "bougainvillée",
+        "score": 30
+      },
+      {
+        "answer": "bruyère",
+        "score": 20
+      },
+      {
+        "answer": "coquelourde",
+        "score": 65
+      },
+      {
+        "answer": "lilas",
+        "score": 12
+      },
+      {
+        "answer": "lisianthus",
+        "score": 50
+      },
+      {
+        "answer": "phlox",
+        "score": 40
+      },
+      {
+        "answer": "trèfle",
+        "score": 8
+      },
+      {
+        "answer": "spirée",
+        "score": 48
       }
     ]
   },
@@ -6318,6 +6960,74 @@
           "pruche"
         ],
         "score": 56
+      },
+      {
+        "answer": "mûrier",
+        "score": 24
+      },
+      {
+        "answer": "micocoulier",
+        "score": 55
+      },
+      {
+        "answer": "frêne pleureur",
+        "score": 55
+      },
+      {
+        "answer": "saule pleureur",
+        "score": 15
+      },
+      {
+        "answer": "mélia",
+        "score": 55
+      },
+      {
+        "answer": "ginkgo biloba",
+        "score": 22
+      },
+      {
+        "answer": "arbre à soie",
+        "score": 35
+      },
+      {
+        "answer": "arbre à encens",
+        "score": 70
+      },
+      {
+        "answer": "arbousier",
+        "score": 34
+      },
+      {
+        "answer": "arbre à perruques",
+        "score": 58
+      },
+      {
+        "answer": "cèdre du Liban",
+        "score": 23
+      },
+      {
+        "answer": "charme commun",
+        "score": 38
+      },
+      {
+        "answer": "chêne-liège",
+        "score": 26
+      },
+      {
+        "answer": "chêne rouge",
+        "score": 28
+      },
+      {
+        "answer": "épicéa commun",
+        "score": 23
+      },
+      {
+        "answer": "magnolia grandiflora",
+        "score": 42
+      },
+      {
+        "answer": "tremble",
+        "score": 35
       }
     ]
   },
@@ -6745,6 +7455,61 @@
           "dhoki apso"
         ],
         "score": 54
+      },
+      {
+        "answer": "corgi",
+        "aliases": [
+          "welsh corgi"
+        ],
+        "score": 22
+      },
+      {
+        "answer": "bichon frisé",
+        "score": 29
+      },
+      {
+        "answer": "cocker spaniel",
+        "score": 20
+      },
+      {
+        "answer": "chow-chow",
+        "score": 34
+      },
+      {
+        "answer": "teckel nain",
+        "score": 31
+      },
+      {
+        "answer": "berger belge malinois",
+        "score": 12
+      },
+      {
+        "answer": "chien de montagne des Pyrénées",
+        "score": 32
+      },
+      {
+        "answer": "fox-terrier",
+        "score": 25
+      },
+      {
+        "answer": "goldendoodle",
+        "score": 45
+      },
+      {
+        "answer": "pinscher nain",
+        "score": 35
+      },
+      {
+        "answer": "staffordshire bull terrier",
+        "score": 37
+      },
+      {
+        "answer": "épagneul cocker",
+        "score": 16
+      },
+      {
+        "answer": "épagneul springer",
+        "score": 36
       }
     ]
   },
@@ -7197,6 +7962,54 @@
           "great highland bagpipe"
         ],
         "score": 41
+      },
+      {
+        "answer": "gong",
+        "score": 17
+      },
+      {
+        "answer": "cornet à pistons",
+        "score": 32
+      },
+      {
+        "answer": "claves",
+        "score": 53
+      },
+      {
+        "answer": "kora",
+        "score": 50
+      },
+      {
+        "answer": "boîte à musique",
+        "score": 8
+      },
+      {
+        "answer": "cloche",
+        "score": 7
+      },
+      {
+        "answer": "congas",
+        "score": 33
+      },
+      {
+        "answer": "cor des Alpes",
+        "score": 42
+      },
+      {
+        "answer": "guitare basse",
+        "score": 6
+      },
+      {
+        "answer": "guitare folk",
+        "score": 12
+      },
+      {
+        "answer": "orgue de barbarie",
+        "score": 34
+      },
+      {
+        "answer": "violon électrique",
+        "score": 20
       }
     ]
   },
@@ -8830,6 +9643,50 @@
       {
         "answer": "Villeurbanne",
         "score": 7
+      },
+      {
+        "answer": "Valenciennes",
+        "score": 25
+      },
+      {
+        "answer": "Boulogne-sur-Mer",
+        "score": 25
+      },
+      {
+        "answer": "Cahors",
+        "score": 30
+      },
+      {
+        "answer": "Cannes",
+        "score": 10
+      },
+      {
+        "answer": "Creil",
+        "score": 30
+      },
+      {
+        "answer": "Lunéville",
+        "score": 50
+      },
+      {
+        "answer": "Riom",
+        "score": 35
+      },
+      {
+        "answer": "Alès",
+        "score": 25
+      },
+      {
+        "answer": "Lons-le-Saunier",
+        "score": 45
+      },
+      {
+        "answer": "Nevers",
+        "score": 20
+      },
+      {
+        "answer": "Villefranche-sur-Saône",
+        "score": 40
       }
     ]
   },
@@ -9287,6 +10144,106 @@
           "omelette espagnole"
         ],
         "score": 16
+      },
+      {
+        "answer": "carbonade flamande",
+        "score": 50
+      },
+      {
+        "answer": "gratin de pommes de terre",
+        "score": 15
+      },
+      {
+        "answer": "fondue savoyarde",
+        "score": 15
+      },
+      {
+        "answer": "dahl de lentilles",
+        "score": 32
+      },
+      {
+        "answer": "currywurst",
+        "score": 53
+      },
+      {
+        "answer": "tourtière",
+        "score": 44
+      },
+      {
+        "answer": "carbonara",
+        "score": 10
+      },
+      {
+        "answer": "aligot",
+        "score": 25
+      },
+      {
+        "answer": "bœuf en daube",
+        "score": 35
+      },
+      {
+        "answer": "croque-madame",
+        "score": 16
+      },
+      {
+        "answer": "soupe à l’oignon",
+        "score": 18
+      },
+      {
+        "answer": "tian provençal",
+        "score": 32
+      },
+      {
+        "answer": "gougères",
+        "score": 40
+      },
+      {
+        "answer": "poulet basquaise",
+        "score": 22
+      },
+      {
+        "answer": "poulet yassa",
+        "score": 45
+      },
+      {
+        "answer": "soupe miso",
+        "score": 25
+      },
+      {
+        "answer": "soupe pho",
+        "score": 35
+      },
+      {
+        "answer": "soupe ramen",
+        "score": 18
+      },
+      {
+        "answer": "empanadas",
+        "score": 28
+      },
+      {
+        "answer": "sauté de porc",
+        "score": 12
+      },
+      {
+        "answer": "poulet tikka masala",
+        "score": 22
+      },
+      {
+        "answer": "cordon bleu",
+        "score": 10
+      },
+      {
+        "answer": "tajine de poulet",
+        "score": 15
+      },
+      {
+        "answer": "quenelles",
+        "score": 22
+      },
+      {
+        "answer": "œufs cocotte",
+        "score": 35
       }
     ]
   },
@@ -9631,6 +10588,46 @@
           "apfelstrudel"
         ],
         "score": 27
+      },
+      {
+        "answer": "Paris-Brest",
+        "score": 32
+      },
+      {
+        "answer": "tarte aux poires",
+        "score": 16
+      },
+      {
+        "answer": "brioche",
+        "score": 3
+      },
+      {
+        "answer": "pavé au chocolat",
+        "score": 38
+      },
+      {
+        "answer": "galette des rois",
+        "score": 8
+      },
+      {
+        "answer": "meringue",
+        "score": 15
+      },
+      {
+        "answer": "crêpe suzette",
+        "score": 45
+      },
+      {
+        "answer": "granité",
+        "score": 32
+      },
+      {
+        "answer": "bavarois",
+        "score": 35
+      },
+      {
+        "answer": "gâteau roulé",
+        "score": 20
       }
     ]
   },
@@ -10060,6 +11057,14 @@
       {
         "answer": "hygiéniste dentaire",
         "score": 43
+      },
+      {
+        "answer": "nutritionniste",
+        "score": 12
+      },
+      {
+        "answer": "chirurgien maxillo-facial",
+        "score": 60
       }
     ]
   },
@@ -10398,6 +11403,18 @@
           "cochon vietnamien"
         ],
         "score": 44
+      },
+      {
+        "answer": "canard mulard",
+        "score": 40
+      },
+      {
+        "answer": "oie domestique",
+        "score": 24
+      },
+      {
+        "answer": "veau",
+        "score": 8
       }
     ]
   },
@@ -10727,6 +11744,37 @@
           "sciences de l ingenieur"
         ],
         "score": 29
+      },
+      {
+        "answer": "éducation physique et sportive",
+        "aliases": [
+          "EPS"
+        ],
+        "score": 8
+      },
+      {
+        "answer": "enseignement moral et civique",
+        "score": 27
+      },
+      {
+        "answer": "sciences de la nature",
+        "score": 20
+      },
+      {
+        "answer": "dessin technique",
+        "score": 32
+      },
+      {
+        "answer": "économie-gestion",
+        "score": 42
+      },
+      {
+        "answer": "cinéma audiovisuel",
+        "score": 48
+      },
+      {
+        "answer": "histoire des arts",
+        "score": 28
       }
     ]
   },
@@ -11094,6 +12142,106 @@
           "dirigeable zeppelin"
         ],
         "score": 51
+      },
+      {
+        "answer": "car scolaire",
+        "score": 13
+      },
+      {
+        "answer": "métro automatique",
+        "score": 25
+      },
+      {
+        "answer": "TER",
+        "score": 15
+      },
+      {
+        "answer": "RER",
+        "score": 8
+      },
+      {
+        "answer": "tram-train",
+        "score": 45
+      },
+      {
+        "answer": "navette fluviale",
+        "score": 40
+      },
+      {
+        "answer": "avion cargo",
+        "score": 32
+      },
+      {
+        "answer": "voiturette",
+        "score": 35
+      },
+      {
+        "answer": "vélo cargo",
+        "score": 24
+      },
+      {
+        "answer": "jet-ski",
+        "score": 13
+      },
+      {
+        "answer": "autobus",
+        "score": 3
+      },
+      {
+        "answer": "autobus articulé",
+        "score": 15
+      },
+      {
+        "answer": "bateau-mouche",
+        "score": 38
+      },
+      {
+        "answer": "bicyclette électrique",
+        "score": 12
+      },
+      {
+        "answer": "caboteur",
+        "score": 65
+      },
+      {
+        "answer": "deltaplane",
+        "score": 35
+      },
+      {
+        "answer": "engin de chantier",
+        "score": 24
+      },
+      {
+        "answer": "goélette",
+        "score": 42
+      },
+      {
+        "answer": "grue mobile",
+        "score": 44
+      },
+      {
+        "answer": "mobylette",
+        "score": 12
+      },
+      {
+        "answer": "quadricycle",
+        "score": 48
+      },
+      {
+        "answer": "remorqueur",
+        "score": 40
+      },
+      {
+        "answer": "scooter électrique",
+        "score": 14
+      },
+      {
+        "answer": "train régional",
+        "score": 5
+      },
+      {
+        "answer": "véhicule amphibie",
+        "score": 65
       }
     ]
   },
@@ -11621,6 +12769,61 @@
       {
         "answer": "métatarse",
         "score": 24
+      },
+      {
+        "answer": "sternum",
+        "score": 25
+      },
+      {
+        "answer": "fibula",
+        "aliases": [
+          "péroné"
+        ],
+        "score": 48
+      },
+      {
+        "answer": "vulve",
+        "score": 43
+      },
+      {
+        "answer": "aisselle",
+        "score": 23
+      },
+      {
+        "answer": "cervelle",
+        "score": 12
+      },
+      {
+        "answer": "côtes",
+        "score": 9
+      },
+      {
+        "answer": "crête iliaque",
+        "score": 54
+      },
+      {
+        "answer": "épiglotte",
+        "score": 58
+      },
+      {
+        "answer": "gencive",
+        "score": 14
+      },
+      {
+        "answer": "glotte",
+        "score": 43
+      },
+      {
+        "answer": "intestin grêle",
+        "score": 30
+      },
+      {
+        "answer": "plèvre",
+        "score": 60
+      },
+      {
+        "answer": "tendon d’Achille",
+        "score": 14
       }
     ]
   },
@@ -12043,6 +13246,70 @@
       {
         "answer": "The Fox in the Forest",
         "score": 51
+      },
+      {
+        "answer": "Cascadia",
+        "score": 40
+      },
+      {
+        "answer": "Calico",
+        "score": 44
+      },
+      {
+        "answer": "Unlock!",
+        "score": 23
+      },
+      {
+        "answer": "Small World",
+        "score": 20
+      },
+      {
+        "answer": "7 Wonders Architects",
+        "score": 50
+      },
+      {
+        "answer": "Abyss",
+        "score": 47
+      },
+      {
+        "answer": "Barrage",
+        "score": 65
+      },
+      {
+        "answer": "Catane",
+        "score": 5
+      },
+      {
+        "answer": "Dune: Imperium",
+        "score": 35
+      },
+      {
+        "answer": "Hanabi",
+        "score": 20
+      },
+      {
+        "answer": "Istanbul",
+        "score": 30
+      },
+      {
+        "answer": "Jaipur",
+        "score": 24
+      },
+      {
+        "answer": "King of Tokyo",
+        "score": 20
+      },
+      {
+        "answer": "Quarto",
+        "score": 38
+      },
+      {
+        "answer": "Santorini",
+        "score": 32
+      },
+      {
+        "answer": "Zombie Kidz Evolution",
+        "score": 62
       }
     ]
   },
@@ -12496,6 +13763,81 @@
           "Kailash"
         ],
         "score": 39
+      },
+      {
+        "answer": "Grandes Jorasses",
+        "score": 47
+      },
+      {
+        "answer": "Dufourspitze",
+        "score": 55
+      },
+      {
+        "answer": "Pico de Teide",
+        "score": 35
+      },
+      {
+        "answer": "Puncak Jaya",
+        "score": 50
+      },
+      {
+        "answer": "Shishapangma",
+        "score": 60
+      },
+      {
+        "answer": "Mont Robson",
+        "score": 58
+      },
+      {
+        "answer": "Aiguille Verte",
+        "score": 42
+      },
+      {
+        "answer": "Aoraki",
+        "aliases": [
+          "mont Cook"
+        ],
+        "score": 50
+      },
+      {
+        "answer": "Ararat",
+        "score": 22
+      },
+      {
+        "answer": "Barre des Écrins",
+        "score": 43
+      },
+      {
+        "answer": "Chimborazo",
+        "score": 35
+      },
+      {
+        "answer": "Dent du Géant",
+        "score": 50
+      },
+      {
+        "answer": "Huascarán",
+        "score": 54
+      },
+      {
+        "answer": "Jungfrau",
+        "score": 38
+      },
+      {
+        "answer": "Mont Wilhelm",
+        "score": 77
+      },
+      {
+        "answer": "Pico Cristóbal Colón",
+        "score": 60
+      },
+      {
+        "answer": "Roche de Solutré",
+        "score": 12
+      },
+      {
+        "answer": "Roraima",
+        "score": 48
       }
     ]
   },
@@ -13186,7 +14528,7 @@
           "1 janvier",
           "premier janvier"
         ],
-        "score": 0
+        "score": 5
       },
       {
         "answer": "lundi de Pâques",
@@ -13195,7 +14537,7 @@
           "paques",
           "lundi de paques"
         ],
-        "score": 10
+        "score": 30
       },
       {
         "answer": "Fête du Travail",
@@ -13205,7 +14547,7 @@
           "1 mai",
           "premier mai"
         ],
-        "score": 20
+        "score": 15
       },
       {
         "answer": "Victoire du 8 mai 1945",
@@ -13214,14 +14556,14 @@
           "victoire 1945",
           "victoire du 8 mai"
         ],
-        "score": 30
+        "score": 40
       },
       {
         "answer": "Ascension",
         "aliases": [
           "jeudi de l'Ascension"
         ],
-        "score": 40
+        "score": 50
       },
       {
         "answer": "lundi de Pentecôte",
@@ -13230,7 +14572,7 @@
           "pentecote",
           "lundi de pentecote"
         ],
-        "score": 50
+        "score": 70
       },
       {
         "answer": "Fête nationale",
@@ -13239,7 +14581,7 @@
           "quatorze juillet",
           "fête du 14 juillet"
         ],
-        "score": 60
+        "score": 10
       },
       {
         "answer": "Assomption",
@@ -13247,7 +14589,7 @@
           "15 août",
           "15 aout"
         ],
-        "score": 70
+        "score": 60
       },
       {
         "answer": "Toussaint",
@@ -13256,7 +14598,7 @@
           "1 novembre",
           "premier novembre"
         ],
-        "score": 80
+        "score": 45
       },
       {
         "answer": "Armistice du 11 novembre 1918",
@@ -13265,7 +14607,7 @@
           "11 novembre",
           "armistice du 11 novembre"
         ],
-        "score": 90
+        "score": 35
       },
       {
         "answer": "Noël",
@@ -13274,7 +14616,7 @@
           "25 décembre",
           "25 decembre"
         ],
-        "score": 100
+        "score": 0
       }
     ]
   },
@@ -13314,7 +14656,7 @@
     "answers": [
       {
         "answer": "Alberta",
-        "score": 0
+        "score": 20
       },
       {
         "answer": "Colombie-Britannique",
@@ -13322,7 +14664,7 @@
           "Colombie Britannique",
           "C.-B."
         ],
-        "score": 10
+        "score": 15
       },
       {
         "answer": "Île-du-Prince-Édouard",
@@ -13331,11 +14673,11 @@
           "Î.-P.-É.",
           "Prince Edward Island"
         ],
-        "score": 17
+        "score": 70
       },
       {
         "answer": "Manitoba",
-        "score": 26
+        "score": 45
       },
       {
         "answer": "Nouveau-Brunswick",
@@ -13343,7 +14685,7 @@
           "NB",
           "New Brunswick"
         ],
-        "score": 33
+        "score": 35
       },
       {
         "answer": "Nouvelle-Écosse",
@@ -13352,25 +14694,25 @@
           "N.-É.",
           "Nova Scotia"
         ],
-        "score": 41
+        "score": 40
       },
       {
         "answer": "Ontario",
-        "score": 50
+        "score": 5
       },
       {
         "answer": "Québec",
         "aliases": [
           "Quebec"
         ],
-        "score": 59
+        "score": 0
       },
       {
         "answer": "Saskatchewan",
         "aliases": [
           "Sask."
         ],
-        "score": 67
+        "score": 55
       },
       {
         "answer": "Terre-Neuve-et-Labrador",
@@ -13380,7 +14722,7 @@
           "T.-N.-L.",
           "Newfoundland and Labrador"
         ],
-        "score": 76
+        "score": 65
       },
       {
         "answer": "Territoires du Nord-Ouest",
@@ -13389,18 +14731,18 @@
           "T.N.-O.",
           "Northwest Territories"
         ],
-        "score": 84
+        "score": 85
       },
       {
         "answer": "Nunavut",
-        "score": 93
+        "score": 95
       },
       {
         "answer": "Yukon",
         "aliases": [
           "Territoire du Yukon"
         ],
-        "score": 100
+        "score": 80
       }
     ]
   },

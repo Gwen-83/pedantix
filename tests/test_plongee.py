@@ -167,11 +167,11 @@ class PlongeeTests(unittest.TestCase):
 
         self.assertEqual(
             self.manager._score("Travail", prompt_indexes["jour_ferie_france"]),
-            ("fete du travail", 20, True),
+            ("fete du travail", 15, True),
         )
         self.assertEqual(
             self.manager._score("1er mai", prompt_indexes["jour_ferie_france"]),
-            ("fete du travail", 20, True),
+            ("fete du travail", 15, True),
         )
         self.assertEqual(
             self.manager._score("vésicule", prompt_indexes["partie_corps"]),
@@ -182,6 +182,36 @@ class PlongeeTests(unittest.TestCase):
                 "vésiculte biliaire", prompt_indexes["partie_corps"]
             ),
             ("vesicule biliaire", 23, True),
+        )
+
+    def test_likely_holidays_and_canadian_provinces_have_lower_rarity_scores(self):
+        prompt_indexes = {
+            prompt["id"]: self.manager.answer_indexes[index]
+            for index, prompt in enumerate(self.manager.prompts)
+        }
+
+        holidays = prompt_indexes["jour_ferie_france"]
+        self.assertLess(
+            self.manager._score("Noël", holidays)[1],
+            self.manager._score("lundi de Pentecôte", holidays)[1],
+        )
+        self.assertLess(
+            self.manager._score("14 juillet", holidays)[1],
+            self.manager._score("Assomption", holidays)[1],
+        )
+        self.assertLess(
+            self.manager._score("Jour de l'An", holidays)[1],
+            self.manager._score("lundi de Pâques", holidays)[1],
+        )
+
+        canadian_places = prompt_indexes["province_territoire_canada"]
+        self.assertLess(
+            self.manager._score("Québec", canadian_places)[1],
+            self.manager._score("Nunavut", canadian_places)[1],
+        )
+        self.assertLess(
+            self.manager._score("Ontario", canadian_places)[1],
+            self.manager._score("Île-du-Prince-Édouard", canadian_places)[1],
         )
 
     def test_question_bank_accepts_more_valid_answers_for_each_topic(self):
@@ -226,6 +256,65 @@ class PlongeeTests(unittest.TestCase):
             if prompt["id"] == "element_chimique"
         )
         self.assertEqual(len(chemical_question["answers"]), 118)
+
+    def test_expanded_open_topics_accept_more_answers_with_bounded_scores(self):
+        prompt_indexes = {
+            prompt["id"]: self.manager.answer_indexes[index]
+            for index, prompt in enumerate(self.manager.prompts)
+        }
+        added_answers = {
+            "animal": "tortue verte",
+            "fruit": "noni",
+            "instrument": "erhu",
+            "espace": "Valetudo",
+            "oiseau": "manchot empereur",
+            "metier": "jardinier-paysagiste",
+            "legume": "patate douce",
+            "sport": "sepak takraw",
+            "langue": "cantonais",
+            "couleur": "vert émeraude",
+            "insecte": "coccinelle asiatique",
+            "fleur": "lilas",
+            "arbre": "cèdre du Liban",
+            "race_chien": "corgi",
+            "instrument_musique": "gong",
+            "ville_france": "Cannes",
+            "plat": "aligot",
+            "dessert": "galette des rois",
+            "metier_sante": "nutritionniste",
+            "animal_ferme": "veau",
+            "matiere_scolaire": "EPS",
+            "transport": "RER",
+            "partie_corps": "sternum",
+            "jeu_societe": "Catane",
+            "montagne": "Ararat",
+        }
+
+        for prompt_id, answer in added_answers.items():
+            with self.subTest(prompt=prompt_id, answer=answer):
+                _, score, known = self.manager._score(
+                    answer, prompt_indexes[prompt_id]
+                )
+                self.assertTrue(known)
+                self.assertGreaterEqual(score, 0)
+                self.assertLessEqual(score, 100)
+
+        self.assertLess(
+            self.manager._score(
+                "banane", prompt_indexes["fruit"]
+            )[1],
+            self.manager._score(
+                "camu-camu", prompt_indexes["fruit"]
+            )[1],
+        )
+        self.assertLess(
+            self.manager._score(
+                "football", prompt_indexes["sport"]
+            )[1],
+            self.manager._score(
+                "sepak takraw", prompt_indexes["sport"]
+            )[1],
+        )
 
     def test_position_derived_sports_do_not_receive_the_maximum_score(self):
         sport_index = next(
