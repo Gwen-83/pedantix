@@ -215,6 +215,13 @@
     return board.map((row) => row.slice());
   }
 
+  function countDigit(board, digit) {
+    return board.reduce(
+      (count, row) => count + row.filter((value) => value === digit).length,
+      0,
+    );
+  }
+
   function hasConflict(board, row, column) {
     const value = board[row][column];
     if (!value) return false;
@@ -376,6 +383,7 @@
     const pad = document.getElementById('sudoku-number-pad');
     pad.replaceChildren();
     for (let digit = 1; digit <= 9; digit += 1) {
+      if (countDigit(state.board, digit) >= 9) continue;
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'sudoku-number-button';

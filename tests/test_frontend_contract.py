@@ -195,6 +195,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("startButton.textContent = solo ? 'Lancer la bataille'", source)
         self.assertIn("state = await post('/api/battleship/room/fleet'", source)
 
+    def test_sudoku_number_pad_hides_digits_already_used_nine_times(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "sudoku"
+        source = (static_dir / "app.js").read_text()
+
+        self.assertIn("function countDigit(board, digit)", source)
+        self.assertIn("if (countDigit(state.board, digit) >= 9) continue;", source)
+
     def test_store_invitation_game_selector_includes_memories(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
