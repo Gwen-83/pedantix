@@ -95,15 +95,60 @@
 
       <section id="scribbl-play" hidden>
         <div class="scribbl-roundbar">
-          <span id="scribbl-round-label"></span>
-          <div id="scribbl-countdown" class="scribbl-countdown" aria-live="polite">--</div>
-          <span id="scribbl-turn-label"></span>
+          <div class="scribbl-round-info">
+            <span id="scribbl-round-label" class="scribbl-round-label"></span>
+            <span id="scribbl-round-badge" class="scribbl-round-badge" hidden>Dernière manche !</span>
+          </div>
+          <div class="scribbl-countdown-wrap">
+            <div id="scribbl-countdown" class="scribbl-countdown" aria-live="polite">--</div>
+          </div>
+          <div class="scribbl-turn-info">
+            <span id="scribbl-turn-label" class="scribbl-turn-label"></span>
+          </div>
         </div>
+
+        <div id="scribbl-turn-banner" class="scribbl-turn-banner" aria-live="polite">
+          <div id="scribbl-artist-banner" class="scribbl-banner-artist" hidden>
+            <div class="scribbl-banner-badge">🎨 VOUS ÊTES LE PEINTRE</div>
+            <div class="scribbl-banner-main">
+              <span class="scribbl-banner-prompt">Votre mot secret à faire deviner :</span>
+              <strong id="scribbl-secret-word" class="scribbl-secret-word-highlight">---</strong>
+            </div>
+            <span class="scribbl-banner-tip">Dessinez ci-dessous pour faire deviner vos amis !</span>
+          </div>
+
+          <div id="scribbl-guesser-banner" class="scribbl-banner-guesser" hidden>
+            <div id="scribbl-guesser-artist-tag" class="scribbl-banner-badge">✏️ Peintre : ---</div>
+            <div class="scribbl-banner-main">
+              <span class="scribbl-banner-prompt">Mot secret à deviner :</span>
+              <strong id="scribbl-word-hint" class="scribbl-word-hint-display">_ _ _ _ _</strong>
+              <span id="scribbl-word-length" class="scribbl-word-length"></span>
+            </div>
+            <div id="scribbl-guesser-success-badge" class="scribbl-guesser-success-badge" hidden>
+              🎉 Bravo ! Vous avez trouvé le mot !
+            </div>
+          </div>
+
+          <div id="scribbl-status-banner" class="scribbl-banner-status" hidden>
+            <div id="scribbl-status-icon" class="scribbl-status-icon">⏳</div>
+            <div class="scribbl-status-body">
+              <strong id="scribbl-status-title" class="scribbl-status-title">Tour en cours</strong>
+              <p id="scribbl-status-desc" class="scribbl-status-desc"></p>
+            </div>
+          </div>
+        </div>
+
         <div id="scribbl-choice" class="scribbl-choice" hidden>
-          <p>Choisissez un mot à dessiner</p>
-          <div id="scribbl-word-choices"></div>
+          <div class="scribbl-choice-card">
+            <span class="scribbl-choice-badge">🎨 C’EST VOTRE TOUR DE DESSINER</span>
+            <h3>Choisissez votre mot secret</h3>
+            <p>Sélectionnez l’un des 3 mots ci-dessous avant la fin du décompte :</p>
+            <div id="scribbl-word-choices" class="scribbl-word-choices"></div>
+          </div>
         </div>
-        <div id="scribbl-reveal" class="scribbl-reveal" hidden></div>
+
+        <div id="scribbl-reveal" class="scribbl-reveal" hidden aria-live="polite"></div>
+
         <div class="scribbl-layout">
           <section class="scribbl-drawing-area" aria-label="Zone de dessin">
             <div class="scribbl-canvas-wrap">
@@ -112,19 +157,30 @@
             </div>
             <div id="scribbl-toolbar" class="scribbl-toolbar" hidden>
               <div id="scribbl-palette" class="scribbl-palette" aria-label="Couleurs"></div>
-              <label class="scribbl-brush-control" for="scribbl-brush">Taille <input id="scribbl-brush" type="range" min="2" max="28" value="7"></label>
-              <button id="scribbl-eraser" class="scribbl-tool-button" aria-pressed="false">Gomme</button>
-              <button id="scribbl-clear" class="scribbl-tool-button">Effacer</button>
+              <label class="scribbl-brush-control" for="scribbl-brush">
+                <span>Taille</span>
+                <input id="scribbl-brush" type="range" min="2" max="28" value="7">
+              </label>
+              <button id="scribbl-eraser" class="scribbl-tool-button" aria-pressed="false" type="button">Gomme</button>
+              <button id="scribbl-clear" class="scribbl-tool-button" type="button">Effacer</button>
             </div>
           </section>
           <aside class="scribbl-sidebar">
             <section class="scribbl-score-panel">
-              <h2>Scores</h2>
+              <div class="scribbl-panel-heading">
+                <h2>Scores</h2>
+                <span id="scribbl-score-count" class="scribbl-panel-tag"></span>
+              </div>
               <ol id="scribbl-score-list" class="scribbl-score-list"></ol>
             </section>
             <section class="scribbl-chat-panel">
-              <h2>Propositions et chat</h2>
-              <ol id="scribbl-chat-list" class="scribbl-chat-list" aria-live="polite" aria-relevant="additions"></ol>
+              <div class="scribbl-chat-header">
+                <h2>Propositions & Chat</h2>
+                <span id="scribbl-chat-badge" class="scribbl-panel-tag">En direct</span>
+              </div>
+              <div class="scribbl-chat-body">
+                <ol id="scribbl-chat-list" class="scribbl-chat-list" aria-live="polite" aria-relevant="additions"></ol>
+              </div>
               <form id="scribbl-chat-form" class="scribbl-chat-form">
                 <label class="sr-only" for="scribbl-chat-input">Votre proposition ou message</label>
                 <input id="scribbl-chat-input" maxlength="180" autocomplete="off" placeholder="Devinez le mot…" required>
@@ -133,10 +189,25 @@
             </section>
           </aside>
         </div>
-        <section id="scribbl-finished" class="scribbl-finished" hidden aria-live="polite">
-          <h2 id="scribbl-finished-title">Partie terminée</h2>
-          <p id="scribbl-finished-summary"></p>
-          <button id="scribbl-restart" class="scribbl-button scribbl-button-primary" hidden>Rejouer</button>
+
+        <section id="scribbl-finished" class="scribbl-finished-overlay" hidden aria-live="polite">
+          <div class="scribbl-finished-modal">
+            <div class="scribbl-finished-banner">
+              <span class="scribbl-finished-icon" aria-hidden="true">🏆</span>
+              <h2 id="scribbl-finished-title">Partie terminée !</h2>
+              <p id="scribbl-finished-subtitle" class="scribbl-finished-subtitle">Toutes les manches ont été terminées</p>
+            </div>
+            <div id="scribbl-finished-personal" class="scribbl-finished-personal"></div>
+            <div class="scribbl-finished-podium">
+              <h3>Classement final</h3>
+              <ol id="scribbl-finished-ranks" class="scribbl-finished-ranks"></ol>
+            </div>
+            <p id="scribbl-finished-summary" class="scribbl-finished-summary"></p>
+            <div class="scribbl-finished-actions">
+              <button id="scribbl-restart" class="scribbl-button scribbl-button-primary" type="button" hidden>Rejouer une partie</button>
+              <button id="scribbl-finished-leave" class="scribbl-button" type="button">Quitter le salon</button>
+            </div>
+          </div>
         </section>
       </section>
     </section>

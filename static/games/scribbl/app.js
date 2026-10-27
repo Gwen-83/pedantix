@@ -197,35 +197,79 @@
 
   function renderScoreboard() {
     const scores = $('scribbl-score-list');
+    const countTag = $('scribbl-score-count');
+    if (countTag) {
+      countTag.textContent = `${state.players.length} joueur${state.players.length > 1 ? 's' : ''}`;
+    }
     scores.replaceChildren(...state.players
       .slice()
       .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
       .map((player) => {
         const item = document.createElement('li');
-        const name = document.createElement('span');
-        name.textContent = `${player.name}${player.is_artist ? ' · dessine' : ''}`;
-        const score = document.createElement('strong');
-        score.textContent = `${player.score} pts`;
+        if (player.player_id === playerId) item.classList.add('is-self');
         if (player.is_artist) item.classList.add('is-artist');
         if (player.guessed) item.classList.add('is-found');
-        item.append(name, score);
+
+        const leftMeta = document.createElement('div');
+        leftMeta.className = 'scribbl-player-meta';
+
+        const name = document.createElement('span');
+        name.textContent = player.player_id === playerId ? `${player.name} (moi)` : player.name;
+        leftMeta.append(name);
+
+        if (player.is_artist) {
+          const badge = document.createElement('span');
+          badge.className = 'scribbl-player-badge is-artist-badge';
+          badge.textContent = '🎨 Peintre';
+          leftMeta.append(badge);
+        } else if (player.guessed) {
+          const badge = document.createElement('span');
+          badge.className = 'scribbl-player-badge is-found-badge';
+          badge.textContent = '✅ Trouvé';
+          leftMeta.append(badge);
+        }
+
+        const score = document.createElement('strong');
+        score.textContent = `${player.score} pts`;
+
+        item.append(leftMeta, score);
         return item;
       }));
   }
 
   function renderChat() {
     const list = $('scribbl-chat-list');
-    const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 35;
+    const badge = $('scribbl-chat-badge');
+    if (badge) {
+      badge.textContent = `${state.chat.length} msg${state.chat.length > 1 ? 's' : ''}`;
+    }
     list.replaceChildren(...state.chat.map((message) => {
       const item = document.createElement('li');
-      item.textContent = message.kind === 'system'
-        ? message.text
-        : `${message.player_name}: ${message.text}`;
-      if (message.kind === 'correct') item.classList.add('is-correct');
-      if (message.kind === 'system') item.classList.add('is-system');
+      item.className = 'scribbl-chat-item';
+      if (message.player_id === playerId) {
+        item.classList.add('is-self');
+      }
+      if (message.kind === 'correct') {
+        item.classList.add('is-correct');
+        const icon = document.createElement('span');
+        icon.textContent = '🎉 ';
+        item.append(icon, document.createTextNode(message.text));
+      } else if (message.kind === 'system') {
+        item.classList.add('is-system');
+        item.textContent = message.text;
+      } else {
+        const author = document.createElement('strong');
+        author.className = 'scribbl-chat-author';
+        author.textContent = `${message.player_name}: `;
+        item.append(author, document.createTextNode(message.text));
+      }
       return item;
     }));
-    if (wasAtBottom) list.scrollTop = list.scrollHeight;
+    // Auto-scroll to always show the latest messages sent
+    list.scrollTop = list.scrollHeight;
+    requestAnimationFrame(() => {
+      list.scrollTop = list.scrollHeight;
+    });
   }
 
   function renderWordChoices() {
@@ -236,11 +280,145 @@
     choices.replaceChildren(...(isChoosing ? state.word_choices : []).map((word, index) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'scribbl-button scribbl-button-primary';
+      button.className = 'scribbl-button scribbl-button-primary scribbl-word-choice-btn';
       button.textContent = word;
       button.addEventListener('click', () => send({ type: 'choose', index }));
       return button;
     }));
+  }
+
+  function renderTurnBanner() {
+    const artist = state.players.find((player) => player.player_id === state.artist_player_id);
+    const selfPlayer = state.players.find((player) => player.player_id === playerId);
+    const artistBanner = $('scribbl-artist-banner');
+    const guesserBanner = $('scribbl-guesser-banner');
+    const statusBanner = $('scribbl-status-banner');
+
+    if (state.status === 'finished') {
+      artistBanner.hidden = true;
+      guesserBanner.hidden = true;
+      statusBanner.hidden = false;
+      $('scribbl-status-icon').textContent = '🏆';
+      $('scribbl-status-title').textContent = 'Partie terminée !';
+      $('scribbl-status-desc').textContent = `Toutes les manches (${state.rounds_per_player}/${state.rounds_per_player}) sont achevées. Consultez le podium ci-dessous.`;
+      return;
+    }
+
+    if (state.phase === 'drawing') {
+      statusBanner.hidden = true;
+      if (state.is_artist) {
+        artistBanner.hidden = false;
+        guesserBanner.hidden = true;
+        $('scribbl-secret-word').textContent = (state.word || '---').toUpperCase();
+      } else {
+        artistBanner.hidden = true;
+        guesserBanner.hidden = false;
+        $('scribbl-guesser-artist-tag').textContent = `✏️ Peintre : ${artist?.name || 'Joueur'}`;
+        $('scribbl-word-hint').textContent = state.word_hint || '_ _ _ _ _';
+        const letterCount = (state.word_hint || '').replace(/\s+/g, '').length;
+        $('scribbl-word-length').textContent = letterCount ? `(${letterCount} lettre${letterCount > 1 ? 's' : ''})` : '';
+        const successBadge = $('scribbl-guesser-success-badge');
+        successBadge.hidden = !Boolean(selfPlayer?.guessed);
+      }
+      return;
+    }
+
+    // choosing or reveal phase
+    artistBanner.hidden = true;
+    guesserBanner.hidden = true;
+    statusBanner.hidden = false;
+
+    if (state.phase === 'choosing') {
+      if (state.is_artist) {
+        $('scribbl-status-icon').textContent = '🎨';
+        $('scribbl-status-title').textContent = 'C’EST VOTRE TOUR DE CHOISIR !';
+        $('scribbl-status-desc').textContent = 'Sélectionnez un mot secret ci-dessous pour démarrer votre dessin.';
+      } else {
+        $('scribbl-status-icon').textContent = '⏳';
+        $('scribbl-status-title').textContent = `${artist?.name || 'Le peintre'} choisit un mot...`;
+        $('scribbl-status-desc').textContent = 'Préparez-vous à deviner dans le chat dès que le chronomètre démarre !';
+      }
+    } else if (state.phase === 'reveal') {
+      $('scribbl-status-icon').textContent = '🔔';
+      $('scribbl-status-title').textContent = 'Tour terminé !';
+      $('scribbl-status-desc').textContent = state.word ? `Le mot secret était : « ${(state.word || '').toUpperCase()} »` : 'Révélation du mot...';
+    }
+  }
+
+  function renderFinished() {
+    const finishedOverlay = $('scribbl-finished');
+    if (state.status !== 'finished') {
+      finishedOverlay.hidden = true;
+      return;
+    }
+
+    finishedOverlay.hidden = false;
+    const winners = new Set(state.winner_ids);
+    const winnerNames = state.players
+      .filter((player) => winners.has(player.player_id))
+      .map((player) => player.name)
+      .join(', ');
+
+    $('scribbl-finished-title').textContent =
+      winners.size === 1 ? `Victoire de ${winnerNames} ! 🏆` : 'Égalité au sommet ! 🏆';
+    $('scribbl-finished-subtitle').textContent =
+      `Toutes les manches sont finies — Manche ${state.rounds_per_player}/${state.rounds_per_player} terminée !`;
+    $('scribbl-finished-summary').textContent =
+      `Félicitations ${winnerNames} ! Les points ont été ajoutés à vos statistiques de jeu.`;
+
+    const sorted = state.players
+      .slice()
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+
+    // Personal ranking box
+    const myRank = sorted.findIndex((p) => p.player_id === playerId) + 1;
+    const myPlayer = sorted.find((p) => p.player_id === playerId);
+    if (myPlayer) {
+      const rankLabel = myRank === 1 ? '1er' : `${myRank}ème`;
+      const medal = myRank === 1 ? '🥇' : myRank === 2 ? '🥈' : myRank === 3 ? '🥉' : '🎖️';
+      $('scribbl-finished-personal').innerHTML = `
+        <div class="scribbl-personal-box ${myRank === 1 ? 'is-winner' : ''}">
+          <span class="scribbl-personal-medal">${medal}</span>
+          <div>
+            <strong>Vous terminez ${rankLabel} avec ${myPlayer.score} pts !</strong>
+            <p>${myPlayer.correct_guesses} mot(s) deviné(s) · ${myPlayer.turns_drawn} dessin(s) réalisé(s)</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // Podium ranks list
+    const medals = ['🥇', '🥈', '🥉'];
+    $('scribbl-finished-ranks').replaceChildren(...sorted.map((player, idx) => {
+      const li = document.createElement('li');
+      li.className = 'scribbl-rank-item';
+      if (winners.has(player.player_id)) li.classList.add('is-winner');
+
+      const left = document.createElement('div');
+      left.className = 'scribbl-rank-left';
+
+      const badge = document.createElement('span');
+      badge.className = 'scribbl-rank-badge';
+      badge.textContent = medals[idx] || `${idx + 1}.`;
+
+      const details = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = player.player_id === playerId ? `${player.name} (moi)` : player.name;
+      const stats = document.createElement('div');
+      stats.className = 'scribbl-rank-stats';
+      stats.textContent = `${player.correct_guesses} trouvé(s) · ${player.turns_drawn} dessiné(s)`;
+      details.append(name, stats);
+
+      left.append(badge, details);
+
+      const score = document.createElement('strong');
+      score.textContent = `${player.score} pts`;
+
+      li.append(left, score);
+      return li;
+    }));
+
+    $('scribbl-restart').hidden = state.host_player_id !== playerId;
   }
 
   function renderPalette() {
@@ -277,40 +455,85 @@
       reveal: 'Mot dévoilé',
       finished: 'Partie terminée',
     })[state.phase] || 'En jeu';
-    $('scribbl-round-label').textContent =
-      `Manche ${Math.min(state.round_number, state.rounds_per_player)} / ${state.rounds_per_player}`;
-    const artist = state.players.find((player) => player.player_id === state.artist_player_id);
-    $('scribbl-turn-label').textContent = artist
-      ? state.is_artist ? 'C’est votre tour de dessiner' : `${artist.name} dessine`
-      : '';
+
+    const currentRound = Math.min(state.round_number, state.rounds_per_player);
+    const isFinalRound = currentRound === state.rounds_per_player;
+
+    if (state.status === 'finished') {
+      $('scribbl-round-label').textContent =
+        `🏁 Manche ${state.rounds_per_player} / ${state.rounds_per_player} terminée`;
+      $('scribbl-round-badge').hidden = true;
+      $('scribbl-turn-label').textContent = 'Partie terminée !';
+      $('scribbl-turn-label').className = 'scribbl-turn-label is-finished';
+    } else {
+      $('scribbl-round-label').textContent =
+        `Manche ${currentRound} / ${state.rounds_per_player}`;
+      $('scribbl-round-badge').hidden = !isFinalRound;
+
+      const artist = state.players.find((player) => player.player_id === state.artist_player_id);
+      if (state.is_artist) {
+        $('scribbl-turn-label').textContent = '🎨 C’est votre tour de dessiner !';
+        $('scribbl-turn-label').className = 'scribbl-turn-label is-self-artist';
+      } else {
+        $('scribbl-turn-label').textContent = artist ? `✏️ Peintre : ${artist.name}` : '';
+        $('scribbl-turn-label').className = 'scribbl-turn-label';
+      }
+    }
+
     $('scribbl-reveal').hidden = state.phase !== 'reveal';
     $('scribbl-reveal').textContent = state.phase === 'reveal'
-      ? `Le mot était : ${state.word || ''}`
+      ? `Le mot secret était : ${(state.word || '').toUpperCase()}`
       : '';
-    $('scribbl-canvas-placeholder').hidden = state.phase === 'drawing' || state.phase === 'reveal';
+
     const canDraw = state.status === 'playing' && state.phase === 'drawing' && state.is_artist;
-    $('scribbl-toolbar').hidden = !canDraw;
+    const toolbar = $('scribbl-toolbar');
+    toolbar.hidden = !canDraw;
+    toolbar.style.display = canDraw ? 'flex' : 'none';
     $('scribbl-canvas').classList.toggle('is-drawable', canDraw);
-    $('scribbl-chat-input').placeholder = state.phase === 'drawing' && !state.is_artist
-      ? 'Devinez le mot…'
-      : 'Écrire dans le chat…';
+
+    const placeholder = $('scribbl-canvas-placeholder');
+    const artist = state.players.find((player) => player.player_id === state.artist_player_id);
+    if (state.status === 'finished') {
+      placeholder.hidden = false;
+      placeholder.textContent = 'Partie terminée ! Retrouvez le classement ci-dessus.';
+    } else if (state.phase === 'choosing') {
+      placeholder.hidden = false;
+      placeholder.textContent = state.is_artist
+        ? 'Choisissez un mot pour commencer à dessiner'
+        : `${artist?.name || 'Le peintre'} choisit un mot…`;
+    } else if (state.phase === 'reveal') {
+      placeholder.hidden = false;
+      placeholder.textContent = state.word ? `Le mot était : ${(state.word || '').toUpperCase()}` : 'Fin du tour';
+    } else if (state.phase === 'drawing') {
+      placeholder.hidden = Boolean(state.strokes?.length);
+      placeholder.textContent = state.is_artist
+        ? 'À vos crayons ! Dessinez ici.'
+        : 'Le dessin apparaîtra dès le premier coup de pinceau…';
+    } else {
+      placeholder.hidden = true;
+    }
+
+    const selfPlayer = state.players.find((player) => player.player_id === playerId);
+    if (state.status === 'finished') {
+      $('scribbl-chat-input').placeholder = 'Partie terminée ! Discutez du match…';
+    } else if (state.is_artist) {
+      $('scribbl-chat-input').placeholder = 'Vous êtes le peintre ! (Chat uniquement)';
+    } else if (state.phase === 'drawing') {
+      if (selfPlayer?.guessed) {
+        $('scribbl-chat-input').placeholder = 'Vous avez déjà trouvé le mot ! 🎉';
+      } else {
+        $('scribbl-chat-input').placeholder = 'Devinez le mot…';
+      }
+    } else {
+      $('scribbl-chat-input').placeholder = 'Écrire dans le chat…';
+    }
+
+    renderTurnBanner();
     renderWordChoices();
     renderScoreboard();
     renderChat();
     renderPalette();
-    $('scribbl-finished').hidden = state.status !== 'finished';
-    if (state.status === 'finished') {
-      const winners = new Set(state.winner_ids);
-      const winnerNames = state.players
-        .filter((player) => winners.has(player.player_id))
-        .map((player) => player.name)
-        .join(', ');
-      $('scribbl-finished-title').textContent =
-        winners.size === 1 ? `Victoire de ${winnerNames} !` : 'Égalité !';
-      $('scribbl-finished-summary').textContent =
-        `Bravo ${winnerNames} ! Les points ont été ajoutés à vos statistiques de jeu.`;
-      $('scribbl-restart').hidden = state.host_player_id !== playerId;
-    }
+    renderFinished();
     setClock(state.seconds_remaining);
     paintCanvas();
   }
@@ -320,10 +543,15 @@
     clockStartedAt = Date.now();
     if (clockTimer) clearInterval(clockTimer);
     const update = () => {
+      const display = $('scribbl-countdown');
+      if (state?.status === 'finished') {
+        display.textContent = 'FIN';
+        display.classList.remove('is-low');
+        return;
+      }
       const remaining = state?.status === 'playing'
         ? Math.max(0, clockBase - Math.floor((Date.now() - clockStartedAt) / 1000))
         : 0;
-      const display = $('scribbl-countdown');
       display.textContent = String(remaining);
       display.classList.toggle('is-low', remaining <= 10);
     };
@@ -549,6 +777,7 @@
   $('scribbl-refresh').addEventListener('click', refreshDirectory);
   $('scribbl-start').addEventListener('click', () => send({ type: 'start' }));
   $('scribbl-leave').addEventListener('click', () => returnHome());
+  $('scribbl-finished-leave')?.addEventListener('click', () => returnHome());
   $('scribbl-restart').addEventListener('click', () => send({ type: 'restart' }));
   $('scribbl-clear').addEventListener('click', () => send({ type: 'clear' }));
   $('scribbl-eraser').addEventListener('click', (event) => {

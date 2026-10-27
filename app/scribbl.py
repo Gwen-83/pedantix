@@ -470,6 +470,11 @@ class ScribblManager:
                 room.status = "finished"
                 room.phase = "finished"
                 room.turn_ends_at = None
+                room.chat.append({
+                    "kind": "system",
+                    "text": f"🏁 Fin de la manche {room.rounds_per_player}/{room.rounds_per_player} · Partie terminée !",
+                })
+                room.chat = room.chat[-MAX_CHAT_MESSAGES:]
             else:
                 self._begin_turn(room, now)
         return True
@@ -488,6 +493,13 @@ class ScribblManager:
         room.guessed_player_ids.clear()
         for player in room.players.values():
             player.guessed_this_turn = False
+        if room.turn_index > 0 and len(player_ids) > 0 and room.turn_index % len(player_ids) == 0:
+            current_round = room.turn_index // len(player_ids) + 1
+            room.chat.append({
+                "kind": "system",
+                "text": f"🔔 Début de la manche {current_round} / {room.rounds_per_player} !",
+            })
+            room.chat = room.chat[-MAX_CHAT_MESSAGES:]
 
     def _start_drawing(
         self, room: ScribblRoom, word: str, now: float | None = None,

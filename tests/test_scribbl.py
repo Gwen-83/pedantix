@@ -104,6 +104,28 @@ class ScribblManagerTests(unittest.TestCase):
         with patch("app.scribbl.time.time", return_value=room.turn_ends_at + 1):
             self.manager.advance_timers(room.room_id)
         self.assertEqual(room.status, "finished")
+        self.assertTrue(any("Partie terminée" in msg["text"] for msg in room.chat))
+
+    def test_multi_round_progression_announces_rounds_and_completion_in_chat(self):
+        room = self.make_room(rounds=3)
+        self.manager.start_room(room.room_id, "host")
+        # Turn 0 (Round 1, host): choosing -> drawing -> reveal -> advance to Turn 1 (Round 1, guest)
+        for _ in range(3):
+            with patch("app.scribbl.time.time", return_value=room.turn_ends_at + 1):
+                self.manager.advance_timers(room.room_id)
+        # Advance Turn 1 (guest) choosing -> drawing -> reveal -> advance to Turn 2 (Round 2, host)
+        for _ in range(3):
+            with patch("app.scribbl.time.time", return_value=room.turn_ends_at + 1):
+                self.manager.advance_timers(room.room_id)
+        self.assertTrue(any("Début de la manche 2 / 3" in msg["text"] for msg in room.chat))
+
+        # Advance remaining turns until match finishes
+        while room.status != "finished":
+            with patch("app.scribbl.time.time", return_value=room.turn_ends_at + 1):
+                self.manager.advance_timers(room.room_id)
+
+        self.assertEqual(room.status, "finished")
+        self.assertTrue(any("Fin de la manche 3/3" in msg["text"] for msg in room.chat))
 
     def test_leaving_host_transfers_host_and_restart_resets_match_scores(self):
         room = self.make_room()
