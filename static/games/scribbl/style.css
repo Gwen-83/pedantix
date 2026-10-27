@@ -302,12 +302,6 @@
   border-radius: 8px;
   background: var(--game-panel);
   border: 1px solid var(--game-border);
-}
-.scribbl-word-length {
-  font-size: .85rem;
-  color: var(--game-muted);
-  font-variant-numeric: tabular-nums;
-}
 .scribbl-banner-tip {
   font-size: .78rem;
   color: var(--game-muted);
@@ -430,14 +424,16 @@
   inset: 0;
   display: grid;
   place-items: center;
-  color: #687383;
-  font-size: 1.05rem;
+  color: #8896a6;
+  font-size: 1rem;
   font-weight: 600;
   pointer-events: none;
-  background: rgba(255, 255, 255, 0.85);
+  background: transparent;
   padding: 20px;
   text-align: center;
-  backdrop-filter: blur(2px);
+}
+.scribbl-canvas-placeholder[hidden] {
+  display: none !important;
 }
 
 /* Toolbar (ONLY when drawing) */

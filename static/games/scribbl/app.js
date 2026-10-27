@@ -315,8 +315,6 @@
         guesserBanner.hidden = false;
         $('scribbl-guesser-artist-tag').textContent = `✏️ Peintre : ${artist?.name || 'Joueur'}`;
         $('scribbl-word-hint').textContent = state.word_hint || '_ _ _ _ _';
-        const letterCount = (state.word_hint || '').replace(/\s+/g, '').length;
-        $('scribbl-word-length').textContent = letterCount ? `(${letterCount} lettre${letterCount > 1 ? 's' : ''})` : '';
         const successBadge = $('scribbl-guesser-success-badge');
         successBadge.hidden = !Boolean(selfPlayer?.guessed);
       }
@@ -326,19 +324,19 @@
     // choosing or reveal phase
     artistBanner.hidden = true;
     guesserBanner.hidden = true;
-    statusBanner.hidden = false;
 
     if (state.phase === 'choosing') {
       if (state.is_artist) {
-        $('scribbl-status-icon').textContent = '🎨';
-        $('scribbl-status-title').textContent = 'C’EST VOTRE TOUR DE CHOISIR !';
-        $('scribbl-status-desc').textContent = 'Sélectionnez un mot secret ci-dessous pour démarrer votre dessin.';
+        // Only show the word choice card directly; no duplicate status banner
+        statusBanner.hidden = true;
       } else {
+        statusBanner.hidden = false;
         $('scribbl-status-icon').textContent = '⏳';
         $('scribbl-status-title').textContent = `${artist?.name || 'Le peintre'} choisit un mot...`;
-        $('scribbl-status-desc').textContent = 'Préparez-vous à deviner dans le chat dès que le chronomètre démarre !';
+        $('scribbl-status-desc').textContent = 'Préparez-vous à deviner dans le chat dès que le dessin commence !';
       }
     } else if (state.phase === 'reveal') {
+      statusBanner.hidden = false;
       $('scribbl-status-icon').textContent = '🔔';
       $('scribbl-status-title').textContent = 'Tour terminé !';
       $('scribbl-status-desc').textContent = state.word ? `Le mot secret était : « ${(state.word || '').toUpperCase()} »` : 'Révélation du mot...';
@@ -472,7 +470,7 @@
 
       const artist = state.players.find((player) => player.player_id === state.artist_player_id);
       if (state.is_artist) {
-        $('scribbl-turn-label').textContent = '🎨 C’est votre tour de dessiner !';
+        $('scribbl-turn-label').textContent = '🎨 Vous êtes le peintre';
         $('scribbl-turn-label').className = 'scribbl-turn-label is-self-artist';
       } else {
         $('scribbl-turn-label').textContent = artist ? `✏️ Peintre : ${artist.name}` : '';
@@ -493,22 +491,11 @@
 
     const placeholder = $('scribbl-canvas-placeholder');
     const artist = state.players.find((player) => player.player_id === state.artist_player_id);
-    if (state.status === 'finished') {
+    if (state.phase === 'drawing' || state.status === 'finished' || state.phase === 'reveal') {
+      placeholder.hidden = true;
+    } else if (state.phase === 'choosing' && !state.is_artist) {
       placeholder.hidden = false;
-      placeholder.textContent = 'Partie terminée ! Retrouvez le classement ci-dessus.';
-    } else if (state.phase === 'choosing') {
-      placeholder.hidden = false;
-      placeholder.textContent = state.is_artist
-        ? 'Choisissez un mot pour commencer à dessiner'
-        : `${artist?.name || 'Le peintre'} choisit un mot…`;
-    } else if (state.phase === 'reveal') {
-      placeholder.hidden = false;
-      placeholder.textContent = state.word ? `Le mot était : ${(state.word || '').toUpperCase()}` : 'Fin du tour';
-    } else if (state.phase === 'drawing') {
-      placeholder.hidden = Boolean(state.strokes?.length);
-      placeholder.textContent = state.is_artist
-        ? 'À vos crayons ! Dessinez ici.'
-        : 'Le dessin apparaîtra dès le premier coup de pinceau…';
+      placeholder.textContent = `${artist?.name || 'Le peintre'} choisit un mot…`;
     } else {
       placeholder.hidden = true;
     }
