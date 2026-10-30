@@ -7,13 +7,28 @@ from app.nlp import (
     calculate_numeric_proximity,
     calculate_word2vec_cosine,
     calculate_word2vec_proximity,
+    get_verb_stems,
     is_valid_french_word,
     normalize_text,
+    REGULAR_VERB_SUFFIXES,
 )
 from app.synonyms_dict import CURATED_DOMAIN_ASSOCIATIONS
 
 
 class ProximityTests(unittest.TestCase):
+    def test_verb_suffix_index_preserves_all_previous_stems(self):
+        for word in (
+            "chevaux", "courent", "mangeais", "finissons", "parlèrent",
+            "exercices", "univers", "généralement", "1985", "avait",
+        ):
+            expected = {
+                word[:-len(suffix)]
+                for suffix in REGULAR_VERB_SUFFIXES
+                if word.endswith(suffix) and len(word[:-len(suffix)]) >= 2
+            }
+            with self.subTest(word=word):
+                self.assertEqual(set(get_verb_stems(word)), expected)
+
     def test_numeric_proximity_thresholds_scale_with_target_magnitude(self):
         for guess, target, expected, beyond in (
             (30_000, 10_000, 20_000, 20_001),

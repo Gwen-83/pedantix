@@ -7,7 +7,8 @@ from typing import Dict, Any, List, Optional, Set
 
 from app.nlp import (
     normalize_text, check_match, calculate_proximity,
-    is_valid_french_word, clean_guess, normalize_wiki_title
+    is_valid_french_word, clean_guess, normalize_wiki_title,
+    FRENCH_VERB_LEMMA_CANDIDATES, get_singular_forms, get_verb_stems,
 )
 from app.synonyms_dict import EXPANDED_STOPWORDS
 from app.tokenizer import ArticleTokenizer
@@ -86,6 +87,7 @@ class GameSession:
                     self.context_words.add(cleaned)
 
         self.unrevealed_unique_words: Set[str] = set(self.word_to_token_ids.keys())
+        self._build_word_match_index()
 
         self.is_won: bool = False
         self.is_surrendered: bool = False
@@ -101,6 +103,45 @@ class GameSession:
             category=self.category,
             total_words=self.total_words
         )
+
+    def _build_word_match_index(self) -> None:
+        self._word_match_index: Dict[str, Set[str]] = {}
+        self._word_match_order = {
+            word: index for index, word in enumerate(self.word_to_token_ids)
+        }
+        self._numeric_words_by_value: Dict[int, List[str]] = {}
+
+        for word in self.word_to_token_ids:
+            match_keys = {word}
+            match_keys.update(FRENCH_VERB_LEMMA_CANDIDATES.get(word, ()))
+            match_keys.update(get_singular_forms(word))
+            match_keys.update(get_verb_stems(word))
+            for key in match_keys:
+                self._word_match_index.setdefault(key, set()).add(word)
+
+            if word.isdecimal():
+                self._numeric_words_by_value.setdefault(int(word), []).append(word)
+
+        self._word_match_index_source = self.word_to_token_ids
+
+    def _find_matching_target_words(self, word: str) -> List[str]:
+        if self._word_match_index_source is not self.word_to_token_ids:
+            self._build_word_match_index()
+
+        normalized_word = normalize_text(word)
+        match_keys = {normalized_word}
+        match_keys.update(FRENCH_VERB_LEMMA_CANDIDATES.get(normalized_word, ()))
+        match_keys.update(get_singular_forms(normalized_word))
+        match_keys.update(get_verb_stems(normalized_word))
+        candidates = set()
+        for key in match_keys:
+            candidates.update(self._word_match_index.get(key, ()))
+
+        return [
+            target
+            for target in sorted(candidates, key=self._word_match_order.__getitem__)
+            if check_match(word, target)
+        ]
 
     def submit_guess(self, word: str) -> Dict[str, Any]:
         """Processes a player guess word."""
@@ -143,9 +184,32 @@ class GameSession:
         matched_norms: List[str] = []
 
         # Find exact or morphological matches across unique words
-        for target_norm, tids in self.word_to_token_ids.items():
-            if check_match(clean_word, target_norm):
+        for target_norm in self._find_matching_target_words(clean_word):
+            tids = self.word_to_token_ids[target_norm]
+            matched_norms.append(target_norm)
+            all_matched_ids.extend(tids)
+            for tid in tids:
+                t = self.tokens_by_id[tid]
+                if not t["revealed"]:
+                    t["revealed"] = True
+                    self.revealed_word_ids.add(tid)
+                    self.token_heat.pop(tid, None)
+                    self.token_close_words.pop(tid, None)
+                    newly_revealed[tid] = t["text"]
+
+        if is_numeric_guess:
+            guess_value = int(clean_word)
+            nearby_numeric_words = {
+                target_norm
+                for value in range(guess_value - 9, guess_value + 10)
+                for target_norm in self._numeric_words_by_value.get(value, ())
+                if target_norm in self.unrevealed_unique_words
+            }
+            for target_norm in sorted(
+                nearby_numeric_words, key=self._word_match_order.__getitem__
+            ):
                 matched_norms.append(target_norm)
+                tids = self.word_to_token_ids[target_norm]
                 all_matched_ids.extend(tids)
                 for tid in tids:
                     t = self.tokens_by_id[tid]
@@ -155,25 +219,6 @@ class GameSession:
                         self.token_heat.pop(tid, None)
                         self.token_close_words.pop(tid, None)
                         newly_revealed[tid] = t["text"]
-
-        if is_numeric_guess:
-            guess_value = int(clean_word)
-            for target_norm in self.unrevealed_unique_words:
-                if (
-                    target_norm.isdigit()
-                    and abs(guess_value - int(target_norm)) < 10
-                ):
-                    matched_norms.append(target_norm)
-                    tids = self.word_to_token_ids.get(target_norm, [])
-                    all_matched_ids.extend(tids)
-                    for tid in tids:
-                        token = self.tokens_by_id[tid]
-                        if not token["revealed"]:
-                            token["revealed"] = True
-                            self.revealed_word_ids.add(tid)
-                            self.token_heat.pop(tid, None)
-                            self.token_close_words.pop(tid, None)
-                            newly_revealed[tid] = token["text"]
 
         for mn in matched_norms:
             self.unrevealed_unique_words.discard(mn)

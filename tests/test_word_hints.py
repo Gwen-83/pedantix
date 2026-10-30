@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.game import GameSession
+from app.nlp import check_match
 from app.room import Room, RoomPlayer
 
 
@@ -130,6 +131,31 @@ class WordHintTests(unittest.TestCase):
 
 
 class GameProximityDisplayTests(unittest.TestCase):
+    def test_morphological_index_matches_the_full_article_scan(self):
+        with patch("app.game.record_game_start"):
+            session = GameSession(
+                session_id="morphological-index-test",
+                seed="P-1234",
+                title="Cheval et port",
+                url="",
+                image="",
+                paragraphs=["Les chevaux galopent près des navires."],
+                mode="solo",
+                category="general",
+            )
+
+        for word in ("cheval", "chevaux", "galoper", "galopent", "navire", "ports"):
+            expected = {
+                target
+                for target in session.word_to_token_ids
+                if check_match(word, target)
+            }
+            with self.subTest(word=word):
+                self.assertEqual(
+                    set(session._find_matching_target_words(word)),
+                    expected,
+                )
+
     def _submit_proximity_guess(self, proximity):
         with (
             patch("app.game.record_game_start"),

@@ -485,10 +485,15 @@ PREFIX_LIST = (
     "co", "re", "de", "in", "im", "dis"
 )
 
+PREFIXES_BY_FIRST_LETTER: Dict[str, Tuple[str, ...]] = {}
+for _prefix in PREFIX_LIST:
+    PREFIXES_BY_FIRST_LETTER.setdefault(_prefix[0], ())
+    PREFIXES_BY_FIRST_LETTER[_prefix[0]] += (_prefix,)
+
 @functools.lru_cache(maxsize=16384)
 def strip_prefix(w: str) -> str:
     """Strips common Greek/Latin and grammatical prefixes for root comparison."""
-    for p in PREFIX_LIST:
+    for p in PREFIXES_BY_FIRST_LETTER.get(w[:1], ()):
         if len(w) > len(p) + 3 and w.startswith(p):
             return w[len(p):]
     return w
@@ -586,6 +591,38 @@ REGULAR_VERB_SUFFIXES = (
     "e", "i"
 )
 
+REGULAR_VERB_SUFFIXES_BY_ENDING: Dict[str, Tuple[str, ...]] = {}
+for _suffix in REGULAR_VERB_SUFFIXES:
+    REGULAR_VERB_SUFFIXES_BY_ENDING.setdefault(_suffix[-1], ())
+    REGULAR_VERB_SUFFIXES_BY_ENDING[_suffix[-1]] += (_suffix,)
+
+FRENCH_STEM_SUFFIXES = (
+    ("logiques", "log"), ("logique", "log"), ("logiste", "log"), ("logie", "log"),
+    ("ifiques", "ifi"), ("ifique", "ifi"), ("ification", "ifi"), ("ifiquement", "ifi"),
+    ("istiques", "ist"), ("istique", "ist"), ("istes", "ist"), ("iste", "ist"), ("ismes", "ist"), ("isme", "ist"),
+    ("ateurs", "at"), ("ateur", "at"), ("atrices", "at"), ("atrice", "at"), ("ations", "at"), ("ation", "at"),
+    ("teurs", "t"), ("teur", "t"), ("trices", "t"), ("trice", "t"), ("tions", "t"), ("tion", "t"), ("sions", "t"), ("sion", "t"),
+    ("iciennes", ""), ("icienne", ""), ("iciens", ""), ("icien", ""),
+    ("iennes", ""), ("ienne", ""), ("iens", ""), ("ien", ""),
+    ("iques", ""), ("ique", ""),
+    ("aires", ""), ("aire", ""),
+    ("euses", "eur"), ("euse", "eur"), ("eurs", "eur"),
+    ("ieres", "ier"), ("iere", "ier"), ("iers", "ier"),
+    ("ements", ""), ("ement", ""),
+    ("ables", ""), ("able", ""), ("ibles", ""), ("ible", ""),
+    ("ites", ""), ("ite", ""),
+    ("elles", "el"), ("elle", "el"), ("els", "el"),
+    ("ales", "al"), ("ale", "al"),
+    ("ines", ""), ("ine", ""),
+    ("ees", ""), ("ee", ""), ("er", ""), ("ir", ""), ("ant", ""),
+    ("erions", ""), ("eriez", ""), ("eront", ""), ("erait", ""), ("erais", ""),
+    ("aient", ""), ("ait", ""), ("ais", ""), ("ent", "")
+)
+FRENCH_STEM_SUFFIXES_BY_ENDING: Dict[str, Tuple[Tuple[str, str], ...]] = {}
+for _suffix, _replacement in FRENCH_STEM_SUFFIXES:
+    FRENCH_STEM_SUFFIXES_BY_ENDING.setdefault(_suffix[-1], ())
+    FRENCH_STEM_SUFFIXES_BY_ENDING[_suffix[-1]] += ((_suffix, _replacement),)
+
 @functools.lru_cache(maxsize=16384)
 def get_singular_forms(w: str) -> frozenset:
     """Generates normalized singular candidates from plural forms."""
@@ -615,7 +652,7 @@ def get_verb_stems(w: str) -> frozenset:
     stems = set()
     if w in NON_FLEXIBLE_WORDS or w in STOPWORDS_EXACT or len(w) <= 2:
         return frozenset(stems)
-    for suffix in REGULAR_VERB_SUFFIXES:
+    for suffix in REGULAR_VERB_SUFFIXES_BY_ENDING.get(w[-1], ()):
         if w.endswith(suffix):
             stem = w[:-len(suffix)]
             if len(stem) >= 2:
@@ -687,29 +724,7 @@ def stem_french(word: str) -> str:
         w = w[:-1]
 
     # French suffixes transformation to common canonical stem
-    suffixes = (
-        ("logiques", "log"), ("logique", "log"), ("logiste", "log"), ("logie", "log"),
-        ("ifiques", "ifi"), ("ifique", "ifi"), ("ification", "ifi"), ("ifiquement", "ifi"),
-        ("istiques", "ist"), ("istique", "ist"), ("istes", "ist"), ("iste", "ist"), ("ismes", "ist"), ("isme", "ist"),
-        ("ateurs", "at"), ("ateur", "at"), ("atrices", "at"), ("atrice", "at"), ("ations", "at"), ("ation", "at"),
-        ("teurs", "t"), ("teur", "t"), ("trices", "t"), ("trice", "t"), ("tions", "t"), ("tion", "t"), ("sions", "t"), ("sion", "t"),
-        ("iciennes", ""), ("icienne", ""), ("iciens", ""), ("icien", ""),
-        ("iennes", ""), ("ienne", ""), ("iens", ""), ("ien", ""),
-        ("iques", ""), ("ique", ""),
-        ("aires", ""), ("aire", ""),
-        ("euses", "eur"), ("euse", "eur"), ("eurs", "eur"),
-        ("ieres", "ier"), ("iere", "ier"), ("iers", "ier"),
-        ("ements", ""), ("ement", ""),
-        ("ables", ""), ("able", ""), ("ibles", ""), ("ible", ""),
-        ("ites", ""), ("ite", ""),
-        ("elles", "el"), ("elle", "el"), ("els", "el"),
-        ("ales", "al"), ("ale", "al"),
-        ("ines", ""), ("ine", ""),
-        ("ees", ""), ("ee", ""), ("er", ""), ("ir", ""), ("ant", ""),
-        ("erions", ""), ("eriez", ""), ("eront", ""), ("erait", ""), ("erais", ""),
-        ("aient", ""), ("ait", ""), ("ais", ""), ("ent", "")
-    )
-    for sfx, rep in suffixes:
+    for sfx, rep in FRENCH_STEM_SUFFIXES_BY_ENDING.get(w[-1], ()):
         if len(w) > len(sfx) + 2 and w.endswith(sfx):
             w = w[:-len(sfx)] + rep
             break
