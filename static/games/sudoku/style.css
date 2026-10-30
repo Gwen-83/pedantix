@@ -210,7 +210,8 @@ button.sudoku-mode-card:hover { transform: translateY(-2px); border-color: rgba(
 .sudoku-number-button, .sudoku-clear-button { min-height: 43px; border: 1px solid rgba(255, 255, 255, 0.13); border-radius: 9px; background: rgba(255, 255, 255, 0.055); color: #dbeafe; font-size: 1rem; font-weight: 800; }
 .sudoku-number-button:hover:not(:disabled), .sudoku-clear-button:hover:not(:disabled) { border-color: #38bdf8; background: rgba(56, 189, 248, 0.13); }
 .sudoku-clear-button { font-size: 0.8rem; }
-.sudoku-clear-button[aria-pressed="true"] { border-color: #38bdf8; background: rgba(56, 189, 248, 0.2); color: #e0f2fe; }
+.sudoku-notes-toggle { border-color: var(--game-muted, #94a3b8); background: transparent; color: var(--game-muted, #94a3b8); transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
+.sudoku-notes-toggle[aria-pressed="true"] { border-color: #4ade80; background: #166534; color: #fff; }
 .sudoku-scoreboard { padding: 12px; border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; background: rgba(56, 189, 248, 0.07); color: #dbeafe; font-size: 0.82rem; line-height: 1.5; }
 .sudoku-ranking-section { margin-top: 20px; }
 .sudoku-ranking-section h2 { margin: 0 0 10px; font-size: 0.96rem; }

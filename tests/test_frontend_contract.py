@@ -142,6 +142,26 @@ class FrontendContractTests(unittest.TestCase):
                         asset_response = self.client.get(url.path)
                         self.assertEqual(asset_response.status_code, 200)
 
+    def test_sudoku_notes_toggle_has_distinct_active_and_inactive_styles(self):
+        styles = (
+            Path(__file__).resolve().parents[1]
+            / "static"
+            / "games"
+            / "sudoku"
+            / "style.css"
+        ).read_text()
+
+        self.assertIn(
+            ".sudoku-notes-toggle { border-color: var(--game-muted, #94a3b8); "
+            "background: transparent;",
+            styles,
+        )
+        self.assertIn(
+            '.sudoku-notes-toggle[aria-pressed="true"] '
+            '{ border-color: #4ade80; background: #166534; color: #fff; }',
+            styles,
+        )
+
     def test_global_chat_notifications_are_shared_across_game_pages(self):
         root_page = self.client.get("/")
         self.assertIn('/static/shared/presence.js', root_page.text)
