@@ -328,21 +328,14 @@ class ChiffrantixBoard:
         }
 
     def reveal_hint_word(self) -> Optional[Dict[str, Any]]:
-        """Reveals one unrevealed word (preferring minor/context words before key nouns)."""
+        """Reveals one minor/context word without exposing words needed to solve."""
         if self.solved:
             return None
-        unrevealed_minor = [
+        candidates = [
             tid
             for tid in self.word_ids
             if tid not in self.revealed_word_ids and tid not in self.significant_ids
         ]
-        unrevealed_sig = [
-            tid for tid in self.significant_ids if tid not in self.revealed_word_ids
-        ]
-        # Only allow revealing a significant word if at least 2 significant words remain
-        candidates = unrevealed_minor if unrevealed_minor else (
-            unrevealed_sig if len(unrevealed_sig) > 1 else []
-        )
         if not candidates:
             return None
 

@@ -227,18 +227,15 @@ async def security_headers_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def device_tracker_middleware(request: Request, call_next):
-    """Intercepte chaque requête HTTP et affiche l'IP réelle et le User-Agent exact pour différencier les appareils."""
-    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    client_ip = get_client_ip(request)
-    user_agent = request.headers.get("user-agent", "Inconnu / Aucun")
-    method = request.method
-    path = request.url.path
-
-    # Marqueur visuel [DEVICE-TRACKER] et flush=True pour affichage temps réel dans les logs Render
-    print(
-        f"[DEVICE-TRACKER] {timestamp} | {method} {path} | IP: {client_ip} | UA: {user_agent}",
-        flush=True
-    )
+    """Journalise les détails des appareils uniquement lorsque le niveau DEBUG est actif."""
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "[DEVICE-TRACKER] %s %s | IP: %s | UA: %s",
+            request.method,
+            request.url.path,
+            get_client_ip(request),
+            request.headers.get("user-agent", "Inconnu / Aucun"),
+        )
     return await call_next(request)
 
 # Initialize database on startup
@@ -1750,15 +1747,16 @@ async def room_guess(req: RoomGuessRequest, request: Request):
     client_ip = get_client_ip(request)
     identifier = f"{room.room_id}:{req.player_id}"
 
-    # Log détaillé de l'appareil pour différencier les joueurs sous même IP
-    now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    ua_str = request.headers.get("user-agent", "Inconnu")
-    p_name = player.name if player else "Anonyme"
-    print(
-        f"[DEVICE-TRACKER][GUESS] {now_str} | Salon: {req.room_id} | Joueur: {p_name} ({req.player_id}) | "
-        f"IP: {client_ip} | Mot: '{req.word}' | UA: {ua_str}",
-        flush=True
-    )
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "[DEVICE-TRACKER][GUESS] Salon: %s | Joueur: %s (%s) | IP: %s | Mot: %s | UA: %s",
+            req.room_id,
+            player.name,
+            req.player_id,
+            client_ip,
+            req.word,
+            request.headers.get("user-agent", "Inconnu"),
+        )
 
     # 0. Détection des pièges canaris (honeypots DOM anti-scraping / anti-extension)
     if anti_bot_guard.is_honeypot_word(req.word):

@@ -1732,39 +1732,44 @@ class Room:
     async def broadcast(self, message: Dict[str, Any]):
         to_remove = set()
         is_team_guess = "team_guess" in message and message.get("game_mode") == "team"
+        connections = list(self.websockets)
+        full_payload = json.dumps(message)
+        sanitized_payload = full_payload
+        if is_team_guess:
+            sanitized_msg = dict(message)
+            sanitized_msg["title"] = None
+            raw_team_guess = message.get("team_guess", {})
+            sanitized_msg["team_guess"] = {
+                "player_id": raw_team_guess.get("player_id"),
+                "player_name": raw_team_guess.get("player_name"),
+                "team": raw_team_guess.get("team"),
+                "redacted": True,
+                "word": "••••",
+                "status": raw_team_guess.get("status"),
+                "matches_count": raw_team_guess.get("matches_count", 0),
+                "score": raw_team_guess.get("score", 0),
+                "newly_revealed": {},
+                "close_tokens": [],
+                "history_entry": None
+            }
+            sanitized_payload = json.dumps(sanitized_msg)
 
-        for ws in list(self.websockets):
-            try:
-                if is_team_guess:
-                    recipient_pid = self.ws_player_map.get(ws)
-                    recipient_player = self.players.get(recipient_pid) if recipient_pid else None
-                    guess_team = message.get("team")
+        payloads = []
+        for ws in connections:
+            payload = full_payload
+            if is_team_guess:
+                recipient_pid = self.ws_player_map.get(ws)
+                recipient_player = self.players.get(recipient_pid) if recipient_pid else None
+                if not recipient_player or recipient_player.team != message.get("team"):
+                    payload = sanitized_payload
+            payloads.append(payload)
 
-                    if recipient_player and recipient_player.team == guess_team:
-                        # Full message for teammates
-                        await ws.send_text(json.dumps(message))
-                    else:
-                        # Redacted message for opposing team / spectators
-                        sanitized_msg = dict(message)
-                        sanitized_msg["title"] = None
-                        raw_team_guess = message.get("team_guess", {})
-                        sanitized_msg["team_guess"] = {
-                            "player_id": raw_team_guess.get("player_id"),
-                            "player_name": raw_team_guess.get("player_name"),
-                            "team": raw_team_guess.get("team"),
-                            "redacted": True,
-                            "word": "••••",
-                            "status": raw_team_guess.get("status"),
-                            "matches_count": raw_team_guess.get("matches_count", 0),
-                            "score": raw_team_guess.get("score", 0),
-                            "newly_revealed": {},
-                            "close_tokens": [],
-                            "history_entry": None
-                        }
-                        await ws.send_text(json.dumps(sanitized_msg))
-                else:
-                    await ws.send_text(json.dumps(message))
-            except Exception:
+        results = await asyncio.gather(
+            *(ws.send_text(payload) for ws, payload in zip(connections, payloads)),
+            return_exceptions=True,
+        )
+        for ws, result in zip(connections, results):
+            if isinstance(result, Exception):
                 to_remove.add(ws)
 
         for dead_ws in to_remove:

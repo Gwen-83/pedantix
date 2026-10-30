@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -14,6 +15,25 @@ class FakeWebSocket:
 class FailingWebSocket:
     async def send_text(self, message):
         raise ConnectionError("socket closed")
+
+
+class BarrierWebSocket:
+    def __init__(self, barrier):
+        self.barrier = barrier
+
+    async def send_text(self, message):
+        self.barrier[0] += 1
+        if self.barrier[0] == 2:
+            self.barrier[1].set()
+        await self.barrier[1].wait()
+
+
+class RecordingWebSocket:
+    def __init__(self):
+        self.messages = []
+
+    async def send_text(self, message):
+        self.messages.append(json.loads(message))
 
 
 class FakeSoloSession:
@@ -112,6 +132,55 @@ class RoomReconnectTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(self.player.disconnected_at)
         self.assertNotIn(socket, self.room.ws_player_map)
         self.assertIn(self.player.player_id, self.room._disconnect_tasks)
+
+    async def test_broadcast_sends_to_websockets_concurrently(self):
+        self.room.remove_websocket(self.original_socket)
+        barrier = [0, asyncio.Event()]
+        sockets = [BarrierWebSocket(barrier), BarrierWebSocket(barrier)]
+        for index, socket in enumerate(sockets):
+            self.room.add_websocket(socket, f"player-{index}")
+
+        await asyncio.wait_for(self.room.broadcast({"type": "test"}), timeout=1)
+
+        self.assertEqual(barrier[0], 2)
+
+    async def test_team_broadcast_keeps_opposing_team_details_redacted(self):
+        self.player.team = "blue"
+        red_player = RoomPlayer(
+            "player-2",
+            "Autre joueur",
+            SimpleNamespace(total_words=10),
+            team="red",
+        )
+        self.room.players[red_player.player_id] = red_player
+        blue_socket = RecordingWebSocket()
+        red_socket = RecordingWebSocket()
+        self.room.add_websocket(blue_socket, self.player.player_id)
+        self.room.add_websocket(red_socket, red_player.player_id)
+        message = {
+            "type": "progress_update",
+            "game_mode": "team",
+            "team": "blue",
+            "title": "Titre secret",
+            "team_guess": {
+                "player_id": self.player.player_id,
+                "player_name": self.player.name,
+                "team": "blue",
+                "word": "proposition",
+                "status": "match",
+                "matches_count": 1,
+                "score": 100,
+                "newly_revealed": {"1": "mot"},
+            },
+        }
+
+        await self.room.broadcast(message)
+
+        self.assertEqual(blue_socket.messages[0]["team_guess"]["word"], "proposition")
+        self.assertEqual(blue_socket.messages[0]["title"], "Titre secret")
+        self.assertEqual(red_socket.messages[0]["team_guess"]["word"], "••••")
+        self.assertTrue(red_socket.messages[0]["team_guess"]["redacted"])
+        self.assertIsNone(red_socket.messages[0]["title"])
 
     async def test_multiplayer_room_survives_reconnect_grace_in_room_listing(self):
         await self.room.handle_websocket_disconnect(self.original_socket)

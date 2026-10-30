@@ -122,6 +122,21 @@ class ChiffrantixTests(unittest.TestCase):
         self.assertGreater(game.board.revealed_count, 0)
         self.assertEqual(game.status, "playing")
 
+    def test_spamming_hints_never_reveals_words_needed_to_solve(self):
+        from app.chiffrantix import ChiffrantixBoard
+
+        board = ChiffrantixBoard(self.sample_questions[0])
+
+        while board.reveal_hint_word():
+            pass
+
+        self.assertFalse(board.solved)
+        self.assertTrue(
+            all(tid not in board.revealed_word_ids for tid in board.significant_ids)
+        )
+        self.assertEqual(len(board.significant_ids), 4)
+        self.assertIsNone(board.reveal_hint_word())
+
     def test_multiplayer_room_race_and_restart(self):
         room = self.manager.create_room(
             "host", "Hôte", difficulty="facile", category="histoire"

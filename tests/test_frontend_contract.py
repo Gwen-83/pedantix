@@ -1,4 +1,6 @@
 import ast
+import io
+from contextlib import redirect_stdout
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -79,6 +81,14 @@ class FrontendContractTests(unittest.TestCase):
         self.assertEqual(len(page.cards), 11)
         self.assertEqual(page.count_text.strip(), "11 jeux")
         self.assertEqual(len({card["href"] for card in page.cards}), len(page.cards))
+
+    def test_http_requests_do_not_force_device_tracker_logs_to_stdout(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            response = self.client.get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("[DEVICE-TRACKER]", output.getvalue())
 
     def test_store_hides_unfinished_sessions_and_cumulative_play_time(self):
         response = self.client.get("/")
