@@ -15,6 +15,7 @@ from app.wiki import (
     CURATED_BY_DIFFICULTY,
     WikipediaClient,
     article_matches_difficulty,
+    is_synthetic_article,
 )
 from app.database import (
     get_player_score, increment_player_score, record_game_finish, record_user_game_finish, record_user_guess_word,
@@ -115,6 +116,9 @@ class Room:
         self.winning_team: Optional[str] = None
         self._countdown_task: Optional[asyncio.Task] = None
         self._timer_30s_task: Optional[asyncio.Task] = None
+        self._prefetch_task: Optional[asyncio.Task] = None
+        self.pending_next_article: Optional[Dict[str, Any]] = None
+        self.pending_next_seed: Optional[str] = None
         self.hinted_word_ids: Set[int] = set()
         self._word_hint_task: Optional[asyncio.Task] = None
         self.word_hint_initial_delay: float = 300.0
@@ -744,6 +748,29 @@ class Room:
 
         return {"status": "starting", "seconds": 5, "end_time": self.countdown_end}
 
+    def _schedule_next_article_prefetch(self):
+        if self._prefetch_task and not self._prefetch_task.done():
+            return
+        self._prefetch_task = asyncio.create_task(self._prefetch_next_article_async())
+
+    async def _prefetch_next_article_async(self):
+        try:
+            excluded_titles = self.get_recently_played_titles(days=21)
+            next_article = await asyncio.to_thread(
+                room_manager._fetch_random_article,
+                self.difficulty,
+                exclude_titles=excluded_titles,
+            )
+            if next_article and article_matches_difficulty(next_article, self.difficulty):
+                self.pending_next_article = next_article
+                self.pending_next_seed = f"P-{random.randint(1000, 9999)}"
+            else:
+                self.pending_next_article = None
+                self.pending_next_seed = None
+        except Exception:
+            self.pending_next_article = None
+            self.pending_next_seed = None
+
     async def _run_5s_countdown(self):
         try:
             await asyncio.sleep(5.0)
@@ -871,6 +898,7 @@ class Room:
                 self.next_word_hint_time = None
                 if self._timer_30s_task and not self._timer_30s_task.done():
                     self._timer_30s_task.cancel()
+                self._schedule_next_article_prefetch()
             elif self.game_mode == "team":
                 if not self.winning_team:
                     self.winning_team = player.team
@@ -897,6 +925,7 @@ class Room:
 
                     if self._timer_30s_task and not self._timer_30s_task.done():
                         self._timer_30s_task.cancel()
+                    self._schedule_next_article_prefetch()
                     self._timer_30s_task = asyncio.create_task(self._run_30s_timer())
                 else:
                     # Another team also found it during 30s sprint!
@@ -944,10 +973,12 @@ class Room:
                         if len(connected_players) <= 1:
                             # Solo or only 1 player in room: finish immediately
                             self.add_activity(f"🏆 {player.name} a découvert le titre en {player.attempts} coups !", "win")
+                            self._schedule_next_article_prefetch()
                             self._timer_30s_task = asyncio.create_task(self._finish_round())
                         else:
                             self.timer_30s_end = time.time() + 30.0
                             self.add_activity(f"🏆 {player.name} a découvert le titre en {player.attempts} coups ! 30s restantes pour les autres !", "win")
+                            self._schedule_next_article_prefetch()
                             self._timer_30s_task = asyncio.create_task(self._run_30s_timer())
                     else:
                         pts_bonus = "+2 pt" if rank == 2 else ("+1 pt" if rank == 3 else "0 pt")
@@ -1176,6 +1207,12 @@ class Room:
         excluded_titles = self.get_recently_played_titles(days=21)
         exclude_norm = {normalize_wiki_title(t) for t in excluded_titles if t}
 
+        if self.pending_next_article and not new_article:
+            new_article = self.pending_next_article
+            new_seed = self.pending_next_seed or new_seed
+            self.pending_next_article = None
+            self.pending_next_seed = None
+
         if (
             not new_article or
             new_article.get("title", "") in excluded_titles or
@@ -1267,6 +1304,7 @@ class Room:
                 p.is_ready = True
             self.add_activity("🎲 Nouvelle partie solo lancée !", "new_round")
             self.next_word_hint_time = time.time() + self.word_hint_initial_delay
+            self._schedule_next_article_prefetch()
             self.start_word_hint_timer()
             await self.broadcast({
                 "type": "new_round",
@@ -1938,6 +1976,8 @@ class RoomManager:
                 article = self.wiki_client.fetch_random_wikipedia_article(difficulty=diff_key, exclude_titles=exclude_set)
             except Exception as e:
                 logger.error(f"Error fetching random article: {e}")
+        if article and is_synthetic_article(article):
+            article = self.wiki_client.fetch_curated_article(difficulty=diff_key, exclude_titles=exclude_set)
         if article and not article_matches_difficulty(article, diff_key):
             article = None
 

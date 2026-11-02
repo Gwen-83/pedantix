@@ -2,6 +2,7 @@ import os
 import unittest
 import datetime
 import asyncio
+import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -18,7 +19,8 @@ from app.wiki import (
     calculate_article_difficulty,
     get_article_difficulty,
 )
-from app.room import RoomManager, Room
+from app.room import RoomManager, Room, RoomPlayer
+from app.game import GameSession
 
 
 class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
@@ -498,6 +500,46 @@ class TestArticleHistory(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(room.players[p2].session.title, room.article_data["title"])
         # And P1's session in the room must also match the new article
         self.assertEqual(room.players[p1].session.title, room.article_data["title"])
+
+    def test_room_reuses_prefetched_next_article_when_round_starts(self):
+        room = Room(
+            room_id="solo-test-prefetch",
+            article_data={"title": "Article initial", "url": "", "paragraphs": ["Initial paragraph."]},
+            seed="seed-init",
+            difficulty="moyen"
+        )
+        initial_session = GameSession(
+            session_id="session-init",
+            seed="seed-init",
+            title="Article initial",
+            url="",
+            image="",
+            paragraphs=["Initial paragraph."],
+            mode="solo",
+            category="general",
+            difficulty="moyen",
+        )
+        player = RoomPlayer("prefetch-host", "HostPrefetch", initial_session, is_host=True, team="blue")
+        player.is_ready = True
+        room.players[player.player_id] = player
+        prefetched_title = f"Article Préchargé Unique {uuid.uuid4().hex[:8]}"
+        room.pending_next_article = {
+            "title": prefetched_title,
+            "url": f"https://fr.wikipedia.org/wiki/{prefetched_title.replace(' ', '_')}",
+            "paragraphs": ["Premier paragraphe réel d'un vrai article Wikipedia."],
+            "lang_count": 30,
+            "pageviews_90d": 5000,
+            "category": "sciences",
+            "difficulty": "moyen"
+        }
+        room.pending_next_seed = "P-4242"
+        room._schedule_next_article_prefetch = lambda: None
+
+        asyncio.run(room.start_new_round(player.player_id, new_article=None, new_seed=None))
+
+        self.assertEqual(room.article_data["title"], prefetched_title)
+        self.assertEqual(room.seed, "P-4242")
+        self.assertIsNone(room.pending_next_article)
 
     async def test_game_count_is_recorded_once_when_round_finishes(self):
         from types import SimpleNamespace

@@ -427,6 +427,26 @@ def get_article_difficulty(article: Dict[str, Any]) -> Optional[str]:
     )
 
 
+def is_synthetic_article(article: Optional[Dict[str, Any]]) -> bool:
+    """Rejects the legacy fallback text used in some older Pedantix builds.
+    Those payloads are generic template sentences and do not correspond to a real
+    Wikipedia page. They should never be cached or served as game content.
+    """
+    if not article:
+        return False
+    paragraphs = article.get("paragraphs") or []
+    if not paragraphs:
+        return False
+    text = "\n".join(paragraphs).lower()
+    title = (article.get("title") or "").lower()
+    return (
+        "article sur " in text and "wikipédia en français" in text
+        and "dans cette manche de pédantix" in text
+    ) or (
+        "proposez des mots pour dévoiler le texte secret" in text and title in text
+    )
+
+
 def article_matches_difficulty(article: Dict[str, Any], difficulty: str) -> bool:
     return get_article_difficulty(article) == difficulty
 
@@ -533,6 +553,9 @@ class WikipediaClient:
         paragraphs = clean_html_extract(html_extract)
 
         if not paragraphs or count_article_words(paragraphs) < 50:
+            return None
+        if is_synthetic_article({"title": real_title, "paragraphs": paragraphs}):
+            logger.warning(f"Rejecting synthetic fallback article for '{real_title}'")
             return None
 
         thumbnail = page.get("thumbnail", {}).get("source", "")
@@ -731,6 +754,7 @@ class WikipediaClient:
                     if (
                         art
                         and not is_title_excluded(art.get("title", ""))
+                        and not is_synthetic_article(art)
                         and count_article_words(art.get("paragraphs", [])) >= min_words
                         and article_matches_difficulty(art, diff_key)
                     ):
@@ -790,6 +814,9 @@ class WikipediaClient:
                     min_person_pageviews=min_person_pageviews,
                     min_general_pageviews=min_general_pageviews
                 ):
+                    continue
+
+                if is_synthetic_article({"title": title, "paragraphs": paragraphs}):
                     continue
 
                 langs_count = len(page.get("langlinks", []))
@@ -900,6 +927,7 @@ class WikipediaClient:
                 if (
                     article
                     and not is_title_excluded(article.get("title", ""))
+                    and not is_synthetic_article(article)
                     and count_article_words(article.get("paragraphs", [])) >= 50
                     and (not diff_key or article_matches_difficulty(article, diff_key))
                 ):

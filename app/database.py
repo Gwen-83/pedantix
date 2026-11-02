@@ -1435,6 +1435,8 @@ def get_random_cached_article(category: Optional[str] = None, exclude_titles: Op
                         for paragraph in art.get("paragraphs", [])
                     ):
                         continue
+                    if "Article sur " in "\n".join(art.get("paragraphs", [])).lower() and "wikipédia en français" in "\n".join(art.get("paragraphs", [])).lower():
+                        continue
                     title = art.get("title", "")
                     if title not in exclude_set and normalize_wiki_title(title) not in exclude_norm:
                         return art

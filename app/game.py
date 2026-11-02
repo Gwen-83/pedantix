@@ -17,6 +17,7 @@ from app.wiki import (
     ALL_CURATED_TITLES,
     CURATED_BY_DIFFICULTY,
     article_matches_difficulty,
+    is_synthetic_article,
 )
 from app.database import (
     record_game_start, record_guess, record_game_finish,
@@ -502,14 +503,20 @@ class GameManager:
             raise ValueError("Cet article a déjà été proposé au cours des 21 derniers jours.")
 
         # 4. Random French Wikipedia article meeting difficulty criteria
+        if article_data and is_synthetic_article(article_data):
+            article_data = None
+
         if not article_data:
             article_data = self.wiki_client.fetch_random_wikipedia_article(difficulty=difficulty, exclude_titles=exclude_titles)
+            if article_data and is_synthetic_article(article_data):
+                article_data = self.wiki_client.fetch_curated_article(difficulty=difficulty, exclude_titles=exclude_titles)
             if not article_data and self.offline_curated:
                 exclude_set = set(exclude_titles) if exclude_titles else set()
                 exclude_norm = {normalize_wiki_title(t) for t in exclude_set if t}
                 candidates = [
                     c for c in self.offline_curated.values()
                     if c.get("title", "") not in exclude_set and normalize_wiki_title(c.get("title", "")) not in exclude_norm
+                    and not is_synthetic_article(c)
                     and article_matches_difficulty(c, difficulty)
                 ]
                 if candidates:
