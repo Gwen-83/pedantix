@@ -254,6 +254,60 @@ class LinkedinOrInterpolTests(unittest.TestCase):
         self.assertEqual(next_res.json()["round_number"], 2)
         self.assertEqual(set(next_res.json()["current_person"].keys()), {"id", "image_url"})
 
+        finish_res = self.client.post(
+            "/api/linkedin-or-interpol/solo/guess",
+            json={
+                "player_id": "api-solo-1",
+                "player_name": "Alice",
+                "game_id": solo_data["game_id"],
+                "guess": "interpol",
+            },
+        )
+        self.assertEqual(finish_res.status_code, 200)
+        self.assertEqual(finish_res.json()["status"], "finished")
+
+        get_finished_res = self.client.get(
+            f"/api/linkedin-or-interpol/solo/{solo_data['game_id']}?player_id=api-solo-1"
+        )
+        self.assertEqual(get_finished_res.status_code, 200)
+        self.assertEqual(get_finished_res.json()["status"], "finished")
+
+        # Solo infinite mode continues after a wrong answer
+        inf_res = self.client.post(
+            "/api/linkedin-or-interpol/solo/new",
+            json={
+                "player_id": "api-solo-inf",
+                "player_name": "Alice",
+                "mode": "solo-infinite",
+                "round_count": 10,
+            },
+        )
+        self.assertEqual(inf_res.status_code, 200)
+        inf_id = inf_res.json()["game_id"]
+        for guess in ("linkedin", "interpol"):
+            step = self.client.post(
+                "/api/linkedin-or-interpol/solo/guess",
+                json={
+                    "player_id": "api-solo-inf",
+                    "player_name": "Alice",
+                    "game_id": inf_id,
+                    "guess": guess,
+                },
+            )
+            self.assertEqual(step.status_code, 200)
+            self.assertEqual(step.json()["status"], "playing")
+            self.assertTrue(step.json()["awaiting_next"])
+            adv = self.client.post(
+                "/api/linkedin-or-interpol/solo/next",
+                json={
+                    "player_id": "api-solo-inf",
+                    "player_name": "Alice",
+                    "game_id": inf_id,
+                },
+            )
+            self.assertEqual(adv.status_code, 200)
+            self.assertEqual(adv.json()["status"], "playing")
+
         # Room endpoints
         room_res = self.client.post(
             "/api/linkedin-or-interpol/room/create",

@@ -61,6 +61,8 @@ class LinkedinOrInterpolSoloGame:
     best_streak: int = 0
     results: List[Dict[str, Any]] = field(default_factory=list)
     status: str = "playing"
+    stats_recorded: bool = False
+    recorded_best_streak: int = 0
 
 
 @dataclass
@@ -353,13 +355,9 @@ class LinkedinOrInterpolManager:
             if correct:
                 game.streak += 1
                 game.best_streak = max(game.best_streak, game.streak)
-                game.score = (
-                    game.best_streak if game.mode == "solo-infinite" else game.score + 1
-                )
+                game.score += 1
             else:
                 game.streak = 0
-                if game.mode == "solo-infinite":
-                    game.status = "finished"
 
             points = 1 if correct else 0
             result = {

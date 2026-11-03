@@ -880,59 +880,91 @@ async def linkedin_or_interpol_guess(req: LinkedinOrInterpolGuessRequest):
 
 
 def _record_linkedin_solo_result(game) -> None:
-    if game.status != "finished" or game.stats_recorded:
-        return
-    game.stats_recorded = True
-    difficulty = "infini" if game.mode == "solo-infinite" else "classique"
-    points = game.best_streak if game.mode == "solo-infinite" else game.score
-    if points:
-        increment_player_score(game.player_name, points, "linkedin-or-interpol")
-    record_user_game_finish(
-        game.player_name,
-        won=points > 0,
-        attempts=len(game.results),
-        points=points,
-        session_id=f"linkedin-or-interpol:solo:{game.game_id}",
-        mode="solo",
-        title="LinkedIn ou Interpol",
-        duration_seconds=max(0, int(time.time() - game.created_at)),
-        game_id="linkedin-or-interpol",
-        difficulty=difficulty,
-        metrics={
-            "score": game.score,
-            "best_streak": game.best_streak,
-            "rounds": len(game.results),
-        },
-    )
+    try:
+        if game.mode == "solo-infinite":
+            recorded_best = getattr(game, "recorded_best_streak", 0)
+            if game.best_streak <= recorded_best:
+                return
+            delta = game.best_streak - recorded_best
+            game.recorded_best_streak = game.best_streak
+            if delta > 0:
+                increment_player_score(game.player_name, delta, "linkedin-or-interpol")
+            record_user_game_finish(
+                game.player_name,
+                won=game.best_streak > 0,
+                attempts=len(game.results),
+                points=game.best_streak,
+                session_id=f"linkedin-or-interpol:solo:{game.game_id}:s{game.best_streak}",
+                mode="solo",
+                title="LinkedIn ou Interpol",
+                duration_seconds=max(0, int(time.time() - game.created_at)),
+                game_id="linkedin-or-interpol",
+                difficulty="infini",
+                metrics={
+                    "score": game.score,
+                    "best_streak": game.best_streak,
+                    "rounds": len(game.results),
+                },
+            )
+            return
 
-
-def _record_linkedin_room_result(room) -> None:
-    if room.status != "finished" or room.stats_recorded:
-        return
-    room.stats_recorded = True
-    active = room.active_players
-    top_score = max((player.score for player in active), default=0)
-    duration = max(0, int(time.time() - (room.started_at or room.created_at)))
-    for player in active:
-        if player.score:
-            increment_player_score(player.name, player.score, "linkedin-or-interpol")
+        if game.status != "finished" or getattr(game, "stats_recorded", False):
+            return
+        game.stats_recorded = True
+        points = game.score
+        if points:
+            increment_player_score(game.player_name, points, "linkedin-or-interpol")
         record_user_game_finish(
-            player.name,
-            won=player.score == top_score and top_score > 0,
-            attempts=len(player.results),
-            points=player.score,
-            session_id=f"linkedin-or-interpol:room:{room.room_id}:{room.match_number}",
-            mode="multiplayer",
+            game.player_name,
+            won=points > 0,
+            attempts=len(game.results),
+            points=points,
+            session_id=f"linkedin-or-interpol:solo:{game.game_id}",
+            mode="solo",
             title="LinkedIn ou Interpol",
-            duration_seconds=duration,
+            duration_seconds=max(0, int(time.time() - game.created_at)),
             game_id="linkedin-or-interpol",
             difficulty="classique",
             metrics={
-                "score": player.score,
-                "best_streak": player.best_streak,
-                "rounds": len(player.results),
+                "score": game.score,
+                "best_streak": game.best_streak,
+                "rounds": len(game.results),
             },
         )
+    except Exception as exc:
+        logger.warning(f"_record_linkedin_solo_result: {exc}")
+
+
+def _record_linkedin_room_result(room) -> None:
+    try:
+        if room.status != "finished" or getattr(room, "stats_recorded", False):
+            return
+        room.stats_recorded = True
+        active = room.active_players
+        top_score = max((player.score for player in active), default=0)
+        duration = max(0, int(time.time() - (room.started_at or room.created_at)))
+        for player in active:
+            if player.score:
+                increment_player_score(player.name, player.score, "linkedin-or-interpol")
+            record_user_game_finish(
+                player.name,
+                won=player.score == top_score and top_score > 0,
+                attempts=len(player.results),
+                points=player.score,
+                session_id=f"linkedin-or-interpol:room:{room.room_id}:{room.match_number}",
+                mode="multiplayer",
+                title="LinkedIn ou Interpol",
+                duration_seconds=duration,
+                game_id="linkedin-or-interpol",
+                difficulty="classique",
+                metrics={
+                    "score": player.score,
+                    "best_streak": player.best_streak,
+                    "rounds": len(player.results),
+                },
+            )
+    except Exception as exc:
+        logger.warning(f"_record_linkedin_room_result: {exc}")
 
 
 @app.post("/api/linkedin-or-interpol/solo/new")

@@ -82,7 +82,7 @@
     const isInfinite = soloModeSelect.value === 'solo-infinite';
     roundCountGroup.hidden = isInfinite;
     soloCardDesc.textContent = isInfinite
-      ? 'Survivez le plus longtemps possible : la moindre erreur met fin à votre série.'
+      ? 'Enchaînez les portraits sans limite de manches et battez votre record de série sans faute.'
       : `Identifiez ${roundCountSelect.value} portraits anonymes et découvrez leur véritable activité après chaque réponse.`;
   }
 
