@@ -68,9 +68,10 @@ button:disabled {
 
 .linkedin-header {
   min-height: 44px;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -81,6 +82,7 @@ button:disabled {
   gap: 10px;
   justify-self: start;
   min-width: 0;
+  flex: 1 1 300px;
 }
 
 .linkedin-header-left .linkedin-back {
@@ -125,6 +127,7 @@ button:disabled {
   letter-spacing: 0.11em;
   text-align: center;
   white-space: nowrap;
+  flex: 0 1 auto;
 }
 .linkedin-brand span {
   margin-right: 5px;
@@ -402,7 +405,9 @@ button.linkedin-mode-card:hover {
   line-height: 1;
   display: grid;
   place-items: center;
-  transition: transform 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
 }
 
 .linkedin-catalog-close:hover {
@@ -546,7 +551,10 @@ button.linkedin-mode-card:hover {
   border-radius: 16px;
   background: rgba(15, 23, 42, 0.76);
   min-height: 230px;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .linkedin-catalog-card.is-known {
@@ -556,7 +564,9 @@ button.linkedin-mode-card:hover {
 .linkedin-catalog-card.is-known:hover {
   transform: translateY(-3px);
   border-color: rgba(250, 204, 21, 0.75);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35), 0 0 16px rgba(250, 204, 21, 0.15);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.35),
+    0 0 16px rgba(250, 204, 21, 0.15);
 }
 
 .linkedin-catalog-card.is-locked {
@@ -1437,24 +1447,27 @@ footer a {
 
 @media (max-width: 780px) {
   .linkedin-header {
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     row-gap: 12px;
   }
   .linkedin-header-left {
-    grid-column: 1;
-    grid-row: 1;
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
     gap: 8px;
+    flex: 1 1 auto;
   }
   .linkedin-brand {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
+    width: 100%;
+    justify-self: center;
     font-size: 0.86rem;
+    line-height: 1.4;
+    white-space: normal;
   }
   .linkedin-header .shared-header-actions {
-    grid-column: 1 / -1;
-    grid-row: 2;
+    width: 100%;
     justify-self: stretch;
     justify-content: space-between;
   }

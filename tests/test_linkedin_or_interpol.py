@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.linkedin_or_interpol import LinkedinOrInterpolManager
@@ -18,6 +20,13 @@ class LinkedinOrInterpolTests(unittest.TestCase):
             self.assertIn("image_path", entry)
             self.assertIn("source_url", entry)
 
+    def test_dataset_matches_available_portrait_assets(self):
+        images_dir = Path(__file__).resolve().parent.parent / "app" / "data" / "linkedin_or_interpol" / "images"
+        available = sorted(images_dir.glob("*.webp"))
+        self.assertGreaterEqual(len(available), 500)
+        self.assertGreaterEqual(len(self.manager.dataset), len(available) * 0.95)
+        self.assertGreaterEqual(len(self.manager.dataset), 500)
+
     def test_linkedin_catalog_exposes_rarity_and_repeat_cache_metadata(self):
         catalog = self.manager.get_catalog(limit=5)
         self.assertGreater(len(catalog), 0)
@@ -26,6 +35,22 @@ class LinkedinOrInterpolTests(unittest.TestCase):
         self.assertIn("rarity_rank", first)
         self.assertIn("seen_total", first)
         self.assertIn("draw_weight", first)
+
+    def test_rarity_is_stable_by_profile_and_manual_profiles_are_top_rarity(self):
+        self.manager._draw_history = {entry["id"]: (index % 5) + 1 for index, entry in enumerate(self.manager.dataset)}
+        manual_profiles = [entry for entry in self.manager.dataset if entry.get("source") == "local-fallback"]
+        self.assertGreater(len(manual_profiles), 0)
+
+        for person in manual_profiles:
+            profile = self.manager._profile_rarity(person)
+            self.assertEqual(profile["rarity_rank"], 1)
+            self.assertEqual(profile["rarity_label"], "Très rare")
+
+        public_profiles = [entry for entry in self.manager.dataset if entry.get("source") != "local-fallback"]
+        self.assertGreater(len(public_profiles), 0)
+        for person in public_profiles[:20]:
+            profile = self.manager._profile_rarity(person)
+            self.assertGreaterEqual(profile["rarity_rank"], 2)
 
     def test_create_game_builds_rounds_and_hides_identity_and_activities_before_guess(self):
         state = self.manager.create_game("alice", rounds=3)

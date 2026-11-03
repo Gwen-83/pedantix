@@ -1,3 +1,4 @@
+import hashlib
 import json
 import random
 import string
@@ -9,6 +10,7 @@ from threading import RLock
 from typing import Any, Dict, List, Optional, Tuple
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "linkedin_or_interpol" / "metadata.json"
+DATA_IMAGES_DIR = DATA_PATH.parent / "images"
 VALID_MODES = {"solo", "multiplayer", "solo-infinite", "classique", "infini"}
 VALID_CHOICES = {"linkedin", "interpol"}
 DEFAULT_ROUND_COUNT = 10
@@ -130,14 +132,38 @@ class LinkedinOrInterpolManager:
 
     @staticmethod
     def _load_dataset() -> List[Dict[str, Any]]:
-        if not DATA_PATH.exists():
-            return []
-        with DATA_PATH.open(encoding="utf-8") as handle:
-            try:
-                data = json.load(handle)
-            except json.JSONDecodeError:
-                return []
-        return data if isinstance(data, list) else []
+        records: List[Dict[str, Any]] = []
+        if DATA_PATH.exists():
+            with DATA_PATH.open(encoding="utf-8") as handle:
+                try:
+                    data = json.load(handle)
+                except json.JSONDecodeError:
+                    data = []
+            if isinstance(data, list):
+                records.extend(data)
+
+        if DATA_IMAGES_DIR.exists():
+            records_by_id = {str(entry.get("id") or ""): entry for entry in records if str(entry.get("id") or "")}
+            for image_path in sorted(DATA_IMAGES_DIR.glob("*.webp")):
+                person_id = image_path.stem
+                if person_id in records_by_id:
+                    continue
+                seed = int(hashlib.sha256(person_id.encode("utf-8")).hexdigest(), 16)
+                label = "linkedin" if seed % 2 == 0 else "interpol"
+                records_by_id[person_id] = {
+                    "id": person_id,
+                    "name": "Portrait",
+                    "surname": str(len(records_by_id) + 1),
+                    "description": "Portrait ajouté à la collection. Révélez-le en jouant et découvrez sa vraie catégorie.",
+                    "label": label,
+                    "source": "local-fallback",
+                    "source_url": f"https://linkedin-or-interpol.com/images/profiles/{image_path.name}",
+                    "image_path": f"images/{image_path.name}",
+                    "manual_added": True,
+                }
+            records = list(records_by_id.values())
+
+        return records
 
     @staticmethod
     def _image_url(image_path: str) -> str:
@@ -244,22 +270,48 @@ class LinkedinOrInterpolManager:
         with self._lock:
             self._draw_history[person_id] = self._draw_history.get(person_id, 0) + 1
 
+    @staticmethod
+    def _is_manual_profile(person: Dict[str, Any]) -> bool:
+        if bool(person.get("manual_added")):
+            return True
+        source = str(person.get("source") or "").strip().lower()
+        return source == "local-fallback"
+
+    @staticmethod
+    def _base_rarity_rank(person: Dict[str, Any]) -> int:
+        if LinkedinOrInterpolManager._is_manual_profile(person):
+            return 1
+
+        digest = int(hashlib.sha256(str(person.get("id") or "").encode("utf-8")).hexdigest(), 16)
+        bucket = digest % 100
+        if bucket < 18:
+            return 2
+        if bucket < 58:
+            return 3
+        return 4
+
+    @staticmethod
+    def _rarity_label_for_rank(rarity_rank: int) -> str:
+        return {
+            1: "Très rare",
+            2: "Rare",
+            3: "Peu commune",
+            4: "Commune",
+        }.get(int(rarity_rank), "Commune")
+
     def _profile_rarity(self, person: Dict[str, Any]) -> Dict[str, Any]:
         person_id = str(person.get("id") or "")
         seen_total = int(self._draw_history.get(person_id, 0))
-        if seen_total <= 2:
-            rarity_label = "Très rare"
-            rarity_rank = 1
-        elif seen_total <= 8:
-            rarity_label = "Rare"
-            rarity_rank = 2
-        elif seen_total <= 20:
-            rarity_label = "Peu commune"
-            rarity_rank = 3
-        else:
-            rarity_label = "Commune"
-            rarity_rank = 4
-        draw_weight = 1.0 / max(1.0, float(seen_total + 1))
+        rarity_rank = self._base_rarity_rank(person)
+        rarity_label = self._rarity_label_for_rank(rarity_rank)
+
+        rarity_weight = {
+            1: 1.2,
+            2: 1.7,
+            3: 2.4,
+            4: 3.2,
+        }.get(rarity_rank, 3.2)
+
         return {
             "id": person_id,
             "name": (person.get("name") or "").strip(),
@@ -268,7 +320,7 @@ class LinkedinOrInterpolManager:
             "rarity_label": rarity_label,
             "rarity_rank": rarity_rank,
             "seen_total": seen_total,
-            "draw_weight": round(draw_weight, 4),
+            "draw_weight": round(rarity_weight, 4),
             "image_url": self._image_url(person.get("image_path", "")),
         }
 
@@ -278,7 +330,6 @@ class LinkedinOrInterpolManager:
             catalog.sort(
                 key=lambda entry: (
                     int(entry["rarity_rank"]),
-                    int(entry["seen_total"]),
                     (entry.get("name") or "").lower(),
                     (entry.get("surname") or "").lower(),
                 )
@@ -301,18 +352,23 @@ class LinkedinOrInterpolManager:
         if not pool:
             pool = list(self.dataset)
 
-        recent = set(recent_ids or [])
-        unseen = [entry for entry in pool if entry.get("id") not in recent]
+        recent = {str(value) for value in (recent_ids or []) if value}
+        unseen = [entry for entry in pool if str(entry.get("id") or "") not in recent]
         if not unseen:
             unseen = pool
 
         weighted = []
         weights = []
         for entry in unseen:
-            seen_total = int(self._draw_history.get(entry.get("id"), 0))
-            rarity_weight = 1.0 / max(1.0, float(seen_total + 1))
+            rarity_rank = self._base_rarity_rank(entry)
+            weight = {
+                1: 1.2,
+                2: 1.7,
+                3: 2.4,
+                4: 3.2,
+            }.get(rarity_rank, 3.2)
             weighted.append(entry)
-            weights.append(rarity_weight)
+            weights.append(weight)
 
         sample_size = max(1, min(int(rounds or DEFAULT_ROUND_COUNT), len(weighted)))
         chosen = random.choices(weighted, weights=weights, k=sample_size)

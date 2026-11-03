@@ -45,7 +45,13 @@
             class="linkedin-secondary-button linkedin-catalog-button"
             title="Consulter votre collection de profils"
           >
-            <span aria-hidden="true">🗂️</span> <span class="linkedin-catalog-btn-label">Collection </span><span id="linkedin-catalog-count-badge" class="linkedin-catalog-count-badge">0/174</span>
+            <span aria-hidden="true">🗂️</span>
+            <span class="linkedin-catalog-btn-label">Collection </span
+            ><span
+              id="linkedin-catalog-count-badge"
+              class="linkedin-catalog-count-badge"
+              >0</span
+            >
           </button>
         </div>
         <p class="linkedin-brand">
@@ -208,7 +214,9 @@
             <span class="linkedin-collection-icon" aria-hidden="true">🗂️</span>
             <div>
               <strong>Collection de portraits</strong>
-              <small id="linkedin-home-collection-desc">Chargement de votre collection…</small>
+              <small id="linkedin-home-collection-desc"
+                >Chargement de votre collection…</small
+              >
             </div>
           </div>
           <button
@@ -233,13 +241,17 @@
                 Meilleurs scores sur les parties à manches fixes.
               </p>
             </div>
-            <label class="sr-only" for="linkedin-leaderboard-mode">Mode du classement</label>
+            <label class="sr-only" for="linkedin-leaderboard-mode"
+              >Mode du classement</label
+            >
             <select
               id="linkedin-leaderboard-mode"
               class="linkedin-difficulty-select"
               aria-label="Mode du classement"
             >
-              <option value="classique" selected>🎯 Classique · Meilleurs scores</option>
+              <option value="classique" selected>
+                🎯 Classique · Meilleurs scores
+              </option>
               <option value="infini">🔥 Mode infini · Meilleures séries</option>
             </select>
           </div>
@@ -432,7 +444,11 @@
                     >💼 LinkedIn</span
                   >
                 </div>
-                <p id="linkedin-discovery-badge" class="linkedin-discovery-badge" hidden>
+                <p
+                  id="linkedin-discovery-badge"
+                  class="linkedin-discovery-badge"
+                  hidden
+                >
                   ✨ Nouveau portrait débloqué dans votre collection !
                 </p>
                 <h2 id="linkedin-person-name" class="linkedin-person-name"></h2>
@@ -638,7 +654,11 @@
             <h2 id="linkedin-catalog-title">Collection de portraits</h2>
           </div>
           <div class="linkedin-catalog-progress-track">
-            <div id="linkedin-catalog-progress-bar" class="linkedin-catalog-progress-fill" style="width: 0%"></div>
+            <div
+              id="linkedin-catalog-progress-bar"
+              class="linkedin-catalog-progress-fill"
+              style="width: 0%"
+            ></div>
           </div>
         </header>
         <div class="linkedin-catalog-toolbar">
@@ -647,10 +667,35 @@
             class="linkedin-catalog-summary"
           ></div>
           <div class="linkedin-catalog-filters">
-            <div class="linkedin-catalog-tabs" role="tablist" aria-label="Filtrer les portraits">
-              <button type="button" class="linkedin-tab-btn active" data-catalog-filter="all" aria-selected="true">Tous</button>
-              <button type="button" class="linkedin-tab-btn" data-catalog-filter="known" aria-selected="false">Découverts</button>
-              <button type="button" class="linkedin-tab-btn" data-catalog-filter="locked" aria-selected="false">À découvrir</button>
+            <div
+              class="linkedin-catalog-tabs"
+              role="tablist"
+              aria-label="Filtrer les portraits"
+            >
+              <button
+                type="button"
+                class="linkedin-tab-btn active"
+                data-catalog-filter="all"
+                aria-selected="true"
+              >
+                Tous
+              </button>
+              <button
+                type="button"
+                class="linkedin-tab-btn"
+                data-catalog-filter="known"
+                aria-selected="false"
+              >
+                Découverts
+              </button>
+              <button
+                type="button"
+                class="linkedin-tab-btn"
+                data-catalog-filter="locked"
+                aria-selected="false"
+              >
+                À découvrir
+              </button>
             </div>
             <input
               type="search"

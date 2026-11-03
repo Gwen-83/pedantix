@@ -177,7 +177,9 @@
 
         const detail = document.createElement("span");
         detail.className = "shared-solo-leaderboard-detail";
-        const pts = Number(record.points ?? record.best_score ?? record.best_streak ?? 0);
+        const pts = Number(
+          record.points ?? record.best_score ?? record.best_streak ?? 0,
+        );
         if (mode === "infini") {
           const played = record.metrics?.rounds || record.attempts;
           detail.textContent = played
@@ -232,8 +234,9 @@
   function updateCollectionBadges(collection) {
     const col = collection || loadCollectionState();
     const found = Object.values(col).filter((entry) => entry?.found).length;
-    const total = cachedCatalog?.length || 174;
-    const pct = Math.min(100, Math.round((found / total) * 100));
+    const total = Math.max(cachedCatalog?.length || 0, 1);
+    const pct =
+      total > 0 ? Math.min(100, Math.round((found / total) * 100)) : 0;
 
     const countBadge = document.getElementById("linkedin-catalog-count-badge");
     if (countBadge) {
@@ -300,8 +303,9 @@
     if (!summary) return;
 
     const found = catalog.filter((entry) => collection[entry.id]?.found).length;
-    const total = catalog.length || 174;
-    const pct = Math.min(100, Math.round((found / total) * 100));
+    const total = Math.max(catalog.length || 0, 1);
+    const pct =
+      total > 0 ? Math.min(100, Math.round((found / total) * 100)) : 0;
     const ultraFound = catalog.filter(
       (entry) => entry.rarity_rank === 1 && collection[entry.id]?.found,
     ).length;
@@ -867,7 +871,7 @@
     if (discoveryBadge) {
       const isNew = Boolean(
         roundResult.person_id &&
-          roundResult.person_id === lastDiscoveredPersonId,
+        roundResult.person_id === lastDiscoveredPersonId,
       );
       discoveryBadge.hidden = !isNew;
     }
