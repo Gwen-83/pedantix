@@ -177,15 +177,15 @@
 
         const detail = document.createElement("span");
         detail.className = "shared-solo-leaderboard-detail";
-        const pts = Number(record.points || 0);
+        const pts = Number(record.points ?? record.best_score ?? record.best_streak ?? 0);
         if (mode === "infini") {
           const played = record.metrics?.rounds || record.attempts;
           detail.textContent = played
             ? `🔥 Série de ${pts} · ${played} portrait${played > 1 ? "s" : ""}`
             : `🔥 Série de ${pts}`;
         } else {
-          const rounds = record.metrics?.rounds || 10;
-          const streak = record.metrics?.best_streak;
+          const rounds = record.metrics?.rounds || record.attempts || 10;
+          const streak = record.metrics?.best_streak ?? record.best_streak;
           detail.textContent =
             streak > 0
               ? `${pts} / ${rounds} pts · série max ${streak}`
@@ -267,12 +267,20 @@
         existing?.name ||
         "Profil";
 
+      const currentGameId = state?.game_id || state?.room_id || null;
+      const alreadyCountedInRound =
+        existing &&
+        existing.last_seen_game === currentGameId &&
+        existing.last_seen_round === res.round_number;
+
       collection[personId] = {
-        seen: Number(existing?.seen || 0) + 1,
+        seen: Number(existing?.seen || 0) + (alreadyCountedInRound ? 0 : 1),
         found: true,
         name,
         answer: res.answer || res.label || existing?.answer,
         discovered_at: existing?.discovered_at || new Date().toISOString(),
+        last_seen_game: currentGameId,
+        last_seen_round: res.round_number,
       };
       modified = true;
     }
@@ -542,6 +550,7 @@
 
   async function leaveToHome() {
     stopPolling();
+    lastDiscoveredPersonId = null;
     if (gameType === "room" && state?.room_id) {
       try {
         await post("/api/linkedin-or-interpol/room/leave", {
@@ -568,6 +577,7 @@
   async function startSolo() {
     if (busy) return;
     busy = true;
+    lastDiscoveredPersonId = null;
     hideError(homeError);
     hideError(playError);
     const mode =
@@ -596,6 +606,7 @@
     if (!savedId) return startSolo();
     if (busy) return;
     busy = true;
+    lastDiscoveredPersonId = null;
     hideError(homeError);
     try {
       state = await request(
@@ -716,9 +727,11 @@
         });
         recordCollectionEntry(state.result || null);
         if (state.status === "finished") {
+          recordCollectionEntry(state.results || state.result);
           localStorage.removeItem(soloGameIdKey);
           syncResumeButton();
           refreshLeaderboard();
+          window.setTimeout(refreshLeaderboard, 500);
         }
       } else {
         state = await post("/api/linkedin-or-interpol/room/guess", {
@@ -729,6 +742,7 @@
         recordCollectionEntry(state.last_round || null);
         if (state.status === "finished") {
           refreshLeaderboard();
+          window.setTimeout(refreshLeaderboard, 500);
         }
       }
     } catch (error) {
@@ -846,6 +860,9 @@
 
     mysteryBanner.hidden = true;
     revealCard.hidden = false;
+
+    // S'assurer que le profil dévoilé est bien enregistré dans la collection
+    recordCollectionEntry(roundResult);
 
     if (discoveryBadge) {
       const isNew = Boolean(
@@ -1162,6 +1179,11 @@
     renderRevealCard(roundResult);
 
     // Choice buttons state
+    const choicesCard = document.getElementById("linkedin-choices-card");
+    if (choicesCard) {
+      choicesCard.hidden = state.status === "finished";
+    }
+
     const linkedinBtn = document.getElementById("linkedin-choice-linkedin");
     const interpolBtn = document.getElementById("linkedin-choice-interpol");
     const waitingStatus = document.getElementById("linkedin-waiting-status");
@@ -1372,6 +1394,13 @@
     .addEventListener("click", advanceNextRound);
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      const overlay = document.getElementById("linkedin-catalog-overlay");
+      if (overlay && !overlay.hidden) {
+        closeCatalog();
+        return;
+      }
+    }
     if (playSection.hidden || !state || state.status !== "playing") return;
     if (
       event.target instanceof HTMLInputElement ||
@@ -1414,6 +1443,13 @@
   updateCollectionBadges();
   refreshLeaderboard();
   refreshRooms();
+
+  request("/api/linkedin-or-interpol/catalog")
+    .then((data) => {
+      cachedCatalog = data.catalog || [];
+      updateCollectionBadges();
+    })
+    .catch(() => {});
 
   const requestedRoom = params.get("room");
   if (requestedRoom) {

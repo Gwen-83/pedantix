@@ -1,8 +1,8 @@
 :root {
   color-scheme: dark;
   font-family: "Plus Jakarta Sans", system-ui, sans-serif;
-  background: #111522;
-  color: #f8fafc;
+  background: var(--game-page, #111522);
+  color: var(--game-text, #f8fafc);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -382,6 +382,8 @@ button.linkedin-mode-card:hover {
     rgba(21, 26, 39, 0.98),
     rgba(14, 19, 30, 0.97)
   );
+  color-scheme: dark;
+  color: #f8fafc;
   box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
@@ -1490,5 +1492,42 @@ footer a {
   }
   .linkedin-choice-buttons {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .linkedin-catalog-btn-label {
+    display: none;
+  }
+  .linkedin-catalog-button {
+    padding: 5px 9px;
+    font-size: 0.74rem;
+  }
+  .linkedin-brand {
+    font-size: 0.82rem;
+    letter-spacing: 0.05em;
+  }
+}
+
+@media (max-width: 480px) {
+  .linkedin-header {
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    row-gap: 8px;
+  }
+  .linkedin-header-left {
+    grid-column: 1;
+    grid-row: 1;
+    gap: 6px;
+  }
+  .linkedin-header-left .linkedin-back {
+    font-size: 0.8rem;
+  }
+  .linkedin-brand {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    font-size: 0.76rem;
+    letter-spacing: 0.03em;
   }
 }

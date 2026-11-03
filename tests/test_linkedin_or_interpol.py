@@ -368,6 +368,110 @@ class LinkedinOrInterpolTests(unittest.TestCase):
         self.assertIn("rarity_label", first)
         self.assertIn("rarity_rank", first)
 
+    def test_solo_game_completion_records_leaderboard(self):
+        import time
+        from app.database import get_solo_game_leaderboard
+        from app import main as main_app
+
+        new_res = self.client.post(
+            "/api/linkedin-or-interpol/solo/new",
+            json={
+                "player_id": "test-save-p1",
+                "player_name": "SauvegardeTest",
+                "mode": "solo",
+                "round_count": 2,
+            },
+        )
+        self.assertEqual(new_res.status_code, 200)
+        game_id = new_res.json()["game_id"]
+        game = main_app.linkedin_or_interpol_manager.get_solo(game_id, "test-save-p1")
+        first_label = game.rounds[0]["label"]
+
+        # Guess round 1 correctly
+        g1 = self.client.post(
+            "/api/linkedin-or-interpol/solo/guess",
+            json={
+                "player_id": "test-save-p1",
+                "player_name": "SauvegardeTest",
+                "game_id": game_id,
+                "guess": first_label,
+            },
+        )
+        self.assertEqual(g1.status_code, 200)
+
+        # Advance to round 2
+        n1 = self.client.post(
+            "/api/linkedin-or-interpol/solo/next",
+            json={
+                "player_id": "test-save-p1",
+                "player_name": "SauvegardeTest",
+                "game_id": game_id,
+            },
+        )
+        self.assertEqual(n1.status_code, 200)
+
+        # Guess round 2 correctly (finishes the game)
+        second_label = game.rounds[1]["label"]
+        g2 = self.client.post(
+            "/api/linkedin-or-interpol/solo/guess",
+            json={
+                "player_id": "test-save-p1",
+                "player_name": "SauvegardeTest",
+                "game_id": game_id,
+                "guess": second_label,
+            },
+        )
+        self.assertEqual(g2.status_code, 200)
+        self.assertEqual(g2.json()["status"], "finished")
+
+        # Give async writer a brief moment
+        time.sleep(0.3)
+        records = get_solo_game_leaderboard("linkedin-or-interpol", "classique")
+        matching = [r for r in records if r["player_name"] == "SauvegardeTest"]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["points"], 2)
+        self.assertEqual(matching[0]["attempts"], 2)
+        self.assertEqual(matching[0]["metrics"]["best_streak"], 2)
+
+    def test_infinite_game_records_best_streak_in_leaderboard(self):
+        import time
+        from app.database import get_solo_game_leaderboard
+        from app import main as main_app
+
+        inf_res = self.client.post(
+            "/api/linkedin-or-interpol/solo/new",
+            json={
+                "player_id": "test-inf-p1",
+                "player_name": "InfiniLeader",
+                "mode": "solo-infinite",
+                "round_count": 10,
+            },
+        )
+        self.assertEqual(inf_res.status_code, 200)
+        game_id = inf_res.json()["game_id"]
+        game = main_app.linkedin_or_interpol_manager.get_solo(game_id, "test-inf-p1")
+        first_label = game.rounds[0]["label"]
+
+        # Correct guess creates streak 1 and persists to DB
+        g1 = self.client.post(
+            "/api/linkedin-or-interpol/solo/guess",
+            json={
+                "player_id": "test-inf-p1",
+                "player_name": "InfiniLeader",
+                "game_id": game_id,
+                "guess": first_label,
+            },
+        )
+        self.assertEqual(g1.status_code, 200)
+        self.assertEqual(g1.json()["streak"], 1)
+
+        time.sleep(0.3)
+        records = get_solo_game_leaderboard("linkedin-or-interpol", "infini")
+        matching = [r for r in records if r["player_name"] == "InfiniLeader"]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["points"], 1)
+        self.assertEqual(matching[0]["difficulty"], "infini")
+
 
 if __name__ == "__main__":
     unittest.main()

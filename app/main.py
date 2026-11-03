@@ -5011,10 +5011,12 @@ async def featured_solo_leaderboards():
                         if game_id == "plongee":
                             detail = f'{record["points"]} pts'
                         elif game_id == "linkedin-or-interpol":
+                            metrics = record.get("metrics") or {}
+                            rounds = metrics.get("rounds") or record.get("attempts")
                             detail = (
                                 f'Série de {record["points"]}'
                                 if difficulty == "infini"
-                                else f'{record["points"]} pts'
+                                else f'{record["points"]} / {rounds} pts' if rounds else f'{record["points"]} pts'
                             )
                         elif game_id == "sudoku":
                             detail = (
