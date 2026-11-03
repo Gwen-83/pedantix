@@ -347,6 +347,8 @@ class FrontendContractTests(unittest.TestCase):
             "guess_bitoguessr_room",
             "guess_plongee_solo",
             "guess_plongee_room",
+            "guess_linkedin_or_interpol_solo",
+            "guess_linkedin_or_interpol_room",
         )
 
         for route_name in guess_routes:
@@ -462,6 +464,7 @@ class FrontendContractTests(unittest.TestCase):
             "plongee",
             "undercover",
             "bitoguessr",
+            "linkedin-or-interpol",
         )
         for game_id in game_ids:
             with self.subTest(game_id=game_id):

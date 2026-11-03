@@ -37,6 +37,11 @@ GAME_SETTINGS = {
     },
     "plongee": {},
     "undercover": {},
+    "linkedin-or-interpol": {
+        "linkedin-solo-mode": "solo-mode",
+        "linkedin-round-count": "round-count",
+        "linkedin-room-round-count": "room-round-count",
+    },
 }
 
 

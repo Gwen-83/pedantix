@@ -1,11 +1,14 @@
 import unittest
+from fastapi.testclient import TestClient
 
 from app.linkedin_or_interpol import LinkedinOrInterpolManager
+from app.main import app
 
 
 class LinkedinOrInterpolTests(unittest.TestCase):
     def setUp(self):
         self.manager = LinkedinOrInterpolManager()
+        self.client = TestClient(app)
 
     def test_dataset_is_loaded_and_has_valid_labels(self):
         dataset = self.manager.dataset
@@ -15,11 +18,16 @@ class LinkedinOrInterpolTests(unittest.TestCase):
             self.assertIn("image_path", entry)
             self.assertIn("source_url", entry)
 
-    def test_create_game_builds_rounds_and_hides_answer(self):
+    def test_create_game_builds_rounds_and_hides_identity_and_activities_before_guess(self):
         state = self.manager.create_game("alice", rounds=3)
         self.assertEqual(state["status"], "playing")
         self.assertEqual(state["round_count"], 3)
         self.assertIsNotNone(state["current_person"])
+        self.assertEqual(set(state["current_person"].keys()), {"id", "image_url"})
+        self.assertNotIn("name", state["current_person"])
+        self.assertNotIn("surname", state["current_person"])
+        self.assertNotIn("description", state["current_person"])
+        self.assertNotIn("source_url", state["current_person"])
         self.assertNotIn("label", state["current_person"])
         self.assertNotIn("answer", state["current_person"])
 
@@ -27,7 +35,7 @@ class LinkedinOrInterpolTests(unittest.TestCase):
         self.assertEqual(len(internal["rounds"]), 3)
         self.assertIn("label", internal["rounds"][0])
 
-    def test_submit_guess_evaluates_correct_answer(self):
+    def test_submit_guess_evaluates_correct_answer_and_reveals_identity(self):
         state = self.manager.create_game("alice", rounds=2)
         internal = self.manager.games[state["game_id"]]
         guess = internal["rounds"][internal["round_index"]]["label"]
@@ -35,6 +43,9 @@ class LinkedinOrInterpolTests(unittest.TestCase):
         self.assertTrue(result["result"]["correct"])
         self.assertEqual(result["score"], 1)
         self.assertEqual(result["round_index"], 1)
+        self.assertIn("name", result["result"])
+        self.assertIn("description", result["result"])
+        self.assertEqual(result["result"]["answer"], guess)
 
     def test_create_game_supports_solo_and_multiplayer_modes(self):
         solo = self.manager.create_game("alice", rounds=10, mode="solo")
@@ -53,7 +64,6 @@ class LinkedinOrInterpolTests(unittest.TestCase):
         self.assertEqual(state["mode"], "solo-infinite")
         self.assertEqual(state["streak"], 0)
         self.assertEqual(state["best_streak"], 0)
-        self.assertEqual(internal["rounds"][0]["label"], internal["rounds"][0]["label"])
 
         correct_guess = internal["rounds"][internal["round_index"]]["label"]
         result = self.manager.submit_guess(state["game_id"], "alice", correct_guess)
@@ -111,6 +121,166 @@ class LinkedinOrInterpolTests(unittest.TestCase):
             interpol_result["result"]["message"],
             "C’était linkedin, mais interpol accepté, c’est un malade.",
         )
+
+    def test_solo_step_by_step_hides_identity_before_guess_and_reveals_after_guess(self):
+        game = self.manager.create_solo("p1", "Alice", mode="solo", round_count=2)
+        initial_state = self.manager.solo_state(game)
+        self.assertEqual(set(initial_state["current_person"].keys()), {"id", "image_url"})
+        self.assertIsNone(initial_state["result"])
+        self.assertFalse(initial_state["awaiting_next"])
+
+        first_label = game.rounds[0]["label"]
+        game, round1_result = self.manager.guess_solo(game.game_id, "p1", first_label)
+        after_guess = self.manager.solo_state(game)
+        self.assertTrue(after_guess["awaiting_next"])
+        self.assertEqual(after_guess["status"], "playing")
+        self.assertTrue(round1_result["correct"])
+        self.assertTrue(round1_result["full_name"])
+        self.assertIn("description", round1_result)
+        self.assertEqual(after_guess["current_person"]["answer"], first_label)
+
+        # Advance to round 2: identity must be hidden again for the new person
+        game = self.manager.next_solo(game.game_id, "p1")
+        round2_state = self.manager.solo_state(game)
+        self.assertFalse(round2_state["awaiting_next"])
+        self.assertIsNone(round2_state["result"])
+        self.assertEqual(round2_state["round_number"], 2)
+        self.assertEqual(set(round2_state["current_person"].keys()), {"id", "image_url"})
+
+        second_label = game.rounds[1]["label"]
+        game, round2_result = self.manager.guess_solo(game.game_id, "p1", second_label)
+        final_state = self.manager.solo_state(game)
+        self.assertEqual(final_state["status"], "finished")
+        self.assertEqual(final_state["score"], 2)
+        self.assertEqual(round2_result["round_number"], 2)
+        self.assertIn("description", final_state["result"])
+
+    def test_multiplayer_room_lifecycle_hides_person_until_all_active_players_guess(self):
+        room = self.manager.create_room("host-1", "Alice", round_count=2)
+        self.manager.join_room(room.room_id, "guest-2", "Bob")
+        self.manager.start_room(room.room_id, "host-1")
+
+        # Late joiner becomes spectator during active match
+        self.manager.join_room(room.room_id, "spec-3", "Charlie")
+        spec_state = self.manager.room_state(room, "spec-3")
+        self.assertTrue(spec_state["is_spectator"])
+
+        host_state = self.manager.room_state(room, "host-1")
+        self.assertEqual(set(host_state["current_person"].keys()), {"id", "image_url"})
+        self.assertIsNone(host_state["last_round"])
+
+        # Host answers round 1; Bob hasn't answered yet -> identity still hidden!
+        round1_answer = room.rounds[0].person["label"]
+        room, partial = self.manager.guess_room(room.room_id, "host-1", round1_answer)
+        self.assertIsNone(partial)
+        mid_state = self.manager.room_state(room, "host-1")
+        self.assertIsNone(mid_state["last_round"])
+        self.assertEqual(set(mid_state["current_person"].keys()), {"id", "image_url"})
+        self.assertTrue(mid_state["player"]["submitted"])
+
+        # Bob answers round 1 -> round completes and identity/activities are revealed!
+        wrong_answer = "interpol" if round1_answer == "linkedin" else "linkedin"
+        room, revealed = self.manager.guess_room(room.room_id, "guest-2", wrong_answer)
+        self.assertIsNotNone(revealed)
+        self.assertEqual(revealed["answer"], round1_answer)
+        self.assertTrue(revealed["full_name"])
+        self.assertIn("description", revealed)
+        completed_state = self.manager.room_state(room, "host-1")
+        self.assertTrue(completed_state["awaiting_next_round"])
+
+        # Host advances to round 2 -> identity hidden again
+        self.manager.next_room(room.room_id, "host-1")
+        round2_state = self.manager.room_state(room, "host-1")
+        self.assertFalse(round2_state["awaiting_next_round"])
+        self.assertIsNone(round2_state["last_round"])
+        self.assertEqual(set(round2_state["current_person"].keys()), {"id", "image_url"})
+
+        # Both answer round 2 -> match finishes
+        round2_answer = room.rounds[1].person["label"]
+        self.manager.guess_room(room.room_id, "host-1", round2_answer)
+        self.manager.guess_room(room.room_id, "guest-2", round2_answer)
+        finished_state = self.manager.room_state(room, "host-1")
+        self.assertEqual(finished_state["status"], "finished")
+        self.assertIsNotNone(finished_state["last_round"])
+
+        # Restart promotes spectator Charlie to active player
+        self.manager.restart_room(room.room_id, "host-1")
+        restarted_state = self.manager.room_state(room, "spec-3")
+        self.assertEqual(restarted_state["status"], "playing")
+        self.assertEqual(restarted_state["match_number"], 2)
+        self.assertFalse(restarted_state["is_spectator"])
+        self.assertEqual(restarted_state["player_count"], 3)
+
+    def test_api_endpoints_for_solo_and_multiplayer_rooms(self):
+        solo_res = self.client.post(
+            "/api/linkedin-or-interpol/solo/new",
+            json={
+                "player_id": "api-solo-1",
+                "player_name": "Alice",
+                "mode": "solo",
+                "round_count": 2,
+            },
+        )
+        self.assertEqual(solo_res.status_code, 200)
+        solo_data = solo_res.json()
+        self.assertEqual(set(solo_data["current_person"].keys()), {"id", "image_url"})
+
+        guess_res = self.client.post(
+            "/api/linkedin-or-interpol/solo/guess",
+            json={
+                "player_id": "api-solo-1",
+                "player_name": "Alice",
+                "game_id": solo_data["game_id"],
+                "guess": "linkedin",
+            },
+        )
+        self.assertEqual(guess_res.status_code, 200)
+        guess_data = guess_res.json()
+        self.assertIsNotNone(guess_data["result"])
+        self.assertIn("description", guess_data["result"])
+        self.assertIn("full_name", guess_data["result"])
+
+        next_res = self.client.post(
+            "/api/linkedin-or-interpol/solo/next",
+            json={
+                "player_id": "api-solo-1",
+                "player_name": "Alice",
+                "game_id": solo_data["game_id"],
+            },
+        )
+        self.assertEqual(next_res.status_code, 200)
+        self.assertEqual(next_res.json()["round_number"], 2)
+        self.assertEqual(set(next_res.json()["current_person"].keys()), {"id", "image_url"})
+
+        # Room endpoints
+        room_res = self.client.post(
+            "/api/linkedin-or-interpol/room/create",
+            json={"player_id": "room-host", "player_name": "Alice", "round_count": 5},
+        )
+        self.assertEqual(room_res.status_code, 200)
+        room_id = room_res.json()["room_id"]
+
+        join_res = self.client.post(
+            "/api/linkedin-or-interpol/room/join",
+            json={"room_id": room_id, "player_id": "room-guest", "player_name": "Bob"},
+        )
+        self.assertEqual(join_res.status_code, 200)
+        self.assertTrue(join_res.json()["can_start"])
+
+        start_res = self.client.post(
+            "/api/linkedin-or-interpol/room/start",
+            json={"room_id": room_id, "player_id": "room-host", "player_name": "Alice"},
+        )
+        self.assertEqual(start_res.status_code, 200)
+        self.assertEqual(start_res.json()["status"], "playing")
+        self.assertEqual(set(start_res.json()["current_person"].keys()), {"id", "image_url"})
+
+        leave_res = self.client.post(
+            "/api/linkedin-or-interpol/room/leave",
+            json={"room_id": room_id, "player_id": "room-guest"},
+        )
+        self.assertEqual(leave_res.status_code, 200)
+        self.assertEqual(leave_res.json()["status"], "left")
 
 
 if __name__ == "__main__":

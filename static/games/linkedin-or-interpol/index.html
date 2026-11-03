@@ -1,704 +1,351 @@
-<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LinkedIn ou Interpol</title>
-    <link rel="stylesheet" href="/static/shared/game-ui.css" />
-    <style>
-      :root {
-        --bg: #eef2ff;
-        --card: rgba(255, 255, 255, 0.96);
-        --card-strong: #ffffff;
-        --text: #172033;
-        --muted: #54607a;
-        --primary: #3b82f6;
-        --primary-dark: #1d4ed8;
-        --linkedin: #0a66c2;
-        --linkedin-soft: #eaf3ff;
-        --interpol: #b91c1c;
-        --interpol-soft: #fff1f2;
-        --success: #1f9d5f;
-        --danger: #d92d20;
-        --border: rgba(23, 32, 51, 0.1);
-        --shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
+<!DOCTYPE html>
+<html lang="fr" data-presence-game="linkedin-or-interpol">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#273238">
+  <title>LinkedIn ou Interpol — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
       }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: linear-gradient(180deg, #edf1f7 0%, #f7f8ff 100%);
-        color: var(--text);
-      }
-      .linkedin-shell {
-        width: min(1200px, 100%);
-        margin: 0 auto;
-        padding: 22px 18px 42px;
-      }
-      .linkedin-header {
-        display: grid;
-        grid-template-columns: 1fr auto 1fr;
-        align-items: center;
-        gap: 16px;
-        margin-bottom: 20px;
-      }
-      .linkedin-back {
-        color: var(--text);
-        text-decoration: none;
-        font-weight: 700;
-        align-self: center;
-      }
-      .linkedin-brand {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        font-size: clamp(1.5rem, 2vw, 2.3rem);
-        font-weight: 800;
-        letter-spacing: -0.04em;
-      }
-      .linkedin-player-name {
-        justify-self: end;
-        color: var(--muted);
-        font-weight: 700;
-        background: rgba(59, 130, 246, 0.08);
-        border: 1px solid rgba(59, 130, 246, 0.16);
-        border-radius: 999px;
-        padding: 8px 12px;
-      }
-      .linkedin-panel {
-        background: rgba(255, 255, 255, 0.75);
-        border: 1px solid var(--border);
-        border-radius: 24px;
-        box-shadow: var(--shadow);
-        padding: 18px 18px 20px;
-      }
-      .linkedin-topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 22px;
-        flex-wrap: wrap;
-      }
-      .eyebrow {
-        margin: 0 0 8px;
-        color: var(--primary);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 0.72rem;
-        font-weight: 800;
-      }
-      h1 {
-        margin: 0;
-        font-size: clamp(2rem, 3vw, 3rem);
-      }
-      .score-row {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-      .scorebox {
-        background: var(--card-strong);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 10px 16px;
-        box-shadow: 0 6px 18px rgba(79, 70, 229, 0.08);
-        min-width: 120px;
-        text-align: center;
-      }
-      .scorebox span {
-        display: block;
-        color: var(--muted);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-      }
-      .scorebox strong {
-        display: block;
-        font-size: 1.5rem;
-        margin-top: 4px;
-      }
-      .mode-bar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-      .mode-btn {
-        appearance: none;
-        border: 1px solid var(--border);
-        background: rgba(148, 163, 184, 0.12);
-        color: var(--text);
-        padding: 10px 16px;
-        border-radius: 999px;
-        font-weight: 700;
-        cursor: pointer;
-        transition: all 0.15s ease;
-      }
-      .mode-btn:hover {
-        border-color: rgba(59, 130, 246, 0.35);
-        transform: translateY(-1px);
-      }
-      .mode-btn.active {
-        background: linear-gradient(
-          135deg,
-          var(--primary) 0%,
-          var(--primary-dark) 100%
-        );
-        color: white;
-        border-color: var(--primary);
-        box-shadow: 0 10px 22px rgba(59, 130, 246, 0.25);
-      }
-      .main-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.8fr);
-        gap: 18px;
-      }
-      .game {
-        background: rgba(255, 255, 255, 0.9);
-        border: 1px solid var(--border);
-        border-radius: 22px;
-        padding: 22px;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-      }
-      .photo-wrap {
-        position: relative;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 440px;
-        background: linear-gradient(135deg, #f3f7ff 0%, #eef2ff 100%);
-        border-radius: 18px;
-        overflow: hidden;
-        border: 1px solid rgba(59, 130, 246, 0.09);
-      }
-      .photo-wrap img {
-        width: min(100%, 430px);
-        max-height: 440px;
-        object-fit: cover;
-        border-radius: 18px;
-        box-shadow: 0 12px 25px rgba(15, 23, 42, 0.12);
-      }
-      .meta {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: space-between;
-        gap: 12px;
-        margin-top: 18px;
-      }
-      .person {
-        flex: 1;
-        min-width: 220px;
-      }
-      .person-name {
-        margin: 0;
-        font-size: clamp(1.4rem, 2vw, 2rem);
-      }
-      .person-description {
-        color: var(--muted);
-        margin: 8px 0 0;
-        line-height: 1.5;
-        font-size: 1rem;
-      }
-      .round-pill {
-        align-self: center;
-        background: rgba(59, 130, 246, 0.08);
-        border: 1px solid rgba(59, 130, 246, 0.14);
-        border-radius: 999px;
-        padding: 8px 12px;
-        color: var(--primary-dark);
-        font-weight: 700;
-      }
-      .result {
-        margin-top: 14px;
-        min-height: 52px;
-        font-weight: 700;
-        padding: 12px 14px;
-        border-radius: 12px;
-        display: none;
-      }
-      .result.correct {
-        display: block;
-        background: rgba(31, 157, 95, 0.09);
-        color: var(--success);
-      }
-      .result.incorrect {
-        display: block;
-        background: rgba(217, 45, 32, 0.08);
-        color: var(--danger);
-      }
-      .choices {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
-        margin-top: 22px;
-      }
-      button.choice {
-        appearance: none;
-        border: none;
-        border-radius: 16px;
-        padding: 18px 18px;
-        font-size: 1.08rem;
-        font-weight: 800;
-        cursor: pointer;
-        transition:
-          transform 0.15s ease,
-          box-shadow 0.15s ease,
-          filter 0.15s ease;
-        box-shadow: 0 12px 20px rgba(15, 23, 42, 0.08);
-      }
-      button.choice:hover:not(:disabled) {
-        transform: translateY(-2px) scale(1.01);
-        filter: saturate(1.08);
-      }
-      button.choice:disabled {
-        opacity: 0.7;
-        cursor: not-allowed;
-      }
-      button.choice.linkedin {
-        background: linear-gradient(135deg, var(--linkedin) 0%, #1d5fd3 100%);
-        color: white;
-        box-shadow: 0 14px 22px rgba(10, 102, 194, 0.22);
-      }
-      button.choice.interpol {
-        background: linear-gradient(135deg, #d92d20 0%, #b91c1c 100%);
-        color: white;
-        box-shadow: 0 14px 22px rgba(185, 28, 28, 0.25);
-      }
-      .footer-actions {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 14px;
-        margin-top: 18px;
-        flex-wrap: wrap;
-      }
-      .status {
-        color: var(--muted);
-        font-weight: 600;
-      }
-      .replay {
-        display: none;
-        background: linear-gradient(
-          135deg,
-          var(--primary) 0%,
-          var(--primary-dark) 100%
-        );
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 12px 18px;
-        font-weight: 700;
-        cursor: pointer;
-        box-shadow: 0 10px 18px rgba(59, 130, 246, 0.2);
-      }
-      .replay.visible {
-        display: inline-block;
-      }
-      .sidebar {
-        background: rgba(255, 255, 255, 0.92);
-        border: 1px solid var(--border);
-        border-radius: 22px;
-        padding: 20px;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-      }
-      .sidebar h2 {
-        margin: 0 0 12px;
-        font-size: 1.1rem;
-      }
-      .leaderboard {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        display: grid;
-        gap: 10px;
-      }
-      .leaderboard li {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 10px 12px;
-        background: linear-gradient(135deg, #f7f9ff 0%, #eef4ff 100%);
-        border: 1px solid rgba(59, 130, 246, 0.08);
-        border-radius: 12px;
-      }
-      .leaderboard .player {
-        font-weight: 700;
-      }
-      .leaderboard .score {
-        color: var(--primary-dark);
-        font-weight: 700;
-      }
-      @media (max-width: 900px) {
-        .main-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-      @media (max-width: 680px) {
-        .linkedin-header {
-          grid-template-columns: 1fr;
-          text-align: center;
-        }
-        .linkedin-player-name {
-          justify-self: center;
-        }
-        .choices {
-          grid-template-columns: 1fr;
-        }
-        .photo-wrap {
-          min-height: 340px;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <main class="linkedin-shell">
-      <header class="linkedin-header">
-        <a class="linkedin-back" href="/">← Ludothèque</a>
-        <div class="linkedin-brand">
-          <span aria-hidden="true">👤</span>
-          <span>LinkedIn ou Interpol</span>
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/games/linkedin-or-interpol/style.css">
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🕵️</text></svg>">
+</head>
+<body>
+  <main class="linkedin-shell">
+    <header class="linkedin-header">
+      <a class="linkedin-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
+      <p class="linkedin-brand"><span aria-hidden="true">🕵️</span> LINKEDIN OU INTERPOL</p>
+      <div class="shared-header-actions">
+        <span id="linkedin-player-name" class="linkedin-player-name"></span>
+        <label class="shared-theme-control" for="shared-theme-select">
+          <span aria-hidden="true">🎨</span><span>Thème</span>
+          <select id="shared-theme-select" aria-label="Thème de l’interface">
+            <option value="dark-colorful">Coloré sombre</option>
+            <option value="midnight">Nuit étoilée</option>
+            <option value="light-colorful">Coloré clair</option>
+            <option value="light-grey">Gris clair</option>
+            <option value="dark-grey">Charbon sombre</option>
+            <option value="parchment">Parchemin</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <section id="linkedin-home" class="linkedin-panel" aria-labelledby="linkedin-heading">
+      <p class="linkedin-eyebrow">600+ portraits vérifiés · Déduction à l’aveugle</p>
+      <h1 id="linkedin-heading">Cadre dynamique ou fugitif international ?</h1>
+      <p class="linkedin-intro">
+        Observez uniquement la photo : le nom et les activités de la personne restent strictement masqués tant que vous n’avez pas tranché entre <strong>LinkedIn</strong> et <strong>Interpol</strong>.
+      </p>
+
+      <div class="linkedin-rule-grid">
+        <article>
+          <b>01</b>
+          <span>
+            <strong>Portrait anonyme</strong>
+            <small>Seule la photo s’affiche. Aucun nom ni métier ou chef d’accusation n’est visible avant votre choix.</small>
+          </span>
+        </article>
+        <article>
+          <b>02</b>
+          <span>
+            <strong>Tranchez en un clic</strong>
+            <small>Choisissez entre un profil professionnel LinkedIn et une notice rouge Interpol.</small>
+          </span>
+        </article>
+        <article>
+          <b>03</b>
+          <span>
+            <strong>Identité révélée</strong>
+            <small>Découvrez immédiatement le vrai nom, l’activité ou le motif de recherche après votre réponse.</small>
+          </span>
+        </article>
+      </div>
+
+      <div class="linkedin-filters-grid">
+        <div>
+          <label class="linkedin-difficulty-label" for="linkedin-solo-mode">Format solo</label>
+          <select id="linkedin-solo-mode" class="linkedin-difficulty-select" data-game-setting="solo-mode">
+            <option value="solo" selected>🎯 Classique · Nombre de manches fixe</option>
+            <option value="solo-infinite">🔥 Série infinie · La première erreur arrête tout</option>
+          </select>
         </div>
-        <span id="player-name" class="linkedin-player-name">Joueur</span>
-      </header>
+        <div id="linkedin-round-count-group">
+          <label class="linkedin-difficulty-label" for="linkedin-round-count">Nombre de manches (Classique)</label>
+          <select id="linkedin-round-count" class="linkedin-difficulty-select" data-game-setting="round-count">
+            <option value="5">5 manches · Rapide</option>
+            <option value="10" selected>10 manches · Standard</option>
+            <option value="15">15 manches · Long</option>
+            <option value="20">20 manches · Marathon</option>
+          </select>
+        </div>
+      </div>
 
-      <section class="linkedin-panel">
-        <div class="linkedin-topbar">
-          <div class="mode-bar" aria-label="Choix du mode de jeu">
-            <button class="mode-btn active" type="button" data-mode="solo">
-              Solo · 10 manches
-            </button>
-            <button class="mode-btn" type="button" data-mode="multiplayer">
-              Multijoueur · 10 manches
-            </button>
-            <button class="mode-btn" type="button" data-mode="solo-infinite">
-              Solo infini
-            </button>
-          </div>
+      <div class="linkedin-mode-grid">
+        <div class="shared-mode-switch" role="group" aria-label="Mode de jeu">
+          <button type="button" class="active" data-shared-game-mode="solo" aria-pressed="true">🎯 Solo</button>
+          <button type="button" data-shared-game-mode="multi" aria-pressed="false">🌐 Multijoueur</button>
+        </div>
+        <button type="button" id="linkedin-solo-button" class="linkedin-mode-card">
+          <span class="linkedin-mode-icon" aria-hidden="true">🕵️</span>
+          <span>
+            <strong>Lancer une partie solo</strong>
+            <small id="linkedin-solo-card-desc">Enchaînez les portraits à votre rythme et découvrez chaque profil après avoir répondu.</small>
+          </span>
+          <span class="linkedin-arrow" aria-hidden="true">→</span>
+        </button>
+      </div>
 
-          <div class="score-row">
-            <div class="scorebox">
-              <span>Score</span>
-              <strong id="score">0</strong>
-            </div>
-            <div class="scorebox">
-              <span>Série</span>
-              <strong id="streak">0</strong>
-            </div>
+      <p id="linkedin-home-error" class="linkedin-error" role="alert" hidden></p>
+      <p id="linkedin-previous-game" class="linkedin-previous-game" hidden>
+        <button type="button" id="linkedin-resume-solo" class="linkedin-text-button">Reprendre ma partie solo en cours</button>
+      </p>
+
+      <section class="shared-solo-leaderboard" aria-labelledby="linkedin-leaderboard-title">
+        <div class="shared-solo-leaderboard-heading">
+          <div>
+            <h2 id="linkedin-leaderboard-title">Meilleures séries & scores</h2>
+            <p>Classement des joueurs ayant réalisé les meilleures séries sans faute.</p>
           </div>
         </div>
-
-        <div class="main-grid">
-          <div class="game">
-            <div class="photo-wrap">
-              <img id="photo" alt="Portrait à identifier" />
-            </div>
-
-            <div class="meta">
-              <div class="person">
-                <h2 id="person-name" class="person-name">—</h2>
-                <p id="person-description" class="person-description"></p>
-              </div>
-              <div id="round-label" class="round-pill">Manche 1 / 1</div>
-            </div>
-
-            <div id="result" class="result"></div>
-
-            <div class="choices">
-              <button
-                class="choice linkedin"
-                data-choice="linkedin"
-                type="button"
-              >
-                LinkedIn
-              </button>
-              <button
-                class="choice interpol"
-                data-choice="interpol"
-                type="button"
-              >
-                Interpol
-              </button>
-            </div>
-
-            <div class="footer-actions">
-              <div id="status-text" class="status">Chargement…</div>
-              <button id="replay" class="replay" type="button">Rejouer</button>
-            </div>
-          </div>
-
-          <aside class="sidebar">
-            <h2>Classement infini</h2>
-            <ul id="leaderboard-list" class="leaderboard"></ul>
-          </aside>
-        </div>
+        <ol id="linkedin-leaderboard" class="shared-solo-leaderboard-list" aria-live="polite">
+          <li>Chargement du classement…</li>
+        </ol>
       </section>
-    </main>
+    </section>
 
-    <script src="/static/shared/config.js"></script>
-    <script src="/static/shared/game-ui.js"></script>
-    <script src="/static/shared/presence.js"></script>
-    <script>
-      const scoreEl = document.getElementById("score");
-      const streakEl = document.getElementById("streak");
-      const photoEl = document.getElementById("photo");
-      const personNameEl = document.getElementById("person-name");
-      const personDescriptionEl = document.getElementById("person-description");
-      const resultEl = document.getElementById("result");
-      const roundLabelEl = document.getElementById("round-label");
-      const replayBtn = document.getElementById("replay");
-      const statusTextEl = document.getElementById("status-text");
-      const leaderboardListEl = document.getElementById("leaderboard-list");
-      const buttons = [...document.querySelectorAll(".choice")];
-      const modeButtons = [...document.querySelectorAll(".mode-btn")];
+    <section id="linkedin-play" class="linkedin-panel linkedin-play-panel" hidden>
+      <div class="linkedin-game-heading">
+        <div>
+          <p id="linkedin-game-mode" class="linkedin-eyebrow">Partie solo</p>
+          <h1 id="linkedin-game-title">Manche 1 sur 10</h1>
+        </div>
+        <div class="linkedin-heading-actions">
+          <button type="button" data-shared-lobby-open="linkedin-lobby" class="linkedin-secondary-button" hidden>Ouvrir le salon</button>
+          <button type="button" id="linkedin-new-solo" class="linkedin-secondary-button" hidden>🔄 Nouvelle partie</button>
+          <button type="button" id="linkedin-home-button" class="linkedin-secondary-button">Quitter</button>
+        </div>
+      </div>
 
-      const localPlayerId =
-        localStorage.getItem("linkedin_or_interpol_player_id") ||
-        (globalThis.crypto && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `linkedin-${Date.now()}`);
-      localStorage.setItem("linkedin_or_interpol_player_id", localPlayerId);
+      <section id="linkedin-lobby" class="shared-game-lobby linkedin-lobby" data-shared-game-lobby data-shared-lobby-next="linkedin-round" hidden aria-label="Salon multijoueur">
+        <section class="shared-game-lobby-dialog" role="dialog" aria-modal="true" aria-labelledby="linkedin-lobby-title" tabindex="-1">
+          <button type="button" class="shared-game-lobby-close" data-shared-lobby-close aria-label="Réduire le salon">×</button>
+          <header class="shared-game-lobby-heading">
+            <p>🕵️ LinkedIn ou Interpol · salon multijoueur</p>
+            <h2 id="linkedin-lobby-title">En attente des joueurs</h2>
+            <p>Mêmes portraits pour tout le monde : l’identité et les activités sont révélées dès que tous les joueurs ont répondu.</p>
+          </header>
+          <p id="linkedin-lobby-status" role="status" aria-live="polite">En attente de joueurs…</p>
+          <div class="linkedin-invite-row">
+            <code id="linkedin-invite-code"></code>
+            <button type="button" id="linkedin-copy-invite" class="linkedin-secondary-button">Copier le lien</button>
+          </div>
+          <ul id="linkedin-player-list" class="linkedin-player-list" aria-live="polite"></ul>
+          <button type="button" id="linkedin-start-game" class="linkedin-primary-button" hidden>Démarrer la partie</button>
+        </section>
+      </section>
 
-      let selectedMode =
-        localStorage.getItem("linkedin_or_interpol_mode") || "solo";
-      let currentGame = null;
-      let locked = false;
+      <section id="linkedin-round" class="linkedin-round" hidden>
+        <div class="linkedin-stats-strip">
+          <div class="linkedin-stat-pill">
+            <span>MANCHE</span>
+            <strong id="linkedin-stat-round">1 / 10</strong>
+          </div>
+          <div class="linkedin-stat-pill">
+            <span>SCORE</span>
+            <strong id="linkedin-stat-score">0 pt</strong>
+          </div>
+          <div class="linkedin-stat-pill">
+            <span>SÉRIE EN COURS</span>
+            <strong id="linkedin-stat-streak">0</strong>
+          </div>
+          <div class="linkedin-stat-pill">
+            <span>MEILLEURE SÉRIE</span>
+            <strong id="linkedin-stat-best">0</strong>
+          </div>
+        </div>
 
-      function setStatus(message) {
-        statusTextEl.textContent = message;
-      }
+        <div class="linkedin-progress-track" id="linkedin-progress-track">
+          <div id="linkedin-progress-bar" class="linkedin-progress-fill" style="width: 0%"></div>
+        </div>
 
-      function updateScore(score) {
-        scoreEl.textContent = String(score || 0);
-      }
+        <p id="linkedin-spectator-banner" class="linkedin-spectator-banner" role="status" hidden>
+          👀 Vous observez la partie en cours. Vous participerez automatiquement dès que l’hôte relancera une partie.
+        </p>
 
-      function updateStreak(streak) {
-        streakEl.textContent = String(streak || 0);
-      }
+        <div class="linkedin-stage-grid">
+          <!-- PORTRAIT & IDENTITY CARD -->
+          <div class="linkedin-portrait-card">
+            <div class="linkedin-photo-frame">
+              <span id="linkedin-photo-badge" class="linkedin-photo-badge">Portrait mystère</span>
+              <img id="linkedin-person-image" class="linkedin-person-image" alt="Portrait mystère à identifier" src="" />
+            </div>
 
-      function setRoundLabel(roundIndex, roundCount) {
-        if (!roundCount || roundCount <= 0) {
-          roundLabelEl.textContent = "Série en cours";
-          return;
-        }
-        const current = Math.min(roundIndex + 1, roundCount);
-        roundLabelEl.textContent = `Manche ${current} / ${roundCount}`;
-      }
+            <!-- SHOWN BEFORE GUESSING: NO NAME, NO ACTIVITIES -->
+            <div id="linkedin-mystery-banner" class="linkedin-mystery-banner">
+              <span class="linkedin-mystery-icon" aria-hidden="true">🔒</span>
+              <div>
+                <strong>Identité et activités masquées</strong>
+                <p>Répondez <em>LinkedIn</em> ou <em>Interpol</em> pour découvrir le nom et les activités de cette personne.</p>
+              </div>
+            </div>
 
-      function renderPerson(person) {
-        if (!person) {
-          photoEl.src = "";
-          personNameEl.textContent = "—";
-          personDescriptionEl.textContent = "";
-          return;
-        }
-        photoEl.src = person.image_url;
-        photoEl.alt = `Portrait ${person.name || "inconnu"}`;
-        personNameEl.textContent =
-          `${person.surname || ""} ${person.name || ""}`.trim() ||
-          "Personne inconnue";
-        personDescriptionEl.textContent = person.description || "—";
-      }
+            <!-- SHOWN ONLY AFTER GUESSING / ROUND COMPLETION -->
+            <div id="linkedin-reveal-card" class="linkedin-reveal-card" aria-live="polite" hidden>
+              <div class="linkedin-reveal-top">
+                <span id="linkedin-verdict-badge" class="linkedin-verdict-badge">Bien vu !</span>
+                <span id="linkedin-answer-pill" class="linkedin-answer-pill">💼 LinkedIn</span>
+              </div>
+              <h2 id="linkedin-person-name" class="linkedin-person-name"></h2>
+              <p id="linkedin-person-description" class="linkedin-person-description"></p>
+              <p id="linkedin-special-message" class="linkedin-special-message" hidden></p>
+              <a id="linkedin-source-link" class="linkedin-source-link" href="#" target="_blank" rel="noopener noreferrer" hidden>
+                Voir la source d’origine ↗
+              </a>
+            </div>
+          </div>
 
-      function disableButtons(disabled) {
-        buttons.forEach((button) => {
-          button.disabled = disabled;
-        });
-      }
+          <!-- CHOICES, NEXT ROUND & MULTIPLAYER STATUS -->
+          <div class="linkedin-action-column">
+            <div id="linkedin-choices-card" class="linkedin-choices-card">
+              <p class="linkedin-prompt-title">Quelle est l’origine de ce portrait ?</p>
+              <p class="linkedin-prompt-subtitle">Fiez-vous à votre instinct. Raccourcis clavier : <kbd>L</kbd> ou <kbd>I</kbd>.</p>
 
-      function renderLeaderboard(records) {
-        leaderboardListEl.innerHTML = "";
-        if (!records.length) {
-          const empty = document.createElement("li");
-          empty.innerHTML =
-            '<span class="player">Aucun record</span><span class="score">0</span>';
-          leaderboardListEl.appendChild(empty);
-          return;
-        }
-        records.forEach((record) => {
-          const item = document.createElement("li");
-          item.innerHTML = `
-            <span class="player">#${record.rank} ${record.player_id}</span>
-            <span class="score">${record.best_streak} sér.</span>
-          `;
-          leaderboardListEl.appendChild(item);
-        });
-      }
+              <div class="linkedin-choice-buttons">
+                <button type="button" id="linkedin-choice-linkedin" class="linkedin-choice-btn linkedin-choice-pro" data-choice="linkedin">
+                  <span class="linkedin-choice-icon" aria-hidden="true">💼</span>
+                  <span class="linkedin-choice-copy">
+                    <strong>LinkedIn</strong>
+                    <small>Profil professionnel</small>
+                  </span>
+                </button>
+                <button type="button" id="linkedin-choice-interpol" class="linkedin-choice-btn linkedin-choice-wanted" data-choice="interpol">
+                  <span class="linkedin-choice-icon" aria-hidden="true">🚨</span>
+                  <span class="linkedin-choice-copy">
+                    <strong>Interpol</strong>
+                    <small>Notice de recherche</small>
+                  </span>
+                </button>
+              </div>
 
-      async function fetchLeaderboard() {
-        try {
-          const response = await fetch(
-            "/api/linkedin-or-interpol/leaderboard?limit=10",
-          );
-          if (!response.ok) throw new Error("Leaderboard inaccessible");
-          const data = await response.json();
-          renderLeaderboard(data.records || []);
-        } catch (error) {
-          renderLeaderboard([]);
-        }
-      }
+              <p id="linkedin-waiting-status" class="linkedin-waiting-status" role="status" hidden></p>
+            </div>
 
-      function updateModeButtons() {
-        modeButtons.forEach((button) => {
-          button.classList.toggle(
-            "active",
-            button.dataset.mode === selectedMode,
-          );
-        });
-      }
+            <div id="linkedin-next-card" class="linkedin-next-card" hidden>
+              <button type="button" id="linkedin-next-button" class="linkedin-primary-button linkedin-next-btn">
+                Personne suivante →
+              </button>
+              <p id="linkedin-waiting-host" class="linkedin-waiting-host" role="status" hidden>
+                En attente de l’hôte pour passer à la personne suivante…
+              </p>
+            </div>
 
-      function renderState(state) {
-        currentGame = state;
-        updateScore(state.score || 0);
-        updateStreak(state.streak || 0);
-        if (state.mode === "solo-infinite") {
-          roundLabelEl.textContent =
-            state.status === "finished"
-              ? `Meilleure série · ${state.best_streak || 0}`
-              : `Série en cours · ${state.streak || 0}`;
-        } else {
-          setRoundLabel(state.round_index || 0, state.round_count || 1);
-        }
-        renderPerson(state.current_person);
-        if (state.status === "finished") {
-          setStatus(
-            state.mode === "solo-infinite"
-              ? `Partie terminée — meilleure série : ${state.best_streak || 0}`
-              : `Partie terminée`,
-          );
-          replayBtn.classList.add("visible");
-          return;
-        }
-        replayBtn.classList.remove("visible");
-        setStatus(
-          state.mode === "solo-infinite"
-            ? `Série actuelle : ${state.streak || 0} · record : ${state.best_streak || 0}`
-            : "Choisissez LinkedIn ou Interpol",
-        );
-      }
+            <section id="linkedin-round-guesses" class="linkedin-round-guesses" aria-labelledby="linkedin-round-guesses-title" hidden>
+              <h3 id="linkedin-round-guesses-title">Réponses de la manche</h3>
+              <ul id="linkedin-round-guesses-list" class="linkedin-round-guesses-list"></ul>
+            </section>
 
-      async function createGame(mode = selectedMode) {
-        selectedMode = mode;
-        localStorage.setItem("linkedin_or_interpol_mode", selectedMode);
-        updateModeButtons();
-        locked = false;
-        resultEl.className = "result";
-        resultEl.textContent = "";
-        disableButtons(false);
+            <section id="linkedin-live-players" class="linkedin-scoreboard" aria-labelledby="linkedin-live-players-title" hidden>
+              <div class="linkedin-scoreboard-head">
+                <h3 id="linkedin-live-players-title">Joueurs du salon</h3>
+                <span id="linkedin-answered-counter" class="linkedin-answered-counter"></span>
+              </div>
+              <ul id="linkedin-live-players-list" class="linkedin-live-players-list"></ul>
+            </section>
 
-        const params = new URLSearchParams({
-          player_id: localPlayerId,
-          mode,
-          rounds: mode === "solo-infinite" ? "20" : "10",
-        });
+            <section id="linkedin-final-card" class="linkedin-final-card" aria-labelledby="linkedin-final-title" hidden>
+              <div class="linkedin-final-header">
+                <span class="linkedin-final-icon" aria-hidden="true">🏆</span>
+                <div>
+                  <h2 id="linkedin-final-title">Partie terminée</h2>
+                  <p id="linkedin-final-summary"></p>
+                </div>
+              </div>
+              <ol id="linkedin-final-rankings" class="linkedin-final-rankings"></ol>
+              <div class="linkedin-final-actions">
+                <button type="button" id="linkedin-replay-solo" class="linkedin-primary-button" hidden>Rejouer en solo</button>
+                <button type="button" id="linkedin-restart-room" class="linkedin-primary-button" hidden>Relancer une partie</button>
+                <button type="button" id="linkedin-back-home" class="linkedin-secondary-button">Retour à l’accueil</button>
+              </div>
+            </section>
+          </div>
+        </div>
 
-        const response = await fetch(
-          `/api/linkedin-or-interpol/new?${params.toString()}`,
-        );
-        if (!response.ok) {
-          const errorJson = await response.json().catch(() => ({}));
-          throw new Error(
-            errorJson.detail || "Impossible de charger la partie.",
-          );
-        }
+        <section id="linkedin-history-card" class="linkedin-history-card" aria-labelledby="linkedin-history-title" hidden>
+          <h3 id="linkedin-history-title">Dossiers déjà révélés</h3>
+          <div id="linkedin-history-list" class="linkedin-history-list"></div>
+        </section>
+      </section>
 
-        const state = await response.json();
-        renderState(state);
-      }
+      <p id="linkedin-play-error" class="linkedin-error" role="alert" hidden></p>
+    </section>
 
-      async function submitGuess(choice) {
-        if (!currentGame || locked) return;
-        locked = true;
-        disableButtons(true);
+    <footer>Une partie de <a href="/">la ludothèque</a></footer>
+  </main>
 
-        const payload = {
-          game_id: currentGame.game_id,
-          player_id: currentGame.player_id,
-          guess: choice,
-        };
+  <div class="shared-rooms-overlay" data-shared-rooms-modal data-play-target="linkedin-play" data-home-error-target="linkedin-home-error" hidden>
+    <section class="shared-rooms-dialog" role="dialog" aria-modal="true" aria-labelledby="linkedin-rooms-title" tabindex="-1">
+      <button type="button" class="shared-rooms-close" data-shared-modal-close aria-label="Fermer">×</button>
+      <header class="shared-rooms-heading">
+        <p>🕵️ LinkedIn ou Interpol · multijoueur</p>
+        <h2 id="linkedin-rooms-title">Jouer en multijoueur</h2>
+        <p>Affrontez vos amis sur la même série de portraits anonymes !</p>
+      </header>
+      <div class="shared-rooms-actions">
+        <section class="shared-room-action">
+          <div>
+            <h3>Créer un salon</h3>
+            <p>Choisissez le nombre de manches et partagez le code à vos amis.</p>
+          </div>
+          <div class="linkedin-room-create-controls">
+            <label class="linkedin-difficulty-label" for="linkedin-room-round-count">Nombre de manches</label>
+            <select id="linkedin-room-round-count" class="linkedin-difficulty-select" data-game-setting="room-round-count">
+              <option value="5">5 manches</option>
+              <option value="10" selected>10 manches</option>
+              <option value="15">15 manches</option>
+              <option value="20">20 manches</option>
+            </select>
+            <button type="button" id="linkedin-create-room" class="linkedin-primary-button">Créer le salon</button>
+          </div>
+        </section>
+        <section class="shared-room-action">
+          <div>
+            <h3>Rejoindre avec un code</h3>
+            <p>Entrez le code à 6 caractères communiqué par l’hôte.</p>
+          </div>
+          <div class="shared-room-join-controls">
+            <label class="sr-only" for="linkedin-room-code">Code du salon</label>
+            <input id="linkedin-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+            <button type="button" id="linkedin-join-room" class="linkedin-secondary-button">Rejoindre</button>
+          </div>
+        </section>
+      </div>
+      <section class="linkedin-room-browser" aria-labelledby="linkedin-room-browser-title">
+        <div class="linkedin-room-browser-heading">
+          <div>
+            <h2 id="linkedin-room-browser-title">Salons publics</h2>
+            <p>Rejoignez un salon ouvert ou reprenez votre partie en cours.</p>
+          </div>
+          <button type="button" id="linkedin-refresh-rooms" class="linkedin-secondary-button" data-shared-refresh-rooms>Actualiser</button>
+        </div>
+        <div id="linkedin-room-directory" class="linkedin-room-directory" aria-live="polite"></div>
+      </section>
+    </section>
+  </div>
 
-        const response = await fetch("/api/linkedin-or-interpol/guess", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          const errorJson = await response.json().catch(() => ({}));
-          throw new Error(errorJson.detail || "Erreur lors de la validation.");
-        }
-
-        const state = await response.json();
-        const result = state.result;
-        const answerLabel =
-          result.answer === "linkedin" ? "LinkedIn" : "Interpol";
-        const guessedLabel =
-          result.guess === "linkedin" ? "LinkedIn" : "Interpol";
-
-        resultEl.className = `result ${result.correct ? "correct" : "incorrect"}`;
-        resultEl.textContent =
-          result.message ||
-          (result.correct
-            ? `Bonne réponse ! C’était ${answerLabel}.`
-            : `Raté ! C’était ${answerLabel}. Tu as choisi ${guessedLabel}.`);
-
-        updateScore(state.score || 0);
-        updateStreak(state.streak || 0);
-
-        if (state.mode === "solo-infinite") {
-          roundLabelEl.textContent = `Série en cours · ${state.streak || 0}`;
-        } else {
-          setRoundLabel(state.round_index || 0, state.round_count || 1);
-        }
-
-        if (state.status === "finished") {
-          setStatus(
-            state.mode === "solo-infinite"
-              ? `Partie terminée — meilleure série : ${state.best_streak || 0}`
-              : `Partie terminée — score final : ${state.score}`,
-          );
-          replayBtn.classList.add("visible");
-          await fetchLeaderboard();
-          return;
-        }
-
-        renderPerson(state.current_person);
-        setStatus(
-          state.mode === "solo-infinite"
-            ? `Série actuelle : ${state.streak || 0} · record : ${state.best_streak || 0}`
-            : "Suivant…",
-        );
-
-        setTimeout(() => {
-          locked = false;
-          disableButtons(false);
-          renderState(state);
-        }, 1200);
-      }
-
-      modeButtons.forEach((button) => {
-        button.addEventListener("click", () => createGame(button.dataset.mode));
-      });
-
-      buttons.forEach((button) => {
-        button.addEventListener("click", () =>
-          submitGuess(button.dataset.choice),
-        );
-      });
-
-      replayBtn.addEventListener("click", () => {
-        createGame(selectedMode);
-      });
-
-      updateModeButtons();
-      fetchLeaderboard();
-      createGame(selectedMode).catch((error) => {
-        setStatus(error.message || "Erreur de chargement");
-        resultEl.className = "result incorrect";
-        resultEl.textContent = "Impossible de charger le jeu.";
-      });
-    </script>
-  </body>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
+  <script src="/static/games/linkedin-or-interpol/app.js"></script>
+</body>
 </html>

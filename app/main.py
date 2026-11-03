@@ -288,6 +288,7 @@ class PresenceRequest(BaseModel):
     game_id: Literal[
         "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship", "geoguessr",
         "undercover", "bitoguessr", "plongee", "store", "memories", "scribbl",
+        "linkedin-or-interpol",
     ]
 
 class StoreChatMessageRequest(BaseModel):
@@ -297,7 +298,7 @@ class StoreInvitationRequest(BaseModel):
     recipient_username: str = Field(min_length=2, max_length=24)
     game_id: Literal[
         "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
-        "geoguessr", "plongee", "memories", "scribbl"
+        "geoguessr", "plongee", "memories", "scribbl", "linkedin-or-interpol",
     ]
 
 class StoreInvitationActionRequest(BaseModel):
@@ -380,6 +381,30 @@ class LinkedinOrInterpolGuessRequest(BaseModel):
     game_id: str
     player_id: str
     guess: str
+
+class LinkedinOrInterpolPlayerRequest(BaseModel):
+    player_id: str = Field(min_length=1, max_length=100)
+    player_name: str = Field(min_length=1, max_length=40)
+
+class LinkedinOrInterpolSoloCreateRequest(LinkedinOrInterpolPlayerRequest):
+    mode: str = "solo"
+    round_count: int = Field(default=10, ge=1, le=20)
+
+class LinkedinOrInterpolSoloGuessRequest(LinkedinOrInterpolPlayerRequest):
+    game_id: str = Field(min_length=1, max_length=64)
+    guess: str = Field(min_length=1, max_length=32)
+
+class LinkedinOrInterpolSoloNextRequest(LinkedinOrInterpolPlayerRequest):
+    game_id: str = Field(min_length=1, max_length=64)
+
+class LinkedinOrInterpolRoomCreateRequest(LinkedinOrInterpolPlayerRequest):
+    round_count: int = Field(default=10, ge=1, le=20)
+
+class LinkedinOrInterpolRoomPlayerRequest(LinkedinOrInterpolPlayerRequest):
+    room_id: str = Field(min_length=1, max_length=6)
+
+class LinkedinOrInterpolRoomGuessRequest(LinkedinOrInterpolRoomPlayerRequest):
+    guess: str = Field(min_length=1, max_length=32)
 
 class MotusPlayerRequest(BaseModel):
     player_id: str
@@ -847,9 +872,162 @@ async def linkedin_or_interpol_state(game_id: str = Query(...), player_id: str =
 @app.post("/api/linkedin-or-interpol/guess")
 async def linkedin_or_interpol_guess(req: LinkedinOrInterpolGuessRequest):
     try:
-        return linkedin_or_interpol_manager.submit_guess(req.game_id, req.player_id, req.guess)
+        return await asyncio.to_thread(
+            linkedin_or_interpol_manager.submit_guess, req.game_id, req.player_id, req.guess
+        )
     except (KeyError, PermissionError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/linkedin-or-interpol/solo/new")
+async def new_linkedin_or_interpol_solo(req: LinkedinOrInterpolSoloCreateRequest):
+    try:
+        game = linkedin_or_interpol_manager.create_solo(
+            req.player_id, req.player_name, mode=req.mode, round_count=req.round_count
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return linkedin_or_interpol_manager.solo_state(game)
+
+
+@app.get("/api/linkedin-or-interpol/solo/{game_id}")
+async def get_linkedin_or_interpol_solo(game_id: str, player_id: str = Query(...)):
+    try:
+        game = linkedin_or_interpol_manager.get_solo(game_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return linkedin_or_interpol_manager.solo_state(game)
+
+
+@app.post("/api/linkedin-or-interpol/solo/guess")
+async def guess_linkedin_or_interpol_solo(req: LinkedinOrInterpolSoloGuessRequest):
+    try:
+        game, result = await asyncio.to_thread(
+            linkedin_or_interpol_manager.guess_solo,
+            req.game_id,
+            req.player_id,
+            req.guess,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"result": result, **linkedin_or_interpol_manager.solo_state(game)}
+
+
+@app.post("/api/linkedin-or-interpol/solo/next")
+async def next_linkedin_or_interpol_solo(req: LinkedinOrInterpolSoloNextRequest):
+    try:
+        game = linkedin_or_interpol_manager.next_solo(req.game_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return linkedin_or_interpol_manager.solo_state(game)
+
+
+@app.get("/api/linkedin-or-interpol/rooms")
+async def list_linkedin_or_interpol_rooms(player_id: Optional[str] = Query(None)):
+    return {
+        "rooms": _filter_private_invitation_rooms(
+            "linkedin-or-interpol", linkedin_or_interpol_manager.list_rooms(player_id)
+        )
+    }
+
+
+@app.post("/api/linkedin-or-interpol/room/create")
+async def create_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomCreateRequest):
+    try:
+        room = linkedin_or_interpol_manager.create_room(
+            req.player_id, req.player_name, round_count=req.round_count
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return linkedin_or_interpol_manager.room_state(room, req.player_id)
+
+
+@app.post("/api/linkedin-or-interpol/room/join")
+async def join_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomPlayerRequest):
+    _require_invitation_room_member("linkedin-or-interpol", req.room_id, req.player_id)
+    try:
+        room = linkedin_or_interpol_manager.join_room(
+            req.room_id, req.player_id, req.player_name
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return linkedin_or_interpol_manager.room_state(room, req.player_id)
+
+
+@app.post("/api/linkedin-or-interpol/room/start")
+async def start_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomPlayerRequest):
+    try:
+        room = linkedin_or_interpol_manager.start_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return linkedin_or_interpol_manager.room_state(room, req.player_id)
+
+
+@app.post("/api/linkedin-or-interpol/room/guess")
+async def guess_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomGuessRequest):
+    try:
+        room, result = await asyncio.to_thread(
+            linkedin_or_interpol_manager.guess_room,
+            req.room_id,
+            req.player_id,
+            req.guess,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"result": result, **linkedin_or_interpol_manager.room_state(room, req.player_id)}
+
+
+@app.post("/api/linkedin-or-interpol/room/next")
+async def next_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomPlayerRequest):
+    try:
+        room = linkedin_or_interpol_manager.next_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return linkedin_or_interpol_manager.room_state(room, req.player_id)
+
+
+@app.post("/api/linkedin-or-interpol/room/restart")
+async def restart_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomPlayerRequest):
+    try:
+        room = linkedin_or_interpol_manager.restart_room(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return linkedin_or_interpol_manager.room_state(room, req.player_id)
+
+
+@app.get("/api/linkedin-or-interpol/room/{room_id}")
+async def get_linkedin_or_interpol_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = linkedin_or_interpol_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return linkedin_or_interpol_manager.room_state(room, player_id)
 
 
 @app.get("/health")
@@ -992,6 +1170,11 @@ STORE_INVITATION_GAMES = {
     "plongee": ("Plongée", plongee_manager, "plongee_player_id"),
     "memories": ("Memory", memories_manager, "memories_player_id"),
     "scribbl": ("Scribbl", scribbl_manager, "scribbl_player_id"),
+    "linkedin-or-interpol": (
+        "LinkedIn ou Interpol",
+        linkedin_or_interpol_manager,
+        "linkedin_player_id",
+    ),
 }
 STORE_ROOM_PLAYER_LIMITS = {
     "motus": 8,
@@ -1005,6 +1188,7 @@ STORE_ROOM_PLAYER_LIMITS = {
     "plongee": 8,
     "memories": 8,
     "scribbl": SCRIBBL_MAX_PLAYERS,
+    "linkedin-or-interpol": 8,
 }
 STORE_ACTIVE_ROOM_GAMES = {
     **STORE_INVITATION_GAMES,
@@ -1143,9 +1327,16 @@ def _leave_store_multiplayer_room(
 
         players.pop(player_id)
 
-        if game_id == "bitoguessr":
+        if game_id in {"bitoguessr", "linkedin-or-interpol"}:
             for round_state in room.rounds:
                 round_state.guesses.pop(player_id, None)
+            if (
+                game_id == "linkedin-or-interpol"
+                and room.status == "playing"
+                and room.is_round_complete()
+                and room.round_index >= room.round_count - 1
+            ):
+                room.status = "finished"
         elif game_id == "plongee":
             room.answers.pop(player_id, None)
         elif game_id == "memories":

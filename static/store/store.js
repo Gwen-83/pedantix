@@ -415,6 +415,7 @@
       plongee: "Plongée",
       memories: "Memory",
       scribbl: "Scribbl",
+      "linkedin-or-interpol": "LinkedIn ou Interpol",
     };
     invitations.forEach((invitation) => {
       const item = document.createElement("li");
@@ -535,6 +536,7 @@
       plongee: "plongee_player_id",
       memories: "memories_player_id",
       scribbl: "scribbl_player_id",
+      "linkedin-or-interpol": "linkedin_player_id",
     };
     const storageKey = playerStorageKeys[invitation.game_id];
     if (!storageKey || !invitation.room_id || !invitation.sender_player_id) {

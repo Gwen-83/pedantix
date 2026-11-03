@@ -13,6 +13,7 @@
     plongee: 'Plongée',
     memories: 'Memory',
     scribbl: 'Scribbl',
+    'linkedin-or-interpol': 'LinkedIn ou Interpol',
     store: 'La ludothèque',
   };
   const gameId = document.documentElement.dataset.presenceGame
@@ -42,6 +43,7 @@
     plongee: 'Plongée',
     memories: 'Memory',
     scribbl: 'Scribbl',
+    'linkedin-or-interpol': 'LinkedIn ou Interpol',
   };
   const gamePlayerStorageKeys = {
     motus: 'motus_player_id',
@@ -53,6 +55,7 @@
     plongee: 'plongee_player_id',
     memories: 'memories_player_id',
     scribbl: 'scribbl_player_id',
+    'linkedin-or-interpol': 'linkedin_player_id',
   };
 
   function socialHeaders(json = false) {
