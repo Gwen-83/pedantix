@@ -849,6 +849,15 @@ async def linkedin_or_interpol_leaderboard(limit: int = Query(10)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/linkedin-or-interpol/catalog")
+async def linkedin_or_interpol_catalog(limit: int = Query(0)):
+    try:
+        catalog = linkedin_or_interpol_manager.get_catalog(limit if limit > 0 else None)
+        return {"catalog": catalog, "count": len(catalog)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/linkedin-or-interpol/new")
 async def linkedin_or_interpol_new_game(
     player_id: str = Query("guest"),

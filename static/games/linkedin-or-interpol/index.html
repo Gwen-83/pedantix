@@ -26,6 +26,7 @@
       <a class="linkedin-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
       <p class="linkedin-brand"><span aria-hidden="true">🕵️</span> LINKEDIN OU INTERPOL</p>
       <div class="shared-header-actions">
+        <button type="button" id="linkedin-open-catalog" class="linkedin-secondary-button linkedin-catalog-button">🗂️ Collection</button>
         <span id="linkedin-player-name" class="linkedin-player-name"></span>
         <label class="shared-theme-control" for="shared-theme-select">
           <span aria-hidden="true">🎨</span><span>Thème</span>
@@ -289,6 +290,20 @@
 
     <footer>Une partie de <a href="/">la ludothèque</a></footer>
   </main>
+
+  <div id="linkedin-catalog-overlay" class="linkedin-catalog-overlay" hidden>
+    <section class="linkedin-catalog-dialog" role="dialog" aria-modal="true" aria-labelledby="linkedin-catalog-title" tabindex="-1">
+      <button type="button" id="linkedin-close-catalog" class="linkedin-catalog-close" aria-label="Fermer la collection">×</button>
+      <header class="linkedin-catalog-header">
+        <div>
+          <p>🗂️ Pokedex social</p>
+          <h2 id="linkedin-catalog-title">Collection LinkedIn ou Interpol</h2>
+        </div>
+      </header>
+      <div id="linkedin-catalog-summary" class="linkedin-catalog-summary"></div>
+      <div id="linkedin-catalog-grid" class="linkedin-catalog-grid" aria-live="polite"></div>
+    </section>
+  </div>
 
   <div class="shared-rooms-overlay" data-shared-rooms-modal data-play-target="linkedin-play" data-home-error-target="linkedin-home-error" hidden>
     <section class="shared-rooms-dialog" role="dialog" aria-modal="true" aria-labelledby="linkedin-rooms-title" tabindex="-1">

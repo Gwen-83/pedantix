@@ -18,6 +18,15 @@ class LinkedinOrInterpolTests(unittest.TestCase):
             self.assertIn("image_path", entry)
             self.assertIn("source_url", entry)
 
+    def test_linkedin_catalog_exposes_rarity_and_repeat_cache_metadata(self):
+        catalog = self.manager.get_catalog(limit=5)
+        self.assertGreater(len(catalog), 0)
+        first = catalog[0]
+        self.assertIn("rarity_label", first)
+        self.assertIn("rarity_rank", first)
+        self.assertIn("seen_total", first)
+        self.assertIn("draw_weight", first)
+
     def test_create_game_builds_rounds_and_hides_identity_and_activities_before_guess(self):
         state = self.manager.create_game("alice", rounds=3)
         self.assertEqual(state["status"], "playing")

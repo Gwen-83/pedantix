@@ -125,6 +125,7 @@ class LinkedinOrInterpolManager:
         self.solo_games: Dict[str, LinkedinOrInterpolSoloGame] = {}
         self.rooms: Dict[str, LinkedinOrInterpolRoom] = {}
         self.leaderboard: List[Dict[str, Any]] = []
+        self._draw_history: Dict[str, int] = {}
         self._lock = RLock()
 
     @staticmethod
@@ -175,21 +176,6 @@ class LinkedinOrInterpolManager:
             "answer": person["label"],
             "label": person["label"],
         }
-
-    def _build_rounds(
-        self, rounds: int = DEFAULT_ROUND_COUNT, exclude_ids: Optional[set] = None
-    ) -> List[Dict[str, Any]]:
-        if not self.dataset:
-            raise ValueError("Le jeu LinkedIn ou Interpol n’a pas de données disponibles.")
-        pool = (
-            [entry for entry in self.dataset if entry.get("id") not in exclude_ids]
-            if exclude_ids
-            else list(self.dataset)
-        )
-        if not pool:
-            pool = list(self.dataset)
-        sample_size = max(1, min(int(rounds or DEFAULT_ROUND_COUNT), len(pool)))
-        return random.sample(pool, k=sample_size)
 
     def _record_leaderboard_entry(
         self,
@@ -251,6 +237,102 @@ class LinkedinOrInterpolManager:
                 }
                 for index, entry in enumerate(items)
             ]
+
+    def _mark_person_seen(self, person_id: str) -> None:
+        if not person_id:
+            return
+        with self._lock:
+            self._draw_history[person_id] = self._draw_history.get(person_id, 0) + 1
+
+    def _profile_rarity(self, person: Dict[str, Any]) -> Dict[str, Any]:
+        person_id = str(person.get("id") or "")
+        seen_total = int(self._draw_history.get(person_id, 0))
+        if seen_total <= 2:
+            rarity_label = "Très rare"
+            rarity_rank = 1
+        elif seen_total <= 8:
+            rarity_label = "Rare"
+            rarity_rank = 2
+        elif seen_total <= 20:
+            rarity_label = "Peu commune"
+            rarity_rank = 3
+        else:
+            rarity_label = "Commune"
+            rarity_rank = 4
+        draw_weight = 1.0 / max(1.0, float(seen_total + 1))
+        return {
+            "id": person_id,
+            "name": (person.get("name") or "").strip(),
+            "surname": (person.get("surname") or "").strip(),
+            "label": person.get("label"),
+            "rarity_label": rarity_label,
+            "rarity_rank": rarity_rank,
+            "seen_total": seen_total,
+            "draw_weight": round(draw_weight, 4),
+            "image_url": self._image_url(person.get("image_path", "")),
+        }
+
+    def get_catalog(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        with self._lock:
+            catalog = [self._profile_rarity(entry) for entry in self.dataset]
+            catalog.sort(
+                key=lambda entry: (
+                    int(entry["rarity_rank"]),
+                    int(entry["seen_total"]),
+                    (entry.get("name") or "").lower(),
+                    (entry.get("surname") or "").lower(),
+                )
+            )
+            if limit is not None:
+                return catalog[: max(1, int(limit))]
+            return catalog
+
+    def _build_rounds(
+        self,
+        rounds: int = DEFAULT_ROUND_COUNT,
+        exclude_ids: Optional[set] = None,
+        recent_ids: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        if not self.dataset:
+            raise ValueError("Le jeu LinkedIn ou Interpol n’a pas de données disponibles.")
+        pool = list(self.dataset)
+        if exclude_ids:
+            pool = [entry for entry in pool if entry.get("id") not in exclude_ids]
+        if not pool:
+            pool = list(self.dataset)
+
+        recent = set(recent_ids or [])
+        unseen = [entry for entry in pool if entry.get("id") not in recent]
+        if not unseen:
+            unseen = pool
+
+        weighted = []
+        weights = []
+        for entry in unseen:
+            seen_total = int(self._draw_history.get(entry.get("id"), 0))
+            rarity_weight = 1.0 / max(1.0, float(seen_total + 1))
+            weighted.append(entry)
+            weights.append(rarity_weight)
+
+        sample_size = max(1, min(int(rounds or DEFAULT_ROUND_COUNT), len(weighted)))
+        chosen = random.choices(weighted, weights=weights, k=sample_size)
+        deduped: List[Dict[str, Any]] = []
+        seen_in_pick: set[str] = set()
+        for entry in chosen:
+            person_id = str(entry.get("id") or "")
+            if person_id in seen_in_pick:
+                continue
+            seen_in_pick.add(person_id)
+            deduped.append(entry)
+        if len(deduped) < sample_size:
+            for entry in weighted:
+                person_id = str(entry.get("id") or "")
+                if person_id in seen_in_pick:
+                    continue
+                deduped.append(entry)
+                if len(deduped) >= sample_size:
+                    break
+        return deduped[:sample_size]
 
     # ------------------------------------------------------------------
     # Solo API (avec étape de révélation après chaque réponse)
@@ -315,6 +397,9 @@ class LinkedinOrInterpolManager:
         else:
             effective_round_count = None
             chosen_rounds = self._build_rounds(DEFAULT_ROUND_COUNT)
+
+        for person in chosen_rounds:
+            self._mark_person_seen(str(person.get("id") or ""))
 
         with self._lock:
             game_id = uuid.uuid4().hex
@@ -412,7 +497,10 @@ class LinkedinOrInterpolManager:
             game.round_index += 1
             if game.mode == "solo-infinite" and game.round_index >= len(game.rounds):
                 seen_ids = {entry["id"] for entry in game.rounds}
-                game.rounds.extend(self._build_rounds(DEFAULT_ROUND_COUNT, exclude_ids=seen_ids))
+                new_rounds = self._build_rounds(DEFAULT_ROUND_COUNT, exclude_ids=seen_ids)
+                for person in new_rounds:
+                    self._mark_person_seen(str(person.get("id") or ""))
+                game.rounds.extend(new_rounds)
             elif game.mode != "solo-infinite" and game.round_index >= len(game.rounds):
                 game.status = "finished"
             return game
@@ -537,9 +625,12 @@ class LinkedinOrInterpolManager:
             while room_id in self.rooms:
                 room_id = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
+            rounds_pool = self._build_rounds(round_count)
+            for person in rounds_pool:
+                self._mark_person_seen(str(person.get("id") or ""))
             rounds = [
                 LinkedinOrInterpolRound(person)
-                for person in self._build_rounds(round_count)
+                for person in rounds_pool
             ]
             room = LinkedinOrInterpolRoom(
                 room_id=room_id,
@@ -691,15 +782,21 @@ class LinkedinOrInterpolManager:
                 room.round_index = 0
                 room.match_number += 1
                 room.stats_recorded = False
+                new_rounds = self._build_rounds(room.round_count)
+                for person in new_rounds:
+                    self._mark_person_seen(str(person.get("id") or ""))
                 room.rounds = [
                     LinkedinOrInterpolRound(person)
-                    for person in self._build_rounds(room.round_count)
+                    for person in new_rounds
                 ]
                 return room
 
+            new_rounds = self._build_rounds(room.round_count)
+            for person in new_rounds:
+                self._mark_person_seen(str(person.get("id") or ""))
             room.rounds = [
                 LinkedinOrInterpolRound(person)
-                for person in self._build_rounds(room.round_count)
+                for person in new_rounds
             ]
             room.round_index = 0
             room.match_number += 1
@@ -746,6 +843,8 @@ class LinkedinOrInterpolManager:
             if normalized_mode != "solo-infinite"
             else self._build_rounds(rounds or DEFAULT_ROUND_COUNT)
         )
+        for person in chosen:
+            self._mark_person_seen(str(person.get("id") or ""))
         game_id = uuid.uuid4().hex
         game = {
             "game_id": game_id,
