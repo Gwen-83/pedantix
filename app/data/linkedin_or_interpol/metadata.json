@@ -4778,5 +4778,59 @@
     "special_case": "friend",
     "source_url": "https://example.com/ami",
     "image_path": "images/ami.webp"
+  },
+  {
+    "id": "custom-linkedin-532",
+    "name": "Profil",
+    "surname": "Linkedin",
+    "description": "Photo ajoutée pour le jeu LinkedIn ou Interpol.",
+    "label": "linkedin",
+    "source_url": "https://example.com/linkedin",
+    "image_path": "images/custom_linkedin_532.webp"
+  },
+  {
+    "id": "custom-interpol-533",
+    "name": "Profil",
+    "surname": "Interpol",
+    "description": "Photo ajoutée pour le jeu LinkedIn ou Interpol.",
+    "label": "interpol",
+    "source_url": "https://example.com/interpol",
+    "image_path": "images/custom_interpol_533.webp"
+  },
+  {
+    "id": "custom-linkedin-534",
+    "name": "Profil",
+    "surname": "Linkedin",
+    "description": "Photo ajoutée pour le jeu LinkedIn ou Interpol.",
+    "label": "linkedin",
+    "source_url": "https://example.com/linkedin",
+    "image_path": "images/custom_linkedin_534.webp"
+  },
+  {
+    "id": "custom-interpol-535",
+    "name": "Profil",
+    "surname": "Interpol",
+    "description": "Photo ajoutée pour le jeu LinkedIn ou Interpol.",
+    "label": "interpol",
+    "source_url": "https://example.com/interpol",
+    "image_path": "images/custom_interpol_535.webp"
+  },
+  {
+    "id": "custom-linkedin-536",
+    "name": "Profil",
+    "surname": "Linkedin",
+    "description": "Photo ajoutée pour le jeu LinkedIn ou Interpol.",
+    "label": "linkedin",
+    "source_url": "https://example.com/linkedin",
+    "image_path": "images/custom_linkedin_536.webp"
+  },
+  {
+    "id": "custom-interpol-537",
+    "name": "Profil",
+    "surname": "Interpol",
+    "description": "Photo ajoutée pour le jeu LinkedIn ou Interpol.",
+    "label": "interpol",
+    "source_url": "https://example.com/interpol",
+    "image_path": "images/custom_interpol_537.webp"
   }
 ]
