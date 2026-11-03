@@ -282,7 +282,7 @@
             moyen: "Moyen",
             difficile: "Difficile",
           };
-          label.textContent = difficultyLabels[difficulty] || "Tous niveaux";
+          label.textContent = difficultyLabels[difficulty] || 'Tous niveaux';
           row.append(label);
           const result = document.createElement("span");
           result.className = "store-featured-leader-result";
