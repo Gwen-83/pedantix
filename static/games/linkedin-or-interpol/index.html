@@ -1,363 +1,741 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr" data-presence-game="linkedin-or-interpol">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#273238">
-  <title>LinkedIn ou Interpol — La ludothèque</title>
-  <script>
-    (() => {
-      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
-        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
-      }
-    })();
-  </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/games/linkedin-or-interpol/style.css">
-  <link rel="stylesheet" href="/static/shared/game-ui.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🕵️</text></svg>">
-</head>
-<body>
-  <main class="linkedin-shell">
-    <header class="linkedin-header">
-      <a class="linkedin-back" href="/" aria-label="Retour à la ludothèque">← <span>Ludothèque</span></a>
-      <p class="linkedin-brand"><span aria-hidden="true">🕵️</span> LINKEDIN OU INTERPOL</p>
-      <div class="shared-header-actions">
-        <button type="button" id="linkedin-open-catalog" class="linkedin-secondary-button linkedin-catalog-button">🗂️ Collection</button>
-        <span id="linkedin-player-name" class="linkedin-player-name"></span>
-        <label class="shared-theme-control" for="shared-theme-select">
-          <span aria-hidden="true">🎨</span><span>Thème</span>
-          <select id="shared-theme-select" aria-label="Thème de l’interface">
-            <option value="dark-colorful">Coloré sombre</option>
-            <option value="midnight">Nuit étoilée</option>
-            <option value="light-colorful">Coloré clair</option>
-            <option value="light-grey">Gris clair</option>
-            <option value="dark-grey">Charbon sombre</option>
-            <option value="parchment">Parchemin</option>
-          </select>
-        </label>
-      </div>
-    </header>
-
-    <section id="linkedin-home" class="linkedin-panel" aria-labelledby="linkedin-heading">
-      <p class="linkedin-eyebrow">600+ portraits vérifiés · Déduction à l’aveugle</p>
-      <h1 id="linkedin-heading">Cadre dynamique ou fugitif international ?</h1>
-      <p class="linkedin-intro">
-        Observez uniquement la photo : le nom et les activités de la personne restent strictement masqués tant que vous n’avez pas tranché entre <strong>LinkedIn</strong> et <strong>Interpol</strong>.
-      </p>
-
-      <div class="linkedin-rule-grid">
-        <article>
-          <b>01</b>
-          <span>
-            <strong>Portrait anonyme</strong>
-            <small>Seule la photo s’affiche. Aucun nom ni métier ou chef d’accusation n’est visible avant votre choix.</small>
-          </span>
-        </article>
-        <article>
-          <b>02</b>
-          <span>
-            <strong>Tranchez en un clic</strong>
-            <small>Choisissez entre un profil professionnel LinkedIn et une notice rouge Interpol.</small>
-          </span>
-        </article>
-        <article>
-          <b>03</b>
-          <span>
-            <strong>Identité révélée</strong>
-            <small>Découvrez immédiatement le vrai nom, l’activité ou le motif de recherche après votre réponse.</small>
-          </span>
-        </article>
-      </div>
-
-      <div class="linkedin-filters-grid">
-        <div>
-          <label class="linkedin-difficulty-label" for="linkedin-solo-mode">Format solo</label>
-          <select id="linkedin-solo-mode" class="linkedin-difficulty-select" data-game-setting="solo-mode">
-            <option value="solo" selected>🎯 Classique · Nombre de manches fixe</option>
-            <option value="solo-infinite">🔥 Mode infini · Enchaînez sans limite de manches</option>
-          </select>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#273238" />
+    <title>LinkedIn ou Interpol — La ludothèque</title>
+    <script>
+      (() => {
+        if (
+          !localStorage.getItem("pedantix_auth_user") ||
+          !localStorage.getItem("pedantix_auth_token")
+        ) {
+          const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+          window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="/static/games/linkedin-or-interpol/style.css"
+    />
+    <link rel="stylesheet" href="/static/shared/game-ui.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🕵️</text></svg>"
+    />
+  </head>
+  <body>
+    <main class="linkedin-shell">
+      <header class="linkedin-header">
+        <a class="linkedin-back" href="/" aria-label="Retour à la ludothèque"
+          >← <span>Ludothèque</span></a
+        >
+        <p class="linkedin-brand">
+          <span aria-hidden="true">🕵️</span> LINKEDIN OU INTERPOL
+        </p>
+        <div class="shared-header-actions">
+          <button
+            type="button"
+            id="linkedin-open-catalog"
+            class="linkedin-secondary-button linkedin-catalog-button"
+          >
+            🗂️ Collection
+          </button>
+          <span id="linkedin-player-name" class="linkedin-player-name"></span>
+          <label class="shared-theme-control" for="shared-theme-select">
+            <span aria-hidden="true">🎨</span><span>Thème</span>
+            <select id="shared-theme-select" aria-label="Thème de l’interface">
+              <option value="dark-colorful">Coloré sombre</option>
+              <option value="midnight">Nuit étoilée</option>
+              <option value="light-colorful">Coloré clair</option>
+              <option value="light-grey">Gris clair</option>
+              <option value="dark-grey">Charbon sombre</option>
+              <option value="parchment">Parchemin</option>
+            </select>
+          </label>
         </div>
-        <div id="linkedin-round-count-group">
-          <label class="linkedin-difficulty-label" for="linkedin-round-count">Nombre de manches (Classique)</label>
-          <select id="linkedin-round-count" class="linkedin-difficulty-select" data-game-setting="round-count">
-            <option value="5">5 manches · Rapide</option>
-            <option value="10" selected>10 manches · Standard</option>
-            <option value="15">15 manches · Long</option>
-            <option value="20">20 manches · Marathon</option>
-          </select>
-        </div>
-      </div>
+      </header>
 
-      <div class="linkedin-mode-grid">
-        <div class="shared-mode-switch" role="group" aria-label="Mode de jeu">
-          <button type="button" class="active" data-shared-game-mode="solo" aria-pressed="true">🎯 Solo</button>
-          <button type="button" data-shared-game-mode="multi" aria-pressed="false">🌐 Multijoueur</button>
-        </div>
-        <button type="button" id="linkedin-solo-button" class="linkedin-mode-card">
-          <span class="linkedin-mode-icon" aria-hidden="true">🕵️</span>
-          <span>
-            <strong>Lancer une partie solo</strong>
-            <small id="linkedin-solo-card-desc">Enchaînez les portraits à votre rythme et découvrez chaque profil après avoir répondu.</small>
-          </span>
-          <span class="linkedin-arrow" aria-hidden="true">→</span>
-        </button>
-      </div>
-
-      <p id="linkedin-home-error" class="linkedin-error" role="alert" hidden></p>
-      <p id="linkedin-previous-game" class="linkedin-previous-game" hidden>
-        <button type="button" id="linkedin-resume-solo" class="linkedin-text-button">Reprendre ma partie solo en cours</button>
-      </p>
-
-      <section class="shared-solo-leaderboard" aria-labelledby="linkedin-leaderboard-title">
-        <div class="shared-solo-leaderboard-heading">
-          <div>
-            <h2 id="linkedin-leaderboard-title">Meilleures séries & scores</h2>
-            <p>Classement des joueurs ayant réalisé les meilleures séries sans faute.</p>
-          </div>
-        </div>
-        <ol id="linkedin-leaderboard" class="shared-solo-leaderboard-list" aria-live="polite">
-          <li>Chargement du classement…</li>
-        </ol>
-      </section>
-    </section>
-
-    <section id="linkedin-play" class="linkedin-panel linkedin-play-panel" hidden>
-      <div class="linkedin-game-heading">
-        <div>
-          <p id="linkedin-game-mode" class="linkedin-eyebrow">Partie solo</p>
-          <h1 id="linkedin-game-title">Manche 1 sur 10</h1>
-        </div>
-        <div class="linkedin-heading-actions">
-          <button type="button" data-shared-lobby-open="linkedin-lobby" class="linkedin-secondary-button" hidden>Ouvrir le salon</button>
-          <button type="button" id="linkedin-new-solo" class="linkedin-secondary-button" hidden>🔄 Nouvelle partie</button>
-          <button type="button" id="linkedin-home-button" class="linkedin-secondary-button">Quitter</button>
-        </div>
-      </div>
-
-      <section id="linkedin-lobby" class="shared-game-lobby linkedin-lobby" data-shared-game-lobby data-shared-lobby-next="linkedin-round" hidden aria-label="Salon multijoueur">
-        <section class="shared-game-lobby-dialog" role="dialog" aria-modal="true" aria-labelledby="linkedin-lobby-title" tabindex="-1">
-          <button type="button" class="shared-game-lobby-close" data-shared-lobby-close aria-label="Réduire le salon">×</button>
-          <header class="shared-game-lobby-heading">
-            <p>🕵️ LinkedIn ou Interpol · salon multijoueur</p>
-            <h2 id="linkedin-lobby-title">En attente des joueurs</h2>
-            <p>Mêmes portraits pour tout le monde : l’identité et les activités sont révélées dès que tous les joueurs ont répondu.</p>
-          </header>
-          <p id="linkedin-lobby-status" role="status" aria-live="polite">En attente de joueurs…</p>
-          <div class="linkedin-invite-row">
-            <code id="linkedin-invite-code"></code>
-            <button type="button" id="linkedin-copy-invite" class="linkedin-secondary-button">Copier le lien</button>
-          </div>
-          <ul id="linkedin-player-list" class="linkedin-player-list" aria-live="polite"></ul>
-          <button type="button" id="linkedin-start-game" class="linkedin-primary-button" hidden>Démarrer la partie</button>
-        </section>
-      </section>
-
-      <section id="linkedin-round" class="linkedin-round" hidden>
-        <div class="linkedin-stats-strip">
-          <div class="linkedin-stat-pill">
-            <span>MANCHE</span>
-            <strong id="linkedin-stat-round">1 / 10</strong>
-          </div>
-          <div class="linkedin-stat-pill">
-            <span>SCORE</span>
-            <strong id="linkedin-stat-score">0 pt</strong>
-          </div>
-          <div class="linkedin-stat-pill">
-            <span>SÉRIE EN COURS</span>
-            <strong id="linkedin-stat-streak">0</strong>
-          </div>
-          <div class="linkedin-stat-pill">
-            <span>MEILLEURE SÉRIE</span>
-            <strong id="linkedin-stat-best">0</strong>
-          </div>
-        </div>
-
-        <div class="linkedin-progress-track" id="linkedin-progress-track">
-          <div id="linkedin-progress-bar" class="linkedin-progress-fill" style="width: 0%"></div>
-        </div>
-
-        <p id="linkedin-spectator-banner" class="linkedin-spectator-banner" role="status" hidden>
-          👀 Vous observez la partie en cours. Vous participerez automatiquement dès que l’hôte relancera une partie.
+      <section
+        id="linkedin-home"
+        class="linkedin-panel"
+        aria-labelledby="linkedin-heading"
+      >
+        <p class="linkedin-eyebrow">
+          600+ portraits vérifiés · Déduction à l’aveugle
+        </p>
+        <h1 id="linkedin-heading">
+          Cadre dynamique ou fugitif international ?
+        </h1>
+        <p class="linkedin-intro">
+          Observez uniquement la photo : le nom et les activités de la personne
+          restent strictement masqués tant que vous n’avez pas tranché entre
+          <strong>LinkedIn</strong> et <strong>Interpol</strong>.
         </p>
 
-        <div class="linkedin-stage-grid">
-          <!-- PORTRAIT & IDENTITY CARD -->
-          <div class="linkedin-portrait-card">
-            <div class="linkedin-photo-frame">
-              <span id="linkedin-photo-badge" class="linkedin-photo-badge">Portrait mystère</span>
-              <img id="linkedin-person-image" class="linkedin-person-image" alt="Portrait mystère à identifier" src="" />
-            </div>
+        <div class="linkedin-rule-grid">
+          <article>
+            <b>01</b>
+            <span>
+              <strong>Portrait anonyme</strong>
+              <small
+                >Seule la photo s’affiche. Aucun nom ni métier ou chef
+                d’accusation n’est visible avant votre choix.</small
+              >
+            </span>
+          </article>
+          <article>
+            <b>02</b>
+            <span>
+              <strong>Tranchez en un clic</strong>
+              <small
+                >Choisissez entre un profil professionnel LinkedIn et une notice
+                rouge Interpol.</small
+              >
+            </span>
+          </article>
+          <article>
+            <b>03</b>
+            <span>
+              <strong>Identité révélée</strong>
+              <small
+                >Découvrez immédiatement le vrai nom, l’activité ou le motif de
+                recherche après votre réponse.</small
+              >
+            </span>
+          </article>
+        </div>
 
-            <!-- SHOWN BEFORE GUESSING: NO NAME, NO ACTIVITIES -->
-            <div id="linkedin-mystery-banner" class="linkedin-mystery-banner">
-              <span class="linkedin-mystery-icon" aria-hidden="true">🔒</span>
-              <div>
-                <strong>Identité et activités masquées</strong>
-                <p>Répondez <em>LinkedIn</em> ou <em>Interpol</em> pour découvrir le nom et les activités de cette personne.</p>
-              </div>
-            </div>
-
-            <!-- SHOWN ONLY AFTER GUESSING / ROUND COMPLETION -->
-            <div id="linkedin-reveal-card" class="linkedin-reveal-card" aria-live="polite" hidden>
-              <div class="linkedin-reveal-top">
-                <span id="linkedin-verdict-badge" class="linkedin-verdict-badge">Bien vu !</span>
-                <span id="linkedin-answer-pill" class="linkedin-answer-pill">💼 LinkedIn</span>
-              </div>
-              <h2 id="linkedin-person-name" class="linkedin-person-name"></h2>
-              <p id="linkedin-person-description" class="linkedin-person-description"></p>
-              <p id="linkedin-special-message" class="linkedin-special-message" hidden></p>
-            </div>
+        <div class="linkedin-filters-grid">
+          <div>
+            <label class="linkedin-difficulty-label" for="linkedin-solo-mode"
+              >Format solo</label
+            >
+            <select
+              id="linkedin-solo-mode"
+              class="linkedin-difficulty-select"
+              data-game-setting="solo-mode"
+            >
+              <option value="solo" selected>
+                🎯 Classique · Nombre de manches fixe
+              </option>
+              <option value="solo-infinite">
+                🔥 Mode infini · Enchaînez sans limite de manches
+              </option>
+            </select>
           </div>
+          <div id="linkedin-round-count-group">
+            <label class="linkedin-difficulty-label" for="linkedin-round-count"
+              >Nombre de manches (Classique)</label
+            >
+            <select
+              id="linkedin-round-count"
+              class="linkedin-difficulty-select"
+              data-game-setting="round-count"
+            >
+              <option value="5">5 manches · Rapide</option>
+              <option value="10" selected>10 manches · Standard</option>
+              <option value="15">15 manches · Long</option>
+              <option value="20">20 manches · Marathon</option>
+            </select>
+          </div>
+        </div>
 
-          <!-- CHOICES, NEXT ROUND & MULTIPLAYER STATUS -->
-          <div class="linkedin-action-column">
-            <div id="linkedin-choices-card" class="linkedin-choices-card">
-              <p class="linkedin-prompt-title">Quelle est l’origine de ce portrait ?</p>
-              <p class="linkedin-prompt-subtitle">Fiez-vous à votre instinct. Raccourcis clavier : <kbd>L</kbd> ou <kbd>I</kbd>.</p>
+        <div class="linkedin-mode-grid">
+          <div class="shared-mode-switch" role="group" aria-label="Mode de jeu">
+            <button
+              type="button"
+              class="active"
+              data-shared-game-mode="solo"
+              aria-pressed="true"
+            >
+              🎯 Solo
+            </button>
+            <button
+              type="button"
+              data-shared-game-mode="multi"
+              aria-pressed="false"
+            >
+              🌐 Multijoueur
+            </button>
+          </div>
+          <button
+            type="button"
+            id="linkedin-solo-button"
+            class="linkedin-mode-card"
+          >
+            <span class="linkedin-mode-icon" aria-hidden="true">🕵️</span>
+            <span>
+              <strong>Lancer une partie solo</strong>
+              <small id="linkedin-solo-card-desc"
+                >Enchaînez les portraits à votre rythme et découvrez chaque
+                profil après avoir répondu.</small
+              >
+            </span>
+            <span class="linkedin-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
 
-              <div class="linkedin-choice-buttons">
-                <button type="button" id="linkedin-choice-linkedin" class="linkedin-choice-btn linkedin-choice-pro" data-choice="linkedin">
-                  <span class="linkedin-choice-icon" aria-hidden="true">💼</span>
-                  <span class="linkedin-choice-copy">
-                    <strong>LinkedIn</strong>
-                    <small>Profil professionnel</small>
-                  </span>
-                </button>
-                <button type="button" id="linkedin-choice-interpol" class="linkedin-choice-btn linkedin-choice-wanted" data-choice="interpol">
-                  <span class="linkedin-choice-icon" aria-hidden="true">🚨</span>
-                  <span class="linkedin-choice-copy">
-                    <strong>Interpol</strong>
-                    <small>Notice de recherche</small>
-                  </span>
-                </button>
-              </div>
+        <p
+          id="linkedin-home-error"
+          class="linkedin-error"
+          role="alert"
+          hidden
+        ></p>
+        <p id="linkedin-previous-game" class="linkedin-previous-game" hidden>
+          <button
+            type="button"
+            id="linkedin-resume-solo"
+            class="linkedin-text-button"
+          >
+            Reprendre ma partie solo en cours
+          </button>
+        </p>
 
-              <p id="linkedin-waiting-status" class="linkedin-waiting-status" role="status" hidden></p>
-            </div>
-
-            <div id="linkedin-next-card" class="linkedin-next-card" hidden>
-              <button type="button" id="linkedin-next-button" class="linkedin-primary-button linkedin-next-btn">
-                Personne suivante →
-              </button>
-              <p id="linkedin-waiting-host" class="linkedin-waiting-host" role="status" hidden>
-                En attente de l’hôte pour passer à la personne suivante…
+        <section
+          class="shared-solo-leaderboard"
+          aria-labelledby="linkedin-leaderboard-title"
+        >
+          <div class="shared-solo-leaderboard-heading">
+            <div>
+              <h2 id="linkedin-leaderboard-title">
+                Meilleures séries & scores
+              </h2>
+              <p>
+                Classement des joueurs ayant réalisé les meilleures séries sans
+                faute.
               </p>
             </div>
+          </div>
+          <ol
+            id="linkedin-leaderboard"
+            class="shared-solo-leaderboard-list"
+            aria-live="polite"
+          >
+            <li>Chargement du classement…</li>
+          </ol>
+        </section>
+      </section>
 
-            <section id="linkedin-round-guesses" class="linkedin-round-guesses" aria-labelledby="linkedin-round-guesses-title" hidden>
-              <h3 id="linkedin-round-guesses-title">Réponses de la manche</h3>
-              <ul id="linkedin-round-guesses-list" class="linkedin-round-guesses-list"></ul>
-            </section>
+      <section
+        id="linkedin-play"
+        class="linkedin-panel linkedin-play-panel"
+        hidden
+      >
+        <div class="linkedin-game-heading">
+          <div>
+            <p id="linkedin-game-mode" class="linkedin-eyebrow">Partie solo</p>
+            <h1 id="linkedin-game-title">Manche 1 sur 10</h1>
+          </div>
+          <div class="linkedin-heading-actions">
+            <button
+              type="button"
+              data-shared-lobby-open="linkedin-lobby"
+              class="linkedin-secondary-button"
+              hidden
+            >
+              Ouvrir le salon
+            </button>
+            <button
+              type="button"
+              id="linkedin-new-solo"
+              class="linkedin-secondary-button"
+              hidden
+            >
+              🔄 Nouvelle partie
+            </button>
+            <button
+              type="button"
+              id="linkedin-home-button"
+              class="linkedin-secondary-button"
+            >
+              Quitter
+            </button>
+          </div>
+        </div>
 
-            <section id="linkedin-live-players" class="linkedin-scoreboard" aria-labelledby="linkedin-live-players-title" hidden>
-              <div class="linkedin-scoreboard-head">
-                <h3 id="linkedin-live-players-title">Joueurs du salon</h3>
-                <span id="linkedin-answered-counter" class="linkedin-answered-counter"></span>
+        <section
+          id="linkedin-lobby"
+          class="shared-game-lobby linkedin-lobby"
+          data-shared-game-lobby
+          data-shared-lobby-next="linkedin-round"
+          hidden
+          aria-label="Salon multijoueur"
+        >
+          <section
+            class="shared-game-lobby-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="linkedin-lobby-title"
+            tabindex="-1"
+          >
+            <button
+              type="button"
+              class="shared-game-lobby-close"
+              data-shared-lobby-close
+              aria-label="Réduire le salon"
+            >
+              ×
+            </button>
+            <header class="shared-game-lobby-heading">
+              <p>🕵️ LinkedIn ou Interpol · salon multijoueur</p>
+              <h2 id="linkedin-lobby-title">En attente des joueurs</h2>
+              <p>
+                Mêmes portraits pour tout le monde : l’identité et les activités
+                sont révélées dès que tous les joueurs ont répondu.
+              </p>
+            </header>
+            <p id="linkedin-lobby-status" role="status" aria-live="polite">
+              En attente de joueurs…
+            </p>
+            <div class="linkedin-invite-row">
+              <code id="linkedin-invite-code"></code>
+              <button
+                type="button"
+                id="linkedin-copy-invite"
+                class="linkedin-secondary-button"
+              >
+                Copier le lien
+              </button>
+            </div>
+            <ul
+              id="linkedin-player-list"
+              class="linkedin-player-list"
+              aria-live="polite"
+            ></ul>
+            <button
+              type="button"
+              id="linkedin-start-game"
+              class="linkedin-primary-button"
+              hidden
+            >
+              Démarrer la partie
+            </button>
+          </section>
+        </section>
+
+        <section id="linkedin-round" class="linkedin-round" hidden>
+          <div class="linkedin-stats-strip">
+            <div class="linkedin-stat-pill">
+              <span>MANCHE</span>
+              <strong id="linkedin-stat-round">1 / 10</strong>
+            </div>
+            <div class="linkedin-stat-pill">
+              <span>SCORE</span>
+              <strong id="linkedin-stat-score">0 pt</strong>
+            </div>
+            <div class="linkedin-stat-pill">
+              <span>SÉRIE EN COURS</span>
+              <strong id="linkedin-stat-streak">0</strong>
+            </div>
+            <div class="linkedin-stat-pill">
+              <span>MEILLEURE SÉRIE</span>
+              <strong id="linkedin-stat-best">0</strong>
+            </div>
+          </div>
+
+          <div class="linkedin-progress-track" id="linkedin-progress-track">
+            <div
+              id="linkedin-progress-bar"
+              class="linkedin-progress-fill"
+              style="width: 0%"
+            ></div>
+          </div>
+
+          <p
+            id="linkedin-spectator-banner"
+            class="linkedin-spectator-banner"
+            role="status"
+            hidden
+          >
+            👀 Vous observez la partie en cours. Vous participerez
+            automatiquement dès que l’hôte relancera une partie.
+          </p>
+
+          <div class="linkedin-stage-grid">
+            <!-- PORTRAIT & IDENTITY CARD -->
+            <div class="linkedin-portrait-card">
+              <div class="linkedin-photo-frame">
+                <span id="linkedin-photo-badge" class="linkedin-photo-badge"
+                  >Portrait mystère</span
+                >
+                <img
+                  id="linkedin-person-image"
+                  class="linkedin-person-image"
+                  alt="Portrait mystère à identifier"
+                  src=""
+                />
               </div>
-              <ul id="linkedin-live-players-list" class="linkedin-live-players-list"></ul>
-            </section>
 
-            <section id="linkedin-final-card" class="linkedin-final-card" aria-labelledby="linkedin-final-title" hidden>
-              <div class="linkedin-final-header">
-                <span class="linkedin-final-icon" aria-hidden="true">🏆</span>
+              <!-- SHOWN BEFORE GUESSING: NO NAME, NO ACTIVITIES -->
+              <div id="linkedin-mystery-banner" class="linkedin-mystery-banner">
+                <span class="linkedin-mystery-icon" aria-hidden="true">🔒</span>
                 <div>
-                  <h2 id="linkedin-final-title">Partie terminée</h2>
-                  <p id="linkedin-final-summary"></p>
+                  <strong>Identité et activités masquées</strong>
+                  <p>
+                    Répondez <em>LinkedIn</em> ou <em>Interpol</em> pour
+                    découvrir le nom et les activités de cette personne.
+                  </p>
                 </div>
               </div>
-              <ol id="linkedin-final-rankings" class="linkedin-final-rankings"></ol>
-              <div class="linkedin-final-actions">
-                <button type="button" id="linkedin-replay-solo" class="linkedin-primary-button" hidden>Rejouer en solo</button>
-                <button type="button" id="linkedin-restart-room" class="linkedin-primary-button" hidden>Relancer une partie</button>
-                <button type="button" id="linkedin-back-home" class="linkedin-secondary-button">Retour à l’accueil</button>
+
+              <!-- SHOWN ONLY AFTER GUESSING / ROUND COMPLETION -->
+              <div
+                id="linkedin-reveal-card"
+                class="linkedin-reveal-card"
+                aria-live="polite"
+                hidden
+              >
+                <div class="linkedin-reveal-top">
+                  <span
+                    id="linkedin-verdict-badge"
+                    class="linkedin-verdict-badge"
+                    >Bien vu !</span
+                  >
+                  <span id="linkedin-answer-pill" class="linkedin-answer-pill"
+                    >💼 LinkedIn</span
+                  >
+                </div>
+                <h2 id="linkedin-person-name" class="linkedin-person-name"></h2>
+                <p
+                  id="linkedin-person-description"
+                  class="linkedin-person-description"
+                ></p>
+                <p
+                  id="linkedin-special-message"
+                  class="linkedin-special-message"
+                  hidden
+                ></p>
               </div>
-            </section>
-          </div>
-        </div>
+            </div>
 
-        <section id="linkedin-history-card" class="linkedin-history-card" aria-labelledby="linkedin-history-title" hidden>
-          <h3 id="linkedin-history-title">Dossiers déjà révélés</h3>
-          <div id="linkedin-history-list" class="linkedin-history-list"></div>
+            <!-- CHOICES, NEXT ROUND & MULTIPLAYER STATUS -->
+            <div class="linkedin-action-column">
+              <div id="linkedin-choices-card" class="linkedin-choices-card">
+                <p class="linkedin-prompt-title">
+                  Quelle est l’origine de ce portrait ?
+                </p>
+                <p class="linkedin-prompt-subtitle">
+                  Fiez-vous à votre instinct. Raccourcis clavier :
+                  <kbd>L</kbd> ou <kbd>I</kbd>.
+                </p>
+
+                <div class="linkedin-choice-buttons">
+                  <button
+                    type="button"
+                    id="linkedin-choice-linkedin"
+                    class="linkedin-choice-btn linkedin-choice-pro"
+                    data-choice="linkedin"
+                  >
+                    <span class="linkedin-choice-icon" aria-hidden="true"
+                      >💼</span
+                    >
+                    <span class="linkedin-choice-copy">
+                      <strong>LinkedIn</strong>
+                      <small>Profil professionnel</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    id="linkedin-choice-interpol"
+                    class="linkedin-choice-btn linkedin-choice-wanted"
+                    data-choice="interpol"
+                  >
+                    <span class="linkedin-choice-icon" aria-hidden="true"
+                      >🚨</span
+                    >
+                    <span class="linkedin-choice-copy">
+                      <strong>Interpol</strong>
+                      <small>Notice de recherche</small>
+                    </span>
+                  </button>
+                </div>
+
+                <p
+                  id="linkedin-waiting-status"
+                  class="linkedin-waiting-status"
+                  role="status"
+                  hidden
+                ></p>
+              </div>
+
+              <div id="linkedin-next-card" class="linkedin-next-card" hidden>
+                <button
+                  type="button"
+                  id="linkedin-next-button"
+                  class="linkedin-primary-button linkedin-next-btn"
+                >
+                  Personne suivante →
+                </button>
+                <p
+                  id="linkedin-waiting-host"
+                  class="linkedin-waiting-host"
+                  role="status"
+                  hidden
+                >
+                  En attente de l’hôte pour passer à la personne suivante…
+                </p>
+              </div>
+
+              <section
+                id="linkedin-round-guesses"
+                class="linkedin-round-guesses"
+                aria-labelledby="linkedin-round-guesses-title"
+                hidden
+              >
+                <h3 id="linkedin-round-guesses-title">Réponses de la manche</h3>
+                <ul
+                  id="linkedin-round-guesses-list"
+                  class="linkedin-round-guesses-list"
+                ></ul>
+              </section>
+
+              <section
+                id="linkedin-live-players"
+                class="linkedin-scoreboard"
+                aria-labelledby="linkedin-live-players-title"
+                hidden
+              >
+                <div class="linkedin-scoreboard-head">
+                  <h3 id="linkedin-live-players-title">Joueurs du salon</h3>
+                  <span
+                    id="linkedin-answered-counter"
+                    class="linkedin-answered-counter"
+                  ></span>
+                </div>
+                <ul
+                  id="linkedin-live-players-list"
+                  class="linkedin-live-players-list"
+                ></ul>
+              </section>
+
+              <section
+                id="linkedin-final-card"
+                class="linkedin-final-card"
+                aria-labelledby="linkedin-final-title"
+                hidden
+              >
+                <div class="linkedin-final-header">
+                  <span class="linkedin-final-icon" aria-hidden="true">🏆</span>
+                  <div>
+                    <h2 id="linkedin-final-title">Partie terminée</h2>
+                    <p id="linkedin-final-summary"></p>
+                  </div>
+                </div>
+                <ol
+                  id="linkedin-final-rankings"
+                  class="linkedin-final-rankings"
+                ></ol>
+                <div class="linkedin-final-actions">
+                  <button
+                    type="button"
+                    id="linkedin-replay-solo"
+                    class="linkedin-primary-button"
+                    hidden
+                  >
+                    Rejouer en solo
+                  </button>
+                  <button
+                    type="button"
+                    id="linkedin-restart-room"
+                    class="linkedin-primary-button"
+                    hidden
+                  >
+                    Relancer une partie
+                  </button>
+                  <button
+                    type="button"
+                    id="linkedin-back-home"
+                    class="linkedin-secondary-button"
+                  >
+                    Retour à l’accueil
+                  </button>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <section
+            id="linkedin-history-card"
+            class="linkedin-history-card"
+            aria-labelledby="linkedin-history-title"
+            hidden
+          >
+            <h3 id="linkedin-history-title">Dossiers déjà révélés</h3>
+            <div id="linkedin-history-list" class="linkedin-history-list"></div>
+          </section>
         </section>
+
+        <p
+          id="linkedin-play-error"
+          class="linkedin-error"
+          role="alert"
+          hidden
+        ></p>
       </section>
 
-      <p id="linkedin-play-error" class="linkedin-error" role="alert" hidden></p>
-    </section>
+      <footer>Une partie de <a href="/">la ludothèque</a></footer>
+    </main>
 
-    <footer>Une partie de <a href="/">la ludothèque</a></footer>
-  </main>
-
-  <div id="linkedin-catalog-overlay" class="linkedin-catalog-overlay" hidden>
-    <section class="linkedin-catalog-dialog" role="dialog" aria-modal="true" aria-labelledby="linkedin-catalog-title" tabindex="-1">
-      <button type="button" id="linkedin-close-catalog" class="linkedin-catalog-close" aria-label="Fermer la collection">×</button>
-      <header class="linkedin-catalog-header">
-        <div>
-          <p>🗂️ Pokedex social</p>
-          <h2 id="linkedin-catalog-title">Collection LinkedIn ou Interpol</h2>
-        </div>
-      </header>
-      <div id="linkedin-catalog-summary" class="linkedin-catalog-summary"></div>
-      <div id="linkedin-catalog-grid" class="linkedin-catalog-grid" aria-live="polite"></div>
-    </section>
-  </div>
-
-  <div class="shared-rooms-overlay" data-shared-rooms-modal data-play-target="linkedin-play" data-home-error-target="linkedin-home-error" hidden>
-    <section class="shared-rooms-dialog" role="dialog" aria-modal="true" aria-labelledby="linkedin-rooms-title" tabindex="-1">
-      <button type="button" class="shared-rooms-close" data-shared-modal-close aria-label="Fermer">×</button>
-      <header class="shared-rooms-heading">
-        <p>🕵️ LinkedIn ou Interpol · multijoueur</p>
-        <h2 id="linkedin-rooms-title">Jouer en multijoueur</h2>
-        <p>Affrontez vos amis sur la même série de portraits anonymes !</p>
-      </header>
-      <div class="shared-rooms-actions">
-        <section class="shared-room-action">
+    <div id="linkedin-catalog-overlay" class="linkedin-catalog-overlay" hidden>
+      <section
+        class="linkedin-catalog-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="linkedin-catalog-title"
+        tabindex="-1"
+      >
+        <button
+          type="button"
+          id="linkedin-close-catalog"
+          class="linkedin-catalog-close"
+          aria-label="Fermer la collection"
+        >
+          ×
+        </button>
+        <header class="linkedin-catalog-header">
           <div>
-            <h3>Créer un salon</h3>
-            <p>Choisissez le nombre de manches et partagez le code à vos amis.</p>
+            <p>🗂️ Pokedex social</p>
+            <h2 id="linkedin-catalog-title">Collection LinkedIn ou Interpol</h2>
           </div>
-          <div class="linkedin-room-create-controls">
-            <label class="linkedin-difficulty-label" for="linkedin-room-round-count">Nombre de manches</label>
-            <select id="linkedin-room-round-count" class="linkedin-difficulty-select" data-game-setting="room-round-count">
-              <option value="5">5 manches</option>
-              <option value="10" selected>10 manches</option>
-              <option value="15">15 manches</option>
-              <option value="20">20 manches</option>
-            </select>
-            <button type="button" id="linkedin-create-room" class="linkedin-primary-button">Créer le salon</button>
-          </div>
-        </section>
-        <section class="shared-room-action">
-          <div>
-            <h3>Rejoindre avec un code</h3>
-            <p>Entrez le code à 6 caractères communiqué par l’hôte.</p>
-          </div>
-          <div class="shared-room-join-controls">
-            <label class="sr-only" for="linkedin-room-code">Code du salon</label>
-            <input id="linkedin-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
-            <button type="button" id="linkedin-join-room" class="linkedin-secondary-button">Rejoindre</button>
-          </div>
-        </section>
-      </div>
-      <section class="linkedin-room-browser" aria-labelledby="linkedin-room-browser-title">
-        <div class="linkedin-room-browser-heading">
-          <div>
-            <h2 id="linkedin-room-browser-title">Salons publics</h2>
-            <p>Rejoignez un salon ouvert ou reprenez votre partie en cours.</p>
-          </div>
-          <button type="button" id="linkedin-refresh-rooms" class="linkedin-secondary-button" data-shared-refresh-rooms>Actualiser</button>
-        </div>
-        <div id="linkedin-room-directory" class="linkedin-room-directory" aria-live="polite"></div>
+        </header>
+        <div
+          id="linkedin-catalog-summary"
+          class="linkedin-catalog-summary"
+        ></div>
+        <div
+          id="linkedin-catalog-grid"
+          class="linkedin-catalog-grid"
+          aria-live="polite"
+        ></div>
       </section>
-    </section>
-  </div>
+    </div>
 
-  <script src="/static/shared/config.js"></script>
-  <script src="/static/shared/game-ui.js"></script>
-  <script src="/static/shared/presence.js"></script>
-  <script src="/static/games/linkedin-or-interpol/app.js"></script>
-</body>
+    <div
+      class="shared-rooms-overlay"
+      data-shared-rooms-modal
+      data-play-target="linkedin-play"
+      data-home-error-target="linkedin-home-error"
+      hidden
+    >
+      <section
+        class="shared-rooms-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="linkedin-rooms-title"
+        tabindex="-1"
+      >
+        <button
+          type="button"
+          class="shared-rooms-close"
+          data-shared-modal-close
+          aria-label="Fermer"
+        >
+          ×
+        </button>
+        <header class="shared-rooms-heading">
+          <p>🕵️ LinkedIn ou Interpol · multijoueur</p>
+          <h2 id="linkedin-rooms-title">Jouer en multijoueur</h2>
+          <p>Affrontez vos amis sur la même série de portraits anonymes !</p>
+        </header>
+        <div class="shared-rooms-actions">
+          <section class="shared-room-action">
+            <div>
+              <h3>Créer un salon</h3>
+              <p>
+                Choisissez le nombre de manches et partagez le code à vos amis.
+              </p>
+            </div>
+            <div class="linkedin-room-create-controls">
+              <label
+                class="linkedin-difficulty-label"
+                for="linkedin-room-round-count"
+                >Nombre de manches</label
+              >
+              <select
+                id="linkedin-room-round-count"
+                class="linkedin-difficulty-select"
+                data-game-setting="room-round-count"
+              >
+                <option value="5">5 manches</option>
+                <option value="10" selected>10 manches</option>
+                <option value="15">15 manches</option>
+                <option value="20">20 manches</option>
+              </select>
+              <button
+                type="button"
+                id="linkedin-create-room"
+                class="linkedin-primary-button"
+              >
+                Créer le salon
+              </button>
+            </div>
+          </section>
+          <section class="shared-room-action">
+            <div>
+              <h3>Rejoindre avec un code</h3>
+              <p>Entrez le code à 6 caractères communiqué par l’hôte.</p>
+            </div>
+            <div class="shared-room-join-controls">
+              <label class="sr-only" for="linkedin-room-code"
+                >Code du salon</label
+              >
+              <input
+                id="linkedin-room-code"
+                maxlength="6"
+                autocomplete="off"
+                placeholder="Code du salon"
+              />
+              <button
+                type="button"
+                id="linkedin-join-room"
+                class="linkedin-secondary-button"
+              >
+                Rejoindre
+              </button>
+            </div>
+          </section>
+        </div>
+        <section
+          class="linkedin-room-browser"
+          aria-labelledby="linkedin-room-browser-title"
+        >
+          <div class="linkedin-room-browser-heading">
+            <div>
+              <h2 id="linkedin-room-browser-title">Salons publics</h2>
+              <p>
+                Rejoignez un salon ouvert ou reprenez votre partie en cours.
+              </p>
+            </div>
+            <button
+              type="button"
+              id="linkedin-refresh-rooms"
+              class="linkedin-secondary-button"
+              data-shared-refresh-rooms
+            >
+              Actualiser
+            </button>
+          </div>
+          <div
+            id="linkedin-room-directory"
+            class="linkedin-room-directory"
+            aria-live="polite"
+          ></div>
+        </section>
+      </section>
+    </div>
+
+    <script src="/static/shared/config.js"></script>
+    <script src="/static/shared/game-ui.js"></script>
+    <script src="/static/shared/presence.js"></script>
+    <script src="/static/games/linkedin-or-interpol/app.js"></script>
+  </body>
 </html>

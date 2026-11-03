@@ -1,27 +1,49 @@
 :root {
   color-scheme: dark;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
   background: #111522;
   color: #f8fafc;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   min-height: 100vh;
   margin: 0;
   background:
-    radial-gradient(ellipse at 15% 0%, rgba(245, 158, 11, 0.16), transparent 38rem),
-    radial-gradient(ellipse at 90% 20%, rgba(56, 189, 248, 0.12), transparent 32rem),
+    radial-gradient(
+      ellipse at 15% 0%,
+      rgba(245, 158, 11, 0.16),
+      transparent 38rem
+    ),
+    radial-gradient(
+      ellipse at 90% 20%,
+      rgba(56, 189, 248, 0.12),
+      transparent 32rem
+    ),
     var(--game-page, #111522);
 }
 
-button, input, select { font: inherit; }
-button { color: inherit; cursor: pointer; }
-button:disabled { cursor: not-allowed; opacity: 0.55; }
-[hidden] { display: none !important; }
+button,
+input,
+select {
+  font: inherit;
+}
+button {
+  color: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+[hidden] {
+  display: none !important;
+}
 
 .sr-only {
   position: absolute;
@@ -58,10 +80,22 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   font-weight: 800;
 }
 
-.linkedin-back { font-size: 0.86rem; }
-.linkedin-brand { margin: 0; font-size: 0.98rem; letter-spacing: 0.11em; }
-.linkedin-brand span { margin-right: 5px; }
-.linkedin-player-name { justify-self: end; color: var(--game-muted, #aab3c5); font-size: 0.82rem; }
+.linkedin-back {
+  font-size: 0.86rem;
+}
+.linkedin-brand {
+  margin: 0;
+  font-size: 0.98rem;
+  letter-spacing: 0.11em;
+}
+.linkedin-brand span {
+  margin-right: 5px;
+}
+.linkedin-player-name {
+  justify-self: end;
+  color: var(--game-muted, #aab3c5);
+  font-size: 0.82rem;
+}
 
 .linkedin-panel {
   margin: auto 0;
@@ -121,7 +155,7 @@ h1 {
   border-radius: 8px;
   background: color-mix(in srgb, var(--game-accent) 18%, transparent);
   color: var(--game-accent);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -179,7 +213,10 @@ h1 {
   border-radius: 17px;
   background: var(--game-panel-raised);
   text-align: left;
-  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
 }
 
 button.linkedin-mode-card:hover {
@@ -199,7 +236,9 @@ button.linkedin-mode-card:hover {
   display: block;
 }
 
-.linkedin-mode-card strong { font-size: 1rem; }
+.linkedin-mode-card strong {
+  font-size: 1rem;
+}
 .linkedin-mode-card small {
   margin-top: 5px;
   color: var(--game-muted);
@@ -268,8 +307,11 @@ button.linkedin-mode-card:hover {
   padding: 22px 22px 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 24px;
-  background:
-    linear-gradient(145deg, rgba(21, 26, 39, 0.98), rgba(14, 19, 30, 0.96));
+  background: linear-gradient(
+    145deg,
+    rgba(21, 26, 39, 0.98),
+    rgba(14, 19, 30, 0.96)
+  );
   box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
   overflow: hidden;
 }
@@ -413,7 +455,9 @@ button.linkedin-mode-card:hover {
   font-weight: 600;
 }
 
-.linkedin-previous-game { margin: 16px 0 0; }
+.linkedin-previous-game {
+  margin: 16px 0 0;
+}
 
 /* PLAY PANEL */
 .linkedin-play-panel {
@@ -452,7 +496,7 @@ button.linkedin-mode-card:hover {
   border: 1px solid var(--game-border);
   border-radius: 10px;
   background: var(--game-input);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -626,18 +670,32 @@ button.linkedin-mode-card:hover {
 }
 
 @keyframes linkedinRevealIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .linkedin-reveal-card.is-correct {
   border-color: rgba(16, 185, 129, 0.5);
-  background: linear-gradient(155deg, rgba(16, 185, 129, 0.13), var(--game-panel));
+  background: linear-gradient(
+    155deg,
+    rgba(16, 185, 129, 0.13),
+    var(--game-panel)
+  );
 }
 
 .linkedin-reveal-card.is-wrong {
   border-color: rgba(244, 63, 94, 0.5);
-  background: linear-gradient(155deg, rgba(244, 63, 94, 0.13), var(--game-panel));
+  background: linear-gradient(
+    155deg,
+    rgba(244, 63, 94, 0.13),
+    var(--game-panel)
+  );
 }
 
 .linkedin-reveal-top {
@@ -745,7 +803,7 @@ button.linkedin-mode-card:hover {
   border: 1px solid var(--game-border);
   border-radius: 5px;
   background: var(--game-panel);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 0.74rem;
 }
 
@@ -765,20 +823,32 @@ button.linkedin-mode-card:hover {
   border-radius: 16px;
   background: var(--game-panel);
   text-align: left;
-  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .linkedin-choice-pro:hover:not(:disabled) {
   transform: translateY(-2px);
   border-color: #38bdf8;
-  background: linear-gradient(135deg, rgba(10, 102, 194, 0.25), var(--game-panel));
+  background: linear-gradient(
+    135deg,
+    rgba(10, 102, 194, 0.25),
+    var(--game-panel)
+  );
   box-shadow: 0 12px 28px rgba(10, 102, 194, 0.22);
 }
 
 .linkedin-choice-wanted:hover:not(:disabled) {
   transform: translateY(-2px);
   border-color: #fb7185;
-  background: linear-gradient(135deg, rgba(225, 29, 72, 0.25), var(--game-panel));
+  background: linear-gradient(
+    135deg,
+    rgba(225, 29, 72, 0.25),
+    var(--game-panel)
+  );
   box-shadow: 0 12px 28px rgba(225, 29, 72, 0.22);
 }
 
@@ -789,12 +859,20 @@ button.linkedin-mode-card:hover {
 
 .linkedin-choice-btn.is-correct-answer {
   border-color: #10b981;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), var(--game-panel));
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.22),
+    var(--game-panel)
+  );
 }
 
 .linkedin-choice-btn.is-wrong-guess {
   border-color: #f43f5e;
-  background: linear-gradient(135deg, rgba(244, 63, 94, 0.22), var(--game-panel));
+  background: linear-gradient(
+    135deg,
+    rgba(244, 63, 94, 0.22),
+    var(--game-panel)
+  );
 }
 
 .linkedin-choice-icon {
@@ -867,7 +945,9 @@ button.linkedin-mode-card:hover {
   margin-bottom: 10px;
 }
 
-.linkedin-scoreboard-head h3 { margin: 0; }
+.linkedin-scoreboard-head h3 {
+  margin: 0;
+}
 
 .linkedin-answered-counter {
   color: var(--game-muted);
@@ -904,8 +984,12 @@ button.linkedin-mode-card:hover {
   font-weight: 700;
 }
 
-.linkedin-guess-tag.is-correct { color: #34d399; }
-.linkedin-guess-tag.is-wrong { color: #fb7185; }
+.linkedin-guess-tag.is-correct {
+  color: #34d399;
+}
+.linkedin-guess-tag.is-wrong {
+  color: #fb7185;
+}
 
 /* FINAL SCOREBOARD */
 .linkedin-final-card {
@@ -1054,8 +1138,13 @@ button.linkedin-mode-card:hover {
   display: block;
 }
 
-.linkedin-room-card-copy strong { font-size: 0.86rem; }
-.linkedin-room-card-copy small { margin-top: 2px; font-size: 0.75rem; }
+.linkedin-room-card-copy strong {
+  font-size: 0.86rem;
+}
+.linkedin-room-card-copy small {
+  margin-top: 2px;
+  font-size: 0.75rem;
+}
 
 footer {
   margin-top: 18px;
