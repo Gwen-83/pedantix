@@ -24,6 +24,7 @@ GAME_PAGES = (
     "/games/bitoguessr/",
     "/games/memories/",
     "/games/scribbl/",
+    "/games/linkedin-or-interpol/",
 )
 
 
@@ -78,8 +79,8 @@ class FrontendContractTests(unittest.TestCase):
         page = PageContractParser()
         page.feed(response.text)
 
-        self.assertEqual(len(page.cards), 11)
-        self.assertEqual(page.count_text.strip(), "11 jeux")
+        self.assertEqual(len(page.cards), 12)
+        self.assertEqual(page.count_text.strip(), "12 jeux")
         self.assertEqual(len({card["href"] for card in page.cards}), len(page.cards))
 
     def test_http_requests_do_not_force_device_tracker_logs_to_stdout(self):

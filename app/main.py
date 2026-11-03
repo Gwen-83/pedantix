@@ -85,6 +85,7 @@ from app.bitoguessr import (
 )
 from app.plongee import plongee_manager
 from app.memories import memories_manager
+from app.linkedin_or_interpol import linkedin_or_interpol_manager
 from app.scribbl import (
     MAX_PLAYERS as SCRIBBL_MAX_PLAYERS,
     scribbl_manager,
@@ -101,6 +102,7 @@ logger = logging.getLogger(__name__)
 GAME_LAUNCH_SLUGS = {
     "motus", "undercover", "cemantix", "chiffrantix", "battleship",
     "sudoku", "geoguessr", "bitoguessr", "plongee", "memories", "scribbl",
+    "linkedin-or-interpol",
 }
 GAME_PAUSE_MAINTENANCE_MESSAGE = (
     "Les parties sont en pause pour cause de maintenance. Réessayez plus tard."
@@ -373,6 +375,11 @@ class RoomUnmaskRequest(BaseModel):
 
 class GameUnmaskRequest(BaseModel):
     session_id: str
+
+class LinkedinOrInterpolGuessRequest(BaseModel):
+    game_id: str
+    player_id: str
+    guess: str
 
 class MotusPlayerRequest(BaseModel):
     player_id: str
@@ -789,6 +796,60 @@ async def bitoguessr_page(request: Request, player_id: Optional[str] = Query(Non
     if os.path.exists(gate_path):
         return FileResponse(gate_path)
     raise HTTPException(status_code=404, detail="Le Gardien du Seuil est introuvable.")
+
+
+@app.get("/games/linkedin-or-interpol/")
+@app.get("/games/linkedin-or-interpol")
+async def linkedin_or_interpol_page():
+    index_path = os.path.join(STATIC_DIR, "games", "linkedin-or-interpol", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page LinkedIn ou Interpol est introuvable.")
+
+
+@app.get("/api/linkedin-or-interpol/image/{filename}")
+async def linkedin_or_interpol_image(filename: str):
+    base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "data", "linkedin_or_interpol", "images")
+    file_path = os.path.join(base_dir, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Image introuvable.")
+    return FileResponse(file_path)
+
+
+@app.get("/api/linkedin-or-interpol/leaderboard")
+async def linkedin_or_interpol_leaderboard(limit: int = Query(10)):
+    try:
+        return {"records": linkedin_or_interpol_manager.get_leaderboard(limit)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/linkedin-or-interpol/new")
+async def linkedin_or_interpol_new_game(
+    player_id: str = Query("guest"),
+    rounds: int = Query(10),
+    mode: str = Query("solo"),
+):
+    try:
+        return linkedin_or_interpol_manager.create_game(player_id, rounds=rounds, mode=mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/linkedin-or-interpol/state")
+async def linkedin_or_interpol_state(game_id: str = Query(...), player_id: str = Query("guest")):
+    try:
+        return linkedin_or_interpol_manager.get_state(game_id, player_id)
+    except (KeyError, PermissionError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/linkedin-or-interpol/guess")
+async def linkedin_or_interpol_guess(req: LinkedinOrInterpolGuessRequest):
+    try:
+        return linkedin_or_interpol_manager.submit_guess(req.game_id, req.player_id, req.guess)
+    except (KeyError, PermissionError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/health")
