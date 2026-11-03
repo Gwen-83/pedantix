@@ -20,6 +20,11 @@
   const soloGameIdKey = "linkedin_solo_game_id";
   const collectionKey = "linkedin_or_interpol_collection_v1";
 
+  let cachedCatalog = null;
+  let catalogFilter = "all";
+  let catalogSearchQuery = "";
+  let lastDiscoveredPersonId = null;
+
   let playerId = localStorage.getItem(playerIdKey);
   if (!playerId) {
     playerId =
@@ -91,6 +96,14 @@
     soloCardDesc.textContent = isInfinite
       ? "Enchaînez les portraits sans limite de manches et battez votre record de série sans faute."
       : `Identifiez ${roundCountSelect.value} portraits anonymes et découvrez leur véritable activité après chaque réponse.`;
+
+    const leaderboardModeSelect = document.getElementById(
+      "linkedin-leaderboard-mode",
+    );
+    if (leaderboardModeSelect) {
+      leaderboardModeSelect.value = isInfinite ? "infini" : "classique";
+    }
+    refreshLeaderboard();
   }
 
   function syncResumeButton() {
@@ -112,10 +125,33 @@
 
   async function refreshLeaderboard() {
     const list = document.getElementById("linkedin-leaderboard");
+    const title = document.getElementById("linkedin-leaderboard-title");
+    const desc = document.getElementById("linkedin-leaderboard-desc");
+    const modeSelect = document.getElementById("linkedin-leaderboard-mode");
     if (!list) return;
+
+    const mode = modeSelect
+      ? modeSelect.value
+      : soloModeSelect?.value === "solo-infinite"
+        ? "infini"
+        : "classique";
+
+    if (title) {
+      title.textContent =
+        mode === "infini"
+          ? "Classement solo · Mode infini"
+          : "Classement solo · Classique";
+    }
+    if (desc) {
+      desc.textContent =
+        mode === "infini"
+          ? "Meilleures séries sans la moindre erreur. Le classement récompense la régularité."
+          : "Meilleurs scores sur les parties à manches fixes.";
+    }
+
     try {
       const data = await request(
-        "/api/linkedin-or-interpol/leaderboard?limit=10",
+        `/api/game-leaderboard?game_id=linkedin-or-interpol&difficulty=${encodeURIComponent(mode)}`,
       );
       const records = data.records || [];
       list.replaceChildren();
@@ -123,28 +159,38 @@
         const empty = document.createElement("li");
         empty.className = "shared-solo-leaderboard-empty";
         empty.textContent =
-          "Aucun record enregistré pour le moment. Lancez une partie !";
+          mode === "infini"
+            ? "Aucune série enregistrée pour le moment. Lancez une partie infinie !"
+            : "Aucun score enregistré pour le moment. Lancez une partie !";
         list.append(empty);
         return;
       }
-      records.forEach((entry, index) => {
+      records.forEach((record, index) => {
         const item = document.createElement("li");
         const rank = document.createElement("span");
         rank.className = "shared-solo-leaderboard-rank";
-        rank.textContent = `${entry.rank || index + 1}.`;
+        rank.textContent = `${index + 1}.`;
 
         const name = document.createElement("span");
         name.className = "shared-solo-leaderboard-player";
-        name.textContent = entry.player_name || entry.player_id || "Joueur";
+        name.textContent = record.player_name || "Joueur";
 
         const detail = document.createElement("span");
         detail.className = "shared-solo-leaderboard-detail";
-        const streak = Number(entry.best_streak || 0);
-        const bestScore = Number(entry.best_score || streak);
-        detail.textContent =
-          streak > 0
-            ? `🔥 Série de ${streak} · record ${bestScore} pt${bestScore > 1 ? "s" : ""}`
-            : `${bestScore} pt${bestScore > 1 ? "s" : ""}`;
+        const pts = Number(record.points || 0);
+        if (mode === "infini") {
+          const played = record.metrics?.rounds || record.attempts;
+          detail.textContent = played
+            ? `🔥 Série de ${pts} · ${played} portrait${played > 1 ? "s" : ""}`
+            : `🔥 Série de ${pts}`;
+        } else {
+          const rounds = record.metrics?.rounds || 10;
+          const streak = record.metrics?.best_streak;
+          detail.textContent =
+            streak > 0
+              ? `${pts} / ${rounds} pts · série max ${streak}`
+              : `${pts} / ${rounds} pts`;
+        }
 
         item.append(rank, name, detail);
         list.append(item);
@@ -158,9 +204,21 @@
     }
   }
 
+  function getCollectionKey() {
+    if (playerName && playerName !== "Joueur") {
+      return `linkedin_collection_${encodeURIComponent(playerName.toLowerCase())}`;
+    }
+    return collectionKey;
+  }
+
   function loadCollectionState() {
     try {
-      const raw = localStorage.getItem(collectionKey);
+      const key = getCollectionKey();
+      let raw = localStorage.getItem(key);
+      if (!raw && key !== collectionKey) {
+        raw = localStorage.getItem(collectionKey);
+        if (raw) localStorage.setItem(key, raw);
+      }
       return raw ? JSON.parse(raw) : {};
     } catch {
       return {};
@@ -168,81 +226,218 @@
   }
 
   function saveCollectionState(collection) {
-    localStorage.setItem(collectionKey, JSON.stringify(collection));
+    localStorage.setItem(getCollectionKey(), JSON.stringify(collection));
   }
 
-  function recordCollectionEntry(result) {
-    if (!result || !result.person_id) return;
+  function updateCollectionBadges(collection) {
+    const col = collection || loadCollectionState();
+    const found = Object.values(col).filter((entry) => entry?.found).length;
+    const total = cachedCatalog?.length || 174;
+    const pct = Math.min(100, Math.round((found / total) * 100));
+
+    const countBadge = document.getElementById("linkedin-catalog-count-badge");
+    if (countBadge) {
+      countBadge.textContent = `${found}/${total}`;
+    }
+
+    const homeDesc = document.getElementById("linkedin-home-collection-desc");
+    if (homeDesc) {
+      homeDesc.textContent = `${found} sur ${total} portraits débloqués (${pct}%) au fil de vos enquêtes.`;
+    }
+  }
+
+  function recordCollectionEntry(resultOrList) {
+    if (!resultOrList) return { count: 0, isNew: false };
+    const items = Array.isArray(resultOrList) ? resultOrList : [resultOrList];
     const collection = loadCollectionState();
-    const name =
-      result.full_name ||
-      `${result.name || ""} ${result.surname || ""}`.trim() ||
-      "Profil";
-    const entry = collection[result.person_id] || {
-      seen: 0,
-      found: false,
-      name,
-    };
-    entry.seen = Number(entry.seen || 0) + 1;
-    entry.found = Boolean(
-      entry.found || result.answer || result.correct || result.person_id,
-    );
-    entry.name = name;
-    collection[result.person_id] = entry;
-    saveCollectionState(collection);
+    let isNew = false;
+    let modified = false;
+
+    for (const res of items) {
+      const personId = res.person_id || res.id;
+      if (!personId) continue;
+      const existing = collection[personId];
+      if (!existing || !existing.found) {
+        isNew = true;
+        lastDiscoveredPersonId = personId;
+      }
+      const name =
+        res.full_name ||
+        `${res.name || ""} ${res.surname || ""}`.trim() ||
+        existing?.name ||
+        "Profil";
+
+      collection[personId] = {
+        seen: Number(existing?.seen || 0) + 1,
+        found: true,
+        name,
+        answer: res.answer || res.label || existing?.answer,
+        discovered_at: existing?.discovered_at || new Date().toISOString(),
+      };
+      modified = true;
+    }
+
+    if (modified) {
+      saveCollectionState(collection);
+      updateCollectionBadges(collection);
+    }
+    return { isNew };
   }
 
   function renderCollectionSummary(catalog, collection) {
     const summary = document.getElementById("linkedin-catalog-summary");
+    const progressBar = document.getElementById(
+      "linkedin-catalog-progress-bar",
+    );
     if (!summary) return;
+
     const found = catalog.filter((entry) => collection[entry.id]?.found).length;
-    summary.innerHTML = `<strong>${found}</strong> / ${catalog.length} profils découverts · <strong>${catalog.filter((entry) => entry.rarity_rank === 1).length}</strong> ultra-rares dans la collection.`;
+    const total = catalog.length || 174;
+    const pct = Math.min(100, Math.round((found / total) * 100));
+    const ultraFound = catalog.filter(
+      (entry) => entry.rarity_rank === 1 && collection[entry.id]?.found,
+    ).length;
+    const ultraTotal = catalog.filter(
+      (entry) => entry.rarity_rank === 1,
+    ).length;
+
+    summary.innerHTML = `<strong>${found}</strong> / ${total} profils découverts (${pct}%) · <strong>${ultraFound}</strong> / ${ultraTotal} ultra-rares`;
+
+    if (progressBar) {
+      progressBar.style.width = `${pct}%`;
+    }
+
+    const tabBtns = document.querySelectorAll(".linkedin-tab-btn");
+    tabBtns.forEach((btn) => {
+      const filter = btn.dataset.catalogFilter;
+      if (filter === "all") btn.textContent = `Tous (${total})`;
+      else if (filter === "known") btn.textContent = `Découverts (${found})`;
+      else if (filter === "locked")
+        btn.textContent = `À découvrir (${total - found})`;
+    });
+  }
+
+  function renderCatalogGrid(catalog, collection) {
+    const grid = document.getElementById("linkedin-catalog-grid");
+    if (!grid) return;
+
+    const query = catalogSearchQuery.trim().toLowerCase();
+    const filtered = catalog.filter((entry) => {
+      const isKnown = Boolean(collection[entry.id]?.found);
+      if (catalogFilter === "known" && !isKnown) return false;
+      if (catalogFilter === "locked" && isKnown) return false;
+      if (query) {
+        if (!isKnown) return false;
+        const fullName =
+          `${entry.name || ""} ${entry.surname || ""}`.toLowerCase();
+        if (!fullName.includes(query)) return false;
+      }
+      return true;
+    });
+
+    if (!filtered.length) {
+      const empty = document.createElement("div");
+      empty.className = "linkedin-catalog-empty";
+      empty.textContent = query
+        ? "Aucun profil débloqué ne correspond à cette recherche."
+        : catalogFilter === "known"
+          ? "Aucun profil découvert pour le moment. Jouez pour enrichir votre collection !"
+          : "Félicitations ! Vous avez débloqué tous les profils de cette catégorie.";
+      grid.replaceChildren(empty);
+      return;
+    }
+
+    grid.replaceChildren(
+      ...filtered.map((entry) => {
+        const card = document.createElement("article");
+        const known = Boolean(collection[entry.id]?.found);
+        card.className = `linkedin-catalog-card ${known ? "is-known" : "is-locked"} rarity-${entry.rarity_rank || 4}`;
+
+        const imageWrap = document.createElement("div");
+        imageWrap.className = `linkedin-catalog-image-wrap ${known ? "is-known" : "is-locked"}`;
+
+        if (known) {
+          const img = document.createElement("img");
+          img.className = "linkedin-catalog-photo";
+          img.src = entry.image_url || "";
+          img.loading = "lazy";
+          const fullName =
+            `${entry.name || ""} ${entry.surname || ""}`.trim() || "Profil";
+          img.alt = fullName;
+          imageWrap.append(img);
+
+          const typePill = document.createElement("span");
+          const isLinkedIn = entry.label === "linkedin";
+          typePill.className = `linkedin-catalog-type-pill ${isLinkedIn ? "linkedin" : "interpol"}`;
+          typePill.textContent = isLinkedIn ? "💼 LinkedIn" : "🚨 Interpol";
+          imageWrap.append(typePill);
+        } else {
+          // Dark mystery silhouette avatar
+          const silhouette = document.createElement("div");
+          silhouette.className = "linkedin-catalog-avatar-silhouette";
+          silhouette.setAttribute("aria-hidden", "true");
+          silhouette.innerHTML = `
+            <svg viewBox="0 0 100 100" class="linkedin-silhouette-svg">
+              <circle cx="50" cy="36" r="22" fill="#000000" />
+              <path d="M18 92 C18 66 32 56 50 56 C68 56 82 66 82 92 Z" fill="#000000" />
+            </svg>
+            <span class="linkedin-silhouette-lock">🔒</span>
+          `;
+          const unknownPill = document.createElement("span");
+          unknownPill.className = "linkedin-catalog-type-pill is-unknown";
+          unknownPill.textContent = "❓ Mystère";
+          imageWrap.append(silhouette, unknownPill);
+        }
+
+        const header = document.createElement("div");
+        header.className = "linkedin-catalog-card-header";
+
+        const title = document.createElement("p");
+        title.className = `linkedin-catalog-card-name ${known ? "" : "is-masked"}`;
+        const displayName = known
+          ? `${entry.name || ""} ${entry.surname || ""}`.trim() || "Profil"
+          : "???";
+        title.textContent = displayName;
+        title.title = displayName;
+
+        const rarity = document.createElement("span");
+        rarity.className = `linkedin-catalog-card-rarity rarity-${entry.rarity_rank || 4}`;
+        rarity.textContent = entry.rarity_label || "Commune";
+        header.append(title, rarity);
+
+        const meta = document.createElement("div");
+        meta.className = "linkedin-catalog-card-meta";
+
+        const badge = document.createElement("span");
+        badge.className = `linkedin-catalog-card-badge ${known ? "is-discovered" : "unknown"}`;
+        badge.textContent = known ? "✓ Découvert" : "🔒 Non découvert";
+
+        const views = document.createElement("span");
+        if (known) {
+          const count = collection[entry.id]?.seen || entry.seen_total || 1;
+          views.textContent = `Vu ${count} fois`;
+        } else {
+          views.textContent = "À débloquer";
+        }
+        meta.append(badge, views);
+
+        card.append(imageWrap, header, meta);
+        return card;
+      }),
+    );
   }
 
   async function openCatalog() {
     const overlay = document.getElementById("linkedin-catalog-overlay");
-    const grid = document.getElementById("linkedin-catalog-grid");
-    if (!overlay || !grid) return;
+    if (!overlay) return;
     try {
       const collection = loadCollectionState();
-      const response = await request("/api/linkedin-or-interpol/catalog");
-      const catalog = response.catalog || [];
-      renderCollectionSummary(catalog, collection);
-      grid.replaceChildren(
-        ...catalog.map((entry) => {
-          const card = document.createElement("article");
-          const known = Boolean(collection[entry.id]?.found);
-          card.className = `linkedin-catalog-card ${known ? "is-known" : ""}`;
-
-          const image = document.createElement("img");
-          image.src = entry.image_url || "";
-          image.alt = `${entry.name || "Profil"} ${entry.surname || ""}`.trim();
-
-          const header = document.createElement("div");
-          header.className = "linkedin-catalog-card-header";
-          const title = document.createElement("p");
-          title.className = "linkedin-catalog-card-name";
-          title.textContent =
-            `${entry.name || ""} ${entry.surname || ""}`.trim() ||
-            "Profil inconnu";
-          const rarity = document.createElement("span");
-          rarity.className = "linkedin-catalog-card-rarity";
-          rarity.textContent = entry.rarity_label || "Commune";
-          header.append(title, rarity);
-
-          const meta = document.createElement("div");
-          meta.className = "linkedin-catalog-card-meta";
-          const badge = document.createElement("span");
-          badge.className = `linkedin-catalog-card-badge ${known ? "" : "unknown"}`;
-          badge.textContent = known ? "Découvert" : "Inconnu";
-          const seen = document.createElement("span");
-          seen.textContent = `Vues ${entry.seen_total || 0}`;
-          meta.append(badge, seen);
-
-          card.append(image, header, meta);
-          return card;
-        }),
-      );
+      if (!cachedCatalog) {
+        const response = await request("/api/linkedin-or-interpol/catalog");
+        cachedCatalog = response.catalog || [];
+      }
+      renderCollectionSummary(cachedCatalog, collection);
+      renderCatalogGrid(cachedCatalog, collection);
       overlay.hidden = false;
     } catch (error) {
       showError(homeError, error.message);
@@ -547,6 +742,7 @@
   async function advanceNextRound() {
     if (busy || !state || state.status !== "playing") return;
     busy = true;
+    lastDiscoveredPersonId = null;
     hideError(playError);
     renderGame();
     try {
@@ -633,6 +829,7 @@
     );
     const specialMessage = document.getElementById("linkedin-special-message");
     const photoBadge = document.getElementById("linkedin-photo-badge");
+    const discoveryBadge = document.getElementById("linkedin-discovery-badge");
 
     if (!roundResult) {
       mysteryBanner.hidden = false;
@@ -643,11 +840,20 @@
       specialMessage.hidden = true;
       specialMessage.textContent = "";
       photoBadge.textContent = "Portrait mystère";
+      if (discoveryBadge) discoveryBadge.hidden = true;
       return;
     }
 
     mysteryBanner.hidden = true;
     revealCard.hidden = false;
+
+    if (discoveryBadge) {
+      const isNew = Boolean(
+        roundResult.person_id &&
+          roundResult.person_id === lastDiscoveredPersonId,
+      );
+      discoveryBadge.hidden = !isNew;
+    }
 
     const ownResult =
       gameType === "room"
@@ -1053,15 +1259,44 @@
 
   document
     .getElementById("linkedin-open-catalog")
-    .addEventListener("click", openCatalog);
+    ?.addEventListener("click", openCatalog);
+  document
+    .getElementById("linkedin-home-open-catalog")
+    ?.addEventListener("click", openCatalog);
   document
     .getElementById("linkedin-close-catalog")
-    .addEventListener("click", closeCatalog);
+    ?.addEventListener("click", closeCatalog);
   document
     .getElementById("linkedin-catalog-overlay")
-    .addEventListener("click", (event) => {
+    ?.addEventListener("click", (event) => {
       if (event.target === event.currentTarget) closeCatalog();
     });
+
+  document.querySelectorAll(".linkedin-tab-btn").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      document
+        .querySelectorAll(".linkedin-tab-btn")
+        .forEach((b) => b.classList.remove("active"));
+      event.currentTarget.classList.add("active");
+      catalogFilter = event.currentTarget.dataset.catalogFilter || "all";
+      if (cachedCatalog) {
+        renderCatalogGrid(cachedCatalog, loadCollectionState());
+      }
+    });
+  });
+
+  document
+    .getElementById("linkedin-catalog-search")
+    ?.addEventListener("input", (event) => {
+      catalogSearchQuery = event.target.value || "";
+      if (cachedCatalog) {
+        renderCatalogGrid(cachedCatalog, loadCollectionState());
+      }
+    });
+
+  document
+    .getElementById("linkedin-leaderboard-mode")
+    ?.addEventListener("change", refreshLeaderboard);
 
   document
     .getElementById("linkedin-solo-button")
@@ -1176,6 +1411,7 @@
   // Initialisation
   syncSoloModeControls();
   syncResumeButton();
+  updateCollectionBadges();
   refreshLeaderboard();
   refreshRooms();
 

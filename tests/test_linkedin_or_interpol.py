@@ -347,6 +347,27 @@ class LinkedinOrInterpolTests(unittest.TestCase):
         self.assertEqual(leave_res.status_code, 200)
         self.assertEqual(leave_res.json()["status"], "left")
 
+    def test_linkedin_leaderboard_endpoint_queries_database(self):
+        res_classique = self.client.get("/api/linkedin-or-interpol/leaderboard?difficulty=classique")
+        self.assertEqual(res_classique.status_code, 200)
+        self.assertIn("records", res_classique.json())
+
+        res_infini = self.client.get("/api/linkedin-or-interpol/leaderboard?difficulty=infini")
+        self.assertEqual(res_infini.status_code, 200)
+        self.assertIn("records", res_infini.json())
+
+    def test_catalog_returns_all_profiles_with_rarity(self):
+        res = self.client.get("/api/linkedin-or-interpol/catalog")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("catalog", data)
+        self.assertGreaterEqual(data["count"], 150)
+        first = data["catalog"][0]
+        self.assertIn("id", first)
+        self.assertIn("image_url", first)
+        self.assertIn("rarity_label", first)
+        self.assertIn("rarity_rank", first)
+
 
 if __name__ == "__main__":
     unittest.main()

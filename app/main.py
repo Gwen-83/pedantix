@@ -842,11 +842,17 @@ async def linkedin_or_interpol_image(filename: str):
 
 
 @app.get("/api/linkedin-or-interpol/leaderboard")
-async def linkedin_or_interpol_leaderboard(limit: int = Query(10)):
+async def linkedin_or_interpol_leaderboard(
+    limit: int = Query(10),
+    difficulty: Optional[str] = Query(None),
+):
     try:
+        selected_difficulty = difficulty if difficulty in {"classique", "infini"} else "classique"
+        records = get_solo_game_leaderboard("linkedin-or-interpol", selected_difficulty, limit=limit)
+        return {"records": records}
+    except Exception as exc:
+        logger.warning(f"linkedin_or_interpol_leaderboard: {exc}")
         return {"records": linkedin_or_interpol_manager.get_leaderboard(limit)}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/linkedin-or-interpol/catalog")
