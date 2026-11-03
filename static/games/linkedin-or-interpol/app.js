@@ -508,7 +508,6 @@
     const personName = document.getElementById('linkedin-person-name');
     const personDescription = document.getElementById('linkedin-person-description');
     const specialMessage = document.getElementById('linkedin-special-message');
-    const sourceLink = document.getElementById('linkedin-source-link');
     const photoBadge = document.getElementById('linkedin-photo-badge');
 
     if (!roundResult) {
@@ -519,7 +518,6 @@
       personDescription.textContent = '';
       specialMessage.hidden = true;
       specialMessage.textContent = '';
-      sourceLink.hidden = true;
       photoBadge.textContent = 'Portrait mystère';
       return;
     }
@@ -562,13 +560,6 @@
     } else {
       specialMessage.textContent = '';
       specialMessage.hidden = true;
-    }
-
-    if (roundResult.source_url) {
-      sourceLink.href = roundResult.source_url;
-      sourceLink.hidden = false;
-    } else {
-      sourceLink.hidden = true;
     }
   }
 

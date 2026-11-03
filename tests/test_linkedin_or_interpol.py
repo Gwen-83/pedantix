@@ -137,6 +137,8 @@ class LinkedinOrInterpolTests(unittest.TestCase):
         self.assertTrue(round1_result["correct"])
         self.assertTrue(round1_result["full_name"])
         self.assertIn("description", round1_result)
+        self.assertNotIn("source_url", round1_result)
+        self.assertNotIn("source_url", after_guess["current_person"])
         self.assertEqual(after_guess["current_person"]["answer"], first_label)
 
         # Advance to round 2: identity must be hidden again for the new person

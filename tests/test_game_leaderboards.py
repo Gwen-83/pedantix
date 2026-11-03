@@ -132,13 +132,21 @@ class SoloGameLeaderboardTests(unittest.TestCase):
         self.add_result(
             "Room", "geoguessr", "geo-2", "world", points=50000, mode="multiplayer"
         )
+        self.add_result(
+            "Gwen",
+            "linkedin-or-interpol",
+            "linkedin-1",
+            "infini",
+            points=14,
+            mode="solo",
+        )
         database.record_memory_solo_time("Mina", 4, "memory-1", 1200, 10)
 
         response = self.client.get("/api/leaderboards/featured")
 
         self.assertEqual(response.status_code, 200)
         games = {game["game_id"]: game for game in response.json()["games"]}
-        self.assertEqual(len(games), 6)
+        self.assertEqual(len(games), 7)
         sudoku = games["sudoku"]["leaders"]
         easy = next(item for item in sudoku if item["difficulty"] == "facile")
         hard = next(item for item in sudoku if item["difficulty"] == "difficile")
@@ -147,3 +155,7 @@ class SoloGameLeaderboardTests(unittest.TestCase):
         self.assertEqual(games["geoguessr"]["leaders"][0]["leader"]["player_name"], "Noah")
         self.assertEqual(games["geoguessr"]["leaders"][0]["difficulty"], "")
         self.assertEqual(games["memories"]["leaders"][0]["leader"]["player_name"], "Mina")
+        linkedin_leaders = games["linkedin-or-interpol"]["leaders"]
+        infinite = next(item for item in linkedin_leaders if item["difficulty"] == "infini")
+        self.assertEqual(infinite["leader"]["player_name"], "Gwen")
+        self.assertEqual(infinite["leader"]["detail"], "Série de 14")

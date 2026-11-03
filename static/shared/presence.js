@@ -111,13 +111,13 @@
       }
       .shared-chat-notification button { padding: 2px 8px; }
       .shared-chat-notification-permission {
-        position: fixed; z-index: 14999; left: 16px; bottom: 16px;
+        position: fixed; z-index: 14999; left: 16px; bottom: 64px;
         padding: 9px 12px; background: #17212b; box-shadow: 0 6px 22px rgba(0,0,0,.25);
       }
       .shared-chat-notification-permission[hidden] { display: none; }
       @media (max-width: 520px) {
         .shared-chat-notification-stack { right: 10px; bottom: 10px; width: calc(100vw - 20px); }
-        .shared-chat-notification-permission { left: 10px; bottom: 10px; }
+        .shared-chat-notification-permission { left: 10px; bottom: 58px; }
       }`;
     document.head.append(styles);
     chatNotificationStack = document.createElement('div');
@@ -468,22 +468,31 @@
     const pauseStyles = document.createElement('style');
     pauseStyles.textContent = `
       .shared-game-pause-notice {
-        position: fixed; z-index: 10000; top: 12px; left: 50%; display: flex;
-        width: min(720px, calc(100vw - 24px)); align-items: center;
-        justify-content: space-between; gap: 12px; transform: translateX(-50%);
-        padding: 10px 14px; border: 1px solid rgba(255,255,255,.2);
-        border-radius: 12px; background: #1e293b; color: #f8fafc;
-        box-shadow: 0 8px 28px rgba(0,0,0,.28); font: 600 .82rem/1.4 system-ui,sans-serif;
+        position: fixed; z-index: 10000; bottom: 14px; left: 14px; display: flex;
+        width: auto; max-width: min(360px, calc(100vw - 28px)); align-items: center;
+        justify-content: space-between; gap: 10px;
+        padding: 7px 11px; border: 1px solid rgba(255,255,255,.18);
+        border-radius: 999px; background: rgba(15, 23, 42, .92); color: #f8fafc;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 6px 20px rgba(0,0,0,.28); font: 600 .78rem/1.35 system-ui,sans-serif;
       }
       .shared-game-pause-notice[hidden] { display: none; }
-      .shared-game-pause-notice.is-paused { background: #7f1d1d; }
+      .shared-game-pause-notice.is-paused {
+        border-radius: 14px; padding: 10px 13px; background: #7f1d1d;
+        border-color: rgba(254, 202, 202, .35);
+      }
+      .shared-game-pause-notice span[hidden] { display: none; }
       .shared-game-pause-notice button {
-        flex: 0 0 auto; padding: 7px 10px; border: 1px solid rgba(255,255,255,.3);
-        border-radius: 8px; background: rgba(255,255,255,.12); color: inherit; font: inherit;
+        flex: 0 0 auto; padding: 6px 11px; border: 1px solid rgba(255,255,255,.28);
+        border-radius: 999px; background: rgba(255,255,255,.12); color: inherit;
+        font: inherit; cursor: pointer;
+      }
+      .shared-game-pause-notice button:hover:not(:disabled) {
+        background: rgba(255,255,255,.2);
       }
       .shared-game-pause-notice button:disabled { cursor: wait; opacity: .65; }
       @media (max-width: 560px) {
-        .shared-game-pause-notice { align-items: stretch; flex-direction: column; gap: 8px; }
+        .shared-game-pause-notice.is-paused { align-items: stretch; flex-direction: column; gap: 8px; }
       }`;
     document.head.append(pauseStyles);
     const notice = document.createElement('aside');
@@ -492,22 +501,38 @@
     notice.setAttribute('role', 'status');
     notice.setAttribute('aria-live', 'polite');
     const message = document.createElement('span');
+    message.hidden = true;
     const control = document.createElement('button');
     control.type = 'button';
     control.hidden = true;
     notice.append(message, control);
     document.body.append(notice);
 
-    const username = localStorage.getItem('pedantix_auth_user') || '';
-    const token = localStorage.getItem('pedantix_auth_token') || '';
     let canControl = false;
     let requestInFlight = false;
     let refreshTimer = null;
     let adminPassword = '';
 
+    function applyPauseUi(paused, controllable) {
+      canControl = controllable === true;
+      control.hidden = !canControl;
+      notice.hidden = !paused && !canControl;
+      notice.classList.toggle('is-paused', paused === true);
+      message.hidden = !paused;
+      message.textContent = paused
+        ? 'Pause maintenance active : les parties en cours continuent, les nouvelles sont suspendues.'
+        : '';
+      if (canControl) {
+        control.textContent = paused ? '▶ Reprendre les parties' : '⏸ Pause maintenance';
+        control.setAttribute('aria-pressed', String(paused === true));
+      }
+    }
+
     async function refresh() {
       if (requestInFlight) return;
       requestInFlight = true;
+      const username = localStorage.getItem('pedantix_auth_user') || '';
+      const token = localStorage.getItem('pedantix_auth_token') || '';
       try {
         const response = await fetch(`${apiBase}/api/games/pause`, {
           headers: {
@@ -518,21 +543,12 @@
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
-        canControl = data.can_control === true;
-        control.hidden = !canControl;
-        notice.hidden = !data.paused && !canControl;
-        notice.classList.toggle('is-paused', data.paused === true);
-        message.textContent = data.paused
-          ? 'Les parties sont en pause pour cause de maintenance. Les parties en cours restent accessibles, mais aucun nouveau lancement n’est accepté.'
-          : canControl ? 'Toutes les parties sont disponibles.' : '';
-        if (canControl) {
-          control.textContent = data.paused ? 'Reprendre les parties' : 'Mettre les parties en pause';
-          control.setAttribute('aria-pressed', String(data.paused === true));
-        }
+        applyPauseUi(data.paused === true, data.can_control === true);
       } catch (error) {
         console.error('Impossible de récupérer la pause globale des parties.', error);
         if (canControl) {
           notice.hidden = false;
+          message.hidden = false;
           message.textContent = `État de la pause indisponible : ${error.message}`;
           control.hidden = false;
           control.disabled = true;
@@ -548,6 +564,8 @@
         adminPassword = window.prompt('Confirmez le mot de passe du compte Gwen pour modifier la pause :') || '';
         if (!adminPassword) return;
       }
+      const username = localStorage.getItem('pedantix_auth_user') || '';
+      const token = localStorage.getItem('pedantix_auth_token') || '';
       requestInFlight = true;
       control.disabled = true;
       try {
@@ -566,18 +584,15 @@
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
-        notice.classList.toggle('is-paused', data.paused === true);
-        notice.hidden = !data.paused && !canControl;
-        message.textContent = data.paused
-          ? 'Les parties sont en pause pour cause de maintenance. Les parties en cours restent accessibles, mais aucun nouveau lancement n’est accepté.'
-          : 'Toutes les parties sont disponibles.';
-        control.textContent = data.paused ? 'Reprendre les parties' : 'Mettre les parties en pause';
-        control.setAttribute('aria-pressed', String(data.paused === true));
+        applyPauseUi(data.paused === true, true);
       } catch (error) {
         console.error('Impossible de modifier la pause globale des parties.', error);
+        message.hidden = false;
         message.textContent = `La modification n’a pas été confirmée : ${error.message}`;
         notice.hidden = false;
-        if (error.message.includes('compte administrateur Gwen')) adminPassword = '';
+        if (error.message.includes('compte administrateur Gwen') || error.message.includes('Mot de passe')) {
+          adminPassword = '';
+        }
       } finally {
         requestInFlight = false;
         control.disabled = false;

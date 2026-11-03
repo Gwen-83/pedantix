@@ -630,6 +630,7 @@ _GAME_CATALOG = (
     ("plongee", "Plongée"),
     ("memories", "Memory"),
     ("scribbl", "Scribbl"),
+    ("linkedin-or-interpol", "LinkedIn ou Interpol"),
 )
 
 
@@ -1905,6 +1906,7 @@ def get_solo_game_leaderboard(
         "sudoku": "duration_seconds ASC, attempts ASC, finished_at ASC",
         "chiffrantix": "attempts ASC, duration_seconds ASC, finished_at ASC",
         "pedantix": "attempts ASC, duration_seconds ASC, finished_at ASC",
+        "linkedin-or-interpol": "points DESC, duration_seconds ASC, attempts ASC, finished_at ASC",
     }
     if game_id not in ranking_order:
         raise ValueError("Jeu inconnu.")
@@ -2531,6 +2533,14 @@ def _summarize_game_metrics(game_id: str, metric_rows: List[Dict[str, Any]]) -> 
             "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
             "best_score": max(scores) if scores else None,
             "avg_accuracy": round(sum(correct) / total_rounds * 100, 1) if total_rounds else None,
+        }
+    if game_id == "linkedin-or-interpol":
+        scores = numbers("score")
+        streaks = numbers("best_streak")
+        return {
+            "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+            "best_score": max(scores) if scores else None,
+            "best_streak": max(streaks) if streaks else None,
         }
     return {}
 

@@ -879,6 +879,62 @@ async def linkedin_or_interpol_guess(req: LinkedinOrInterpolGuessRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _record_linkedin_solo_result(game) -> None:
+    if game.status != "finished" or game.stats_recorded:
+        return
+    game.stats_recorded = True
+    difficulty = "infini" if game.mode == "solo-infinite" else "classique"
+    points = game.best_streak if game.mode == "solo-infinite" else game.score
+    if points:
+        increment_player_score(game.player_name, points, "linkedin-or-interpol")
+    record_user_game_finish(
+        game.player_name,
+        won=points > 0,
+        attempts=len(game.results),
+        points=points,
+        session_id=f"linkedin-or-interpol:solo:{game.game_id}",
+        mode="solo",
+        title="LinkedIn ou Interpol",
+        duration_seconds=max(0, int(time.time() - game.created_at)),
+        game_id="linkedin-or-interpol",
+        difficulty=difficulty,
+        metrics={
+            "score": game.score,
+            "best_streak": game.best_streak,
+            "rounds": len(game.results),
+        },
+    )
+
+
+def _record_linkedin_room_result(room) -> None:
+    if room.status != "finished" or room.stats_recorded:
+        return
+    room.stats_recorded = True
+    active = room.active_players
+    top_score = max((player.score for player in active), default=0)
+    duration = max(0, int(time.time() - (room.started_at or room.created_at)))
+    for player in active:
+        if player.score:
+            increment_player_score(player.name, player.score, "linkedin-or-interpol")
+        record_user_game_finish(
+            player.name,
+            won=player.score == top_score and top_score > 0,
+            attempts=len(player.results),
+            points=player.score,
+            session_id=f"linkedin-or-interpol:room:{room.room_id}:{room.match_number}",
+            mode="multiplayer",
+            title="LinkedIn ou Interpol",
+            duration_seconds=duration,
+            game_id="linkedin-or-interpol",
+            difficulty="classique",
+            metrics={
+                "score": player.score,
+                "best_streak": player.best_streak,
+                "rounds": len(player.results),
+            },
+        )
+
+
 @app.post("/api/linkedin-or-interpol/solo/new")
 async def new_linkedin_or_interpol_solo(req: LinkedinOrInterpolSoloCreateRequest):
     try:
@@ -887,6 +943,14 @@ async def new_linkedin_or_interpol_solo(req: LinkedinOrInterpolSoloCreateRequest
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    difficulty = "infini" if game.mode == "solo-infinite" else "classique"
+    record_multigame_session_start(
+        f"linkedin-or-interpol:solo:{game.game_id}",
+        "linkedin-or-interpol",
+        "solo",
+        "LinkedIn ou Interpol",
+        difficulty,
+    )
     return linkedin_or_interpol_manager.solo_state(game)
 
 
@@ -898,6 +962,7 @@ async def get_linkedin_or_interpol_solo(game_id: str, player_id: str = Query(...
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    _record_linkedin_solo_result(game)
     return linkedin_or_interpol_manager.solo_state(game)
 
 
@@ -916,6 +981,7 @@ async def guess_linkedin_or_interpol_solo(req: LinkedinOrInterpolSoloGuessReques
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_linkedin_solo_result(game)
     return {"result": result, **linkedin_or_interpol_manager.solo_state(game)}
 
 
@@ -929,6 +995,7 @@ async def next_linkedin_or_interpol_solo(req: LinkedinOrInterpolSoloNextRequest)
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_linkedin_solo_result(game)
     return linkedin_or_interpol_manager.solo_state(game)
 
 
@@ -976,6 +1043,13 @@ async def start_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomPlayerReque
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_multigame_session_start(
+        f"linkedin-or-interpol:room:{room.room_id}:{room.match_number}",
+        "linkedin-or-interpol",
+        "multiplayer",
+        "LinkedIn ou Interpol",
+        "classique",
+    )
     return linkedin_or_interpol_manager.room_state(room, req.player_id)
 
 
@@ -992,6 +1066,7 @@ async def guess_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomGuessReques
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_linkedin_room_result(room)
     return {"result": result, **linkedin_or_interpol_manager.room_state(room, req.player_id)}
 
 
@@ -1005,6 +1080,7 @@ async def next_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomPlayerReques
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_linkedin_room_result(room)
     return linkedin_or_interpol_manager.room_state(room, req.player_id)
 
 
@@ -1018,6 +1094,14 @@ async def restart_linkedin_or_interpol_room(req: LinkedinOrInterpolRoomPlayerReq
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if room.status == "playing":
+        record_multigame_session_start(
+            f"linkedin-or-interpol:room:{room.room_id}:{room.match_number}",
+            "linkedin-or-interpol",
+            "multiplayer",
+            "LinkedIn ou Interpol",
+            "classique",
+        )
     return linkedin_or_interpol_manager.room_state(room, req.player_id)
 
 
@@ -4816,11 +4900,12 @@ async def solo_game_leaderboard(
         "sudoku": {"facile", "moyen", "difficile"},
         "chiffrantix": {"facile", "moyen", "difficile"},
         "pedantix": {"facile", "moyen", "difficile"},
+        "linkedin-or-interpol": {"classique", "infini"},
     }
     if game_id not in difficulties:
         raise HTTPException(status_code=400, detail="Jeu inconnu.")
     selected_difficulty = difficulty
-    if game_id == "plongee" and selected_difficulty is None:
+    if game_id in {"plongee", "linkedin-or-interpol"} and selected_difficulty is None:
         selected_difficulty = "classique"
     if selected_difficulty not in difficulties[game_id]:
         raise HTTPException(status_code=400, detail="Niveau de difficulté invalide.")
@@ -4841,6 +4926,12 @@ async def featured_solo_leaderboards():
         ("plongee", "Plongée", "/games/plongee/", ("classique",)),
         ("memories", "Memory", "/games/memories/", ("4x4", "6x6")),
         ("geoguessr", "GeoGuessr", "/games/geoguessr/", ("",)),
+        (
+            "linkedin-or-interpol",
+            "LinkedIn ou Interpol",
+            "/games/linkedin-or-interpol/",
+            ("classique", "infini"),
+        ),
     ]
     featured = []
     try:
@@ -4872,6 +4963,12 @@ async def featured_solo_leaderboards():
                     if record:
                         if game_id == "plongee":
                             detail = f'{record["points"]} pts'
+                        elif game_id == "linkedin-or-interpol":
+                            detail = (
+                                f'Série de {record["points"]}'
+                                if difficulty == "infini"
+                                else f'{record["points"]} pts'
+                            )
                         elif game_id == "sudoku":
                             detail = (
                                 f'{record["duration_seconds"]} s · '

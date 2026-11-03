@@ -556,21 +556,6 @@ button.linkedin-mode-card:hover {
   font-weight: 700;
 }
 
-.linkedin-source-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  width: fit-content;
-  color: var(--game-accent);
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.linkedin-source-link:hover {
-  text-decoration: underline;
-}
-
 /* ACTION COLUMN */
 .linkedin-action-column {
   display: grid;

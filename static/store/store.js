@@ -276,6 +276,7 @@
           const label = document.createElement("span");
           const difficultyLabels = {
             classique: "Top 1",
+            infini: "Série infinie",
             "4x4": "Grille 4 × 4",
             "6x6": "Grille 6 × 6",
             facile: "Facile",
