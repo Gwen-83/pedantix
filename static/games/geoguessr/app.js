@@ -998,6 +998,12 @@
     }
   }
 
+  function clearStoredGeoGuessrSession() {
+    localStorage.removeItem("geoguessr_active_game_mode");
+    localStorage.removeItem("geoguessr_active_room_id");
+    localStorage.removeItem("geoguessr_solo_game_id");
+  }
+
   async function showHome(clearActiveGame = true) {
     if (clearActiveGame && gameType === "room" && state?.room_id) {
       stopPolling();
@@ -1038,6 +1044,7 @@
     if (clearActiveGame) {
       localStorage.setItem("geoguessr_active_game_mode", "home");
       localStorage.removeItem("geoguessr_active_room_id");
+      localStorage.removeItem("geoguessr_solo_game_id");
     }
     history.replaceState(null, "", window.location.pathname);
     refreshRoomDirectory();
@@ -1545,6 +1552,11 @@
   }
 
   async function resumeSolo(gameId) {
+    if (!gameId || typeof gameId !== "string" || !gameId.trim()) {
+      clearStoredGeoGuessrSession();
+      showHome(false);
+      return;
+    }
     try {
       state = await request(
         `/api/geoguessr/solo/${encodeURIComponent(gameId)}?player_id=${encodeURIComponent(playerId)}`,
@@ -1560,9 +1572,11 @@
       const view = mapView(state.region);
       map.setView(view.center, view.zoom);
     } catch (error) {
+      clearStoredGeoGuessrSession();
+      showHome(false);
       showError(
         homeError,
-        `Impossible de reprendre cette partie : ${error.message}`,
+        "La partie enregistrée n’existe plus ou a été fermée. Une nouvelle partie va démarrer.",
       );
     }
   }
@@ -1930,20 +1944,18 @@
     if (event.key === "Escape" && !play.hidden) showHome();
   });
 
+  const storedMode = localStorage.getItem("geoguessr_active_game_mode");
+  const storedRoomId = localStorage.getItem("geoguessr_active_room_id");
+  const storedSoloGameId = localStorage.getItem("geoguessr_solo_game_id");
+
   if (params.has("room")) {
     joinRoom(params.get("room"));
-  } else if (
-    localStorage.getItem("geoguessr_active_game_mode") === "room" &&
-    localStorage.getItem("geoguessr_active_room_id")
-  ) {
-    joinRoom(localStorage.getItem("geoguessr_active_room_id"));
-  } else if (
-    localStorage.getItem("geoguessr_active_game_mode") === "solo" &&
-    localStorage.getItem("geoguessr_solo_game_id")
-  ) {
-    resumeSolo(localStorage.getItem("geoguessr_solo_game_id"));
+  } else if (storedMode === "room" && storedRoomId) {
+    joinRoom(storedRoomId);
+  } else if (storedMode === "solo" && storedSoloGameId) {
+    resumeSolo(storedSoloGameId);
   } else {
-    localStorage.removeItem("geoguessr_active_room_id");
+    clearStoredGeoGuessrSession();
     showHome(false);
   }
   refreshLeaderboard();
