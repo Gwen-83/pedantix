@@ -96,6 +96,16 @@ from app.network import get_primary_lan_ip, get_all_lan_ips
 from app.tunnel import tunnel_manager
 from app.antibot import anti_bot_guard
 
+class NoCacheStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if getattr(response, "status_code", 0) == 200:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+
 app = FastAPI(title="Pédantix Local - Concours Multijoueur", version="2.0.0")
 logger = logging.getLogger(__name__)
 
@@ -256,7 +266,7 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/static", NoCacheStaticFiles(directory=STATIC_DIR), name="static")
 
 
 def detect_lan_ip() -> str:

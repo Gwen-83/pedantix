@@ -75,6 +75,16 @@ class CorsTests(unittest.TestCase):
         self.assertIn("https://flagcdn.com", csp)
         self.assertIn("img-src", csp)
 
+    def test_static_game_assets_are_not_cached(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        response = client.get("/static/games/geoguessr/app.js")
+        self.assertEqual(response.status_code, 200)
+        cache_control = response.headers.get("Cache-Control", "")
+        self.assertIn("no-store", cache_control)
+
 
 if __name__ == "__main__":
     unittest.main()
