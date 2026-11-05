@@ -712,10 +712,13 @@
     let inside = false;
     const jEnd = ring.length - 1;
     for (let i = 0, j = jEnd; i < ring.length; j = i++) {
-      const xi = ring[i][0], yi = ring[i][1];
-      const xj = ring[j][0], yj = ring[j][1];
-      const intersect = ((yi > lat) !== (yj > lat)) &&
-        (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi);
+      const xi = ring[i][0],
+        yi = ring[i][1];
+      const xj = ring[j][0],
+        yj = ring[j][1];
+      const intersect =
+        yi > lat !== yj > lat &&
+        lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
       if (intersect) inside = !inside;
     }
     return inside;
@@ -823,7 +826,12 @@
         if (bounds && !bounds.contains(latlng)) return;
         if (pointInFeatureGeometry(lng, lat, layer.feature.geometry)) {
           const props = layer.feature.properties;
-          const name = props.NAME_EN || props.ADMIN || props.NAME || props.NAME_FR || props.NAME_LOCAL;
+          const name =
+            props.NAME_EN ||
+            props.ADMIN ||
+            props.NAME ||
+            props.NAME_FR ||
+            props.NAME_LOCAL;
           const code = (props.ISO_A2 || props.WB_A2 || "").toUpperCase();
           if (name) matched = { name, code };
         }
@@ -834,7 +842,12 @@
       for (const feature of countryData.features) {
         if (pointInFeatureGeometry(lng, lat, feature.geometry)) {
           const props = feature.properties || {};
-          const name = props.NAME_EN || props.ADMIN || props.NAME || props.NAME_FR || props.NAME_LOCAL;
+          const name =
+            props.NAME_EN ||
+            props.ADMIN ||
+            props.NAME ||
+            props.NAME_FR ||
+            props.NAME_LOCAL;
           const code = (props.ISO_A2 || props.WB_A2 || "").toUpperCase();
           if (name) return { name, code };
         }
@@ -883,16 +896,13 @@
         if (guessLat == null || guessLng == null) continue;
         const isOwnGuess = !guess.player_id || guess.player_id === playerId;
         const color = isOwnGuess ? "#16a34a" : "#2563eb";
-        const guessMarkerLayer = L.circleMarker(
-          [guessLat, guessLng],
-          {
-            radius: 8,
-            color: "#ffffff",
-            weight: 3,
-            fillColor: color,
-            fillOpacity: 1,
-          },
-        )
+        const guessMarkerLayer = L.circleMarker([guessLat, guessLng], {
+          radius: 8,
+          color: "#ffffff",
+          weight: 3,
+          fillColor: color,
+          fillOpacity: 1,
+        })
           .addTo(map)
           .bindTooltip(
             `${guess.name ? `${guess.name} · ` : ""}${isOwnGuess ? "votre estimation" : "estimation adverse"}`,
@@ -1187,7 +1197,10 @@
         if (ownResult.correct) {
           detail.textContent = `Bravo ! Vous avez trouvé : ${ownResult.country || targetName} · ${Number(ownResult.score || 0).toLocaleString("fr-FR")} points.`;
         } else {
-          const guessedText = ownResult.guess_country || ownResult.guess_country_code || "aucun pays sélectionné";
+          const guessedText =
+            ownResult.guess_country ||
+            ownResult.guess_country_code ||
+            "aucun pays sélectionné";
           detail.textContent = `Mauvaise réponse (votre choix : ${guessedText}) · La bonne réponse était : ${ownResult.country || targetName} · 0 point.`;
         }
       } else {
@@ -1205,12 +1218,15 @@
       [...round.guesses]
         .sort((a, b) => b.score - a.score)
         .forEach((guess) => {
-          const distanceText =
-            isFlags
-              ? (guess.correct ? "Trouvé" : (guess.guess_country ? `Erreur (${guess.guess_country})` : "Erreur"))
-              : (guess.distance_km == null
-                  ? "—"
-                  : `${Number(guess.distance_km).toLocaleString("fr-FR")} km`);
+          const distanceText = isFlags
+            ? guess.correct
+              ? "Trouvé"
+              : guess.guess_country
+                ? `Erreur (${guess.guess_country})`
+                : "Erreur"
+            : guess.distance_km == null
+              ? "—"
+              : `${Number(guess.distance_km).toLocaleString("fr-FR")} km`;
           const item = document.createElement("li");
           item.textContent = `${guess.name} · ${distanceText} · ${Number(guess.score || 0).toLocaleString("fr-FR")} points`;
           ranking.append(item);
@@ -1334,9 +1350,9 @@
         ? "Partie terminée"
         : waitingForNextRound
           ? `Résultat de la manche ${completedRound?.round_number ?? state.round_number}`
-          : (state.round_count
-              ? `Manche ${state.round_number} sur ${state.round_count}`
-              : `Manche ${state.round_number}`);
+          : state.round_count
+            ? `Manche ${state.round_number} sur ${state.round_count}`
+            : `Manche ${state.round_number}`;
     document.getElementById("geo-game-hint").textContent = isPanorama
       ? "Explorez la photo avec la souris ou le tactile, puis situez-la sur la carte."
       : isRoom
@@ -1842,15 +1858,26 @@
   function updateRegionOptions() {
     const isSoloFlag = variantSelect.value === "flags";
     const soloFrance = regionSelect.querySelector('option[value="france"]');
+    const soloEurope = regionSelect.querySelector('option[value="europe"]');
     if (soloFrance) soloFrance.disabled = isSoloFlag;
-    if (isSoloFlag && regionSelect.value === "france") {
+    if (soloEurope) soloEurope.disabled = isSoloFlag;
+    if (
+      isSoloFlag &&
+      (regionSelect.value === "france" || regionSelect.value === "europe")
+    ) {
       regionSelect.value = "world";
     }
 
     const isRoomFlag = roomVariantSelect.value === "flags";
     const roomFrance = roomRegionSelect.querySelector('option[value="france"]');
+    const roomEurope = roomRegionSelect.querySelector('option[value="europe"]');
     if (roomFrance) roomFrance.disabled = isRoomFlag;
-    if (isRoomFlag && roomRegionSelect.value === "france") {
+    if (roomEurope) roomEurope.disabled = isRoomFlag;
+    if (
+      isRoomFlag &&
+      (roomRegionSelect.value === "france" ||
+        roomRegionSelect.value === "europe")
+    ) {
       roomRegionSelect.value = "world";
     }
   }

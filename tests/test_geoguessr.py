@@ -751,6 +751,11 @@ class GeoGuessrTests(unittest.TestCase):
                 self.assertEqual(database.get_geoguessr_google_usage(), 5)
 
     def test_solo_flags_game_lifecycle_and_infinite_mode(self):
+        with self.assertRaisesRegex(ValueError, "Monde"):
+            self.manager.create_solo("bob", "Bob", "france", "flags")
+        with self.assertRaisesRegex(ValueError, "Monde"):
+            self.manager.create_room("h1", "Host", "europe", "flags", round_count=2)
+
         # 1. Finite game with 2 rounds
         game = self.manager.create_solo("bob", "Bob", "world", "flags", round_count=2)
         self.assertEqual(game.variant, "flags")
@@ -785,7 +790,10 @@ class GeoGuessrTests(unittest.TestCase):
         # Test infinite mode
         inf_game = self.manager.create_solo("bob", "Bob", "world", "flags", round_count=None)
         self.assertIsNone(inf_game.round_count)
-        self.assertIsNone(inf_game.to_dict()["round_count"])
+        inf_state = inf_game.to_dict()
+        self.assertIsNone(inf_state["round_count"])
+        self.assertEqual(inf_state["round_number"], 1)
+        self.assertTrue(inf_state["flag_url"].startswith("https://flagcdn.com/"))
         inf_t = inf_game.target
         inf_game, _ = self.manager.guess_solo(
             inf_game.game_id, "bob", latitude=1.0, longitude=2.0, country_name=inf_t[0], country_code=inf_t[1]

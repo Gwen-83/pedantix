@@ -573,6 +573,13 @@ def validate_region(region: str) -> str:
     return normalized
 
 
+def validate_region_for_variant(region: str, variant: str) -> str:
+    normalized = validate_region(region)
+    if variant == "flags" and normalized != "world":
+        raise ValueError("Le mode drapeau n’est disponible que sur le Monde.")
+    return normalized
+
+
 def _city_pool(region: str) -> List[tuple[str, str, str, float, float]]:
     region = validate_region(region)
     selected = [
@@ -897,8 +904,8 @@ class GeoGuessrGame:
             "awaiting_next_round": self.awaiting_next_round,
             "prompt": {"city": prompt[0], "country": prompt[1]} if prompt and self.variant == "cities" else None,
             "flag_url": (
-                prompt[2]
-                if self.variant == "flags" and prompt and not self.awaiting_next_round
+                self.target[2]
+                if self.variant == "flags" and self.status == "playing" and not self.awaiting_next_round
                 else None
             ),
             "image_id": (
@@ -1304,7 +1311,7 @@ class GeoGuessrManager:
         variant: str = "cities",
         round_count: Optional[int] = None,
     ) -> GeoGuessrGame:
-        region = validate_region(region)
+        region = validate_region_for_variant(region, variant)
         if variant not in GEOGUESSR_VARIANTS:
             raise ValueError("Choisissez un mode GeoGuessr valide.")
         image_ids: List[str] = []
@@ -1459,7 +1466,7 @@ class GeoGuessrManager:
         variant: str = "cities",
         round_count: int = ROUND_COUNT,
     ) -> GeoGuessrRoom:
-        region = validate_region(region)
+        region = validate_region_for_variant(region, variant)
         if variant not in GEOGUESSR_VARIANTS:
             raise ValueError("Choisissez un mode GeoGuessr valide.")
         if type(round_count) is not int or not 1 <= round_count <= 20:
