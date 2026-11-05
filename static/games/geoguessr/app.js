@@ -707,8 +707,61 @@
       });
   }
 
+  let countryData = null;
+  function pointInRing(lng, lat, ring) {
+    let inside = false;
+    const jEnd = ring.length - 1;
+    for (let i = 0, j = jEnd; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1];
+      const xj = ring[j][0], yj = ring[j][1];
+      const intersect = ((yi > lat) !== (yj > lat)) &&
+        (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function pointInFeatureGeometry(lng, lat, geom) {
+    if (!geom) return false;
+    if (geom.type === "Polygon") {
+      if (!pointInRing(lng, lat, geom.coordinates[0])) return false;
+      for (let i = 1; i < geom.coordinates.length; i++) {
+        if (pointInRing(lng, lat, geom.coordinates[i])) return false;
+      }
+      return true;
+    }
+    if (geom.type === "MultiPolygon") {
+      for (const poly of geom.coordinates) {
+        if (pointInRing(lng, lat, poly[0])) {
+          let inHole = false;
+          for (let i = 1; i < poly.length; i++) {
+            if (pointInRing(lng, lat, poly[i])) {
+              inHole = true;
+              break;
+            }
+          }
+          if (!inHole) return true;
+        }
+      }
+      return false;
+    }
+    return false;
+  }
+
   function loadCountryBoundaries() {
-    if (countryBoundaryLayer || countryBoundaryLoading) return;
+    if (countryBoundaryLoading) {
+      return countryBoundaryLoading.then((data) => {
+        if (map && !countryBoundaryLayer && data) {
+          const isPanorama = state?.variant === "panorama";
+          countryBoundaryLayer = L.geoJSON(data, {
+            interactive: false,
+            style: countryBoundaryStyle(isPanorama),
+            smoothFactor: 0.5,
+          }).addTo(map);
+          countryBoundaryLayer.bringToBack();
+        }
+      });
+    }
     countryBoundaryLoading = fetch(
       "/static/games/geoguessr/data/countries_50m.geojson",
     )
@@ -717,13 +770,17 @@
         return response.json();
       })
       .then((countries) => {
-        const isPanorama = state?.variant === "panorama";
-        countryBoundaryLayer = L.geoJSON(countries, {
-          interactive: false,
-          style: countryBoundaryStyle(isPanorama),
-          smoothFactor: 0.5,
-        }).addTo(map);
-        countryBoundaryLayer.bringToBack();
+        countryData = countries;
+        if (map && !countryBoundaryLayer) {
+          const isPanorama = state?.variant === "panorama";
+          countryBoundaryLayer = L.geoJSON(countries, {
+            interactive: false,
+            style: countryBoundaryStyle(isPanorama),
+            smoothFactor: 0.5,
+          }).addTo(map);
+          countryBoundaryLayer.bringToBack();
+        }
+        return countries;
       })
       .catch((error) => {
         countryBoundaryLoading = null;
@@ -732,6 +789,7 @@
           `Impossible de charger les frontières de la carte : ${error.message}`,
         );
       });
+    return countryBoundaryLoading;
   }
 
   function clearMapMarkers() {
@@ -754,28 +812,35 @@
   }
 
   function findCountryAtPoint(latlng) {
-    if (!countryBoundaryLayer || !latlng) return null;
-    let bestMatch = null;
-    countryBoundaryLayer.eachLayer((layer) => {
-      if (!layer?.feature?.properties) return;
-      const bounds = layer.getBounds?.();
-      if (!bounds || !bounds.contains(latlng)) return;
-      const names = [
-        layer.feature.properties.NAME_EN,
-        layer.feature.properties.ADMIN,
-        layer.feature.properties.NAME,
-        layer.feature.properties.NAME_FR,
-        layer.feature.properties.NAME_LOCAL,
-      ].filter(Boolean);
-      if (!names.length) return;
-      const code = (
-        layer.feature.properties.ISO_A2 ||
-        layer.feature.properties.WB_A2 ||
-        ""
-      ).toUpperCase();
-      bestMatch = { name: names[0], code };
-    });
-    return bestMatch;
+    if (!latlng) return null;
+    const lng = latlng.lng;
+    const lat = latlng.lat;
+    if (countryBoundaryLayer) {
+      let matched = null;
+      countryBoundaryLayer.eachLayer((layer) => {
+        if (matched || !layer?.feature?.properties) return;
+        const bounds = layer.getBounds?.();
+        if (bounds && !bounds.contains(latlng)) return;
+        if (pointInFeatureGeometry(lng, lat, layer.feature.geometry)) {
+          const props = layer.feature.properties;
+          const name = props.NAME_EN || props.ADMIN || props.NAME || props.NAME_FR || props.NAME_LOCAL;
+          const code = (props.ISO_A2 || props.WB_A2 || "").toUpperCase();
+          if (name) matched = { name, code };
+        }
+      });
+      if (matched) return matched;
+    }
+    if (countryData?.features) {
+      for (const feature of countryData.features) {
+        if (pointInFeatureGeometry(lng, lat, feature.geometry)) {
+          const props = feature.properties || {};
+          const name = props.NAME_EN || props.ADMIN || props.NAME || props.NAME_FR || props.NAME_LOCAL;
+          const code = (props.ISO_A2 || props.WB_A2 || "").toUpperCase();
+          if (name) return { name, code };
+        }
+      }
+    }
+    return null;
   }
 
   function setGuessMarker(latitude, longitude) {
@@ -813,10 +878,13 @@
         [target.latitude, target.longitude],
       ]);
       for (const guess of revealedGuesses) {
+        const guessLat = guess.latitude ?? guess.guess_latitude;
+        const guessLng = guess.longitude ?? guess.guess_longitude;
+        if (guessLat == null || guessLng == null) continue;
         const isOwnGuess = !guess.player_id || guess.player_id === playerId;
         const color = isOwnGuess ? "#16a34a" : "#2563eb";
         const guessMarkerLayer = L.circleMarker(
-          [guess.latitude, guess.longitude],
+          [guessLat, guessLng],
           {
             radius: 8,
             color: "#ffffff",
@@ -831,14 +899,14 @@
           );
         const answerLineLayer = L.polyline(
           [
-            [guess.latitude, guess.longitude],
+            [guessLat, guessLng],
             [target.latitude, target.longitude],
           ],
           { color, weight: 3, dashArray: "7 7" },
         ).addTo(map);
         revealedGuessMarkers.push(guessMarkerLayer);
         revealedAnswerLines.push(answerLineLayer);
-        answerBounds.extend([guess.latitude, guess.longitude]);
+        answerBounds.extend([guessLat, guessLng]);
       }
       map.fitBounds(answerBounds.pad(0.22), { maxZoom: 7 });
     } else {
@@ -855,8 +923,8 @@
 
   function soloGuessMarker(result) {
     return {
-      latitude: result.guess_latitude,
-      longitude: result.guess_longitude,
+      latitude: result.guess_latitude ?? result.latitude,
+      longitude: result.guess_longitude ?? result.longitude,
     };
   }
 
@@ -983,7 +1051,8 @@
       title.textContent = `Salon ${room.room_id}`;
       const details = document.createElement("small");
       const phase = room.status === "playing" ? "En cours" : "En attente";
-      details.textContent = `${room.player_count} joueurs + ${room.spectator_count || 0} spectateurs / ${room.max_players} places · ${room.round_count} manches · ${regionLabel(room.region)} · ${phase}`;
+      const variantStr = room.variant ? `${variantLabel(room.variant)} · ` : "";
+      details.textContent = `${variantStr}${room.player_count} joueurs + ${room.spectator_count || 0} spectateurs / ${room.max_players} places · ${room.round_count} manches · ${regionLabel(room.region)} · ${phase}`;
       copy.append(title, details);
       const button = document.createElement("button");
       button.type = "button";
@@ -1112,23 +1181,36 @@
         : `Manche ${round.round_number} : ${targetName}`;
     roundResult.append(heading);
     if (ownResult) {
+      const isFlags = state?.variant === "flags";
       const detail = document.createElement("p");
-      const distanceText =
-        ownResult.distance_km == null
-          ? "distance non calculable"
-          : `${Number(ownResult.distance_km).toLocaleString("fr-FR")} km`;
-      detail.textContent = `Votre estimation : ${distanceText} · ${Number(ownResult.score || 0).toLocaleString("fr-FR")} points.`;
+      if (isFlags) {
+        if (ownResult.correct) {
+          detail.textContent = `Bravo ! Vous avez trouvé : ${ownResult.country || targetName} · ${Number(ownResult.score || 0).toLocaleString("fr-FR")} points.`;
+        } else {
+          const guessedText = ownResult.guess_country || ownResult.guess_country_code || "aucun pays sélectionné";
+          detail.textContent = `Mauvaise réponse (votre choix : ${guessedText}) · La bonne réponse était : ${ownResult.country || targetName} · 0 point.`;
+        }
+      } else {
+        const distanceText =
+          ownResult.distance_km == null
+            ? "distance non calculable"
+            : `${Number(ownResult.distance_km).toLocaleString("fr-FR")} km`;
+        detail.textContent = `Votre estimation : ${distanceText} · ${Number(ownResult.score || 0).toLocaleString("fr-FR")} points.`;
+      }
       roundResult.append(detail);
     }
     if (Array.isArray(round.guesses)) {
+      const isFlags = state?.variant === "flags";
       const ranking = document.createElement("ol");
       [...round.guesses]
         .sort((a, b) => b.score - a.score)
         .forEach((guess) => {
           const distanceText =
-            guess.distance_km == null
-              ? "—"
-              : `${Number(guess.distance_km).toLocaleString("fr-FR")} km`;
+            isFlags
+              ? (guess.correct ? "Trouvé" : (guess.guess_country ? `Erreur (${guess.guess_country})` : "Erreur"))
+              : (guess.distance_km == null
+                  ? "—"
+                  : `${Number(guess.distance_km).toLocaleString("fr-FR")} km`);
           const item = document.createElement("li");
           item.textContent = `${guess.name} · ${distanceText} · ${Number(guess.score || 0).toLocaleString("fr-FR")} points`;
           ranking.append(item);
@@ -1144,7 +1226,9 @@
       const continueButton = document.createElement("button");
       continueButton.type = "button";
       continueButton.className = "geo-primary-button";
-      continueButton.textContent = `Manche suivante (${state.round_number + 1}/${state.round_count})`;
+      continueButton.textContent = state.round_count
+        ? `Manche suivante (${state.round_number + 1}/${state.round_count})`
+        : `Manche suivante (${state.round_number + 1})`;
       continueButton.disabled = roomBusy;
       continueButton.addEventListener("click", advanceSoloRound);
       roundResult.append(continueButton);
@@ -1249,8 +1333,10 @@
       state.status === "finished"
         ? "Partie terminée"
         : waitingForNextRound
-          ? `Résultat de la manche ${completedRound.round_number}`
-          : `Manche ${state.round_number} sur ${state.round_count}`;
+          ? `Résultat de la manche ${completedRound?.round_number ?? state.round_number}`
+          : (state.round_count
+              ? `Manche ${state.round_number} sur ${state.round_count}`
+              : `Manche ${state.round_number}`);
     document.getElementById("geo-game-hint").textContent = isPanorama
       ? "Explorez la photo avec la souris ou le tactile, puis situez-la sur la carte."
       : isRoom
@@ -1753,8 +1839,27 @@
         roomVariantSelect.value = variantSelect.value;
       });
     });
+  function updateRegionOptions() {
+    const isSoloFlag = variantSelect.value === "flags";
+    const soloFrance = regionSelect.querySelector('option[value="france"]');
+    if (soloFrance) soloFrance.disabled = isSoloFlag;
+    if (isSoloFlag && regionSelect.value === "france") {
+      regionSelect.value = "world";
+    }
+
+    const isRoomFlag = roomVariantSelect.value === "flags";
+    const roomFrance = roomRegionSelect.querySelector('option[value="france"]');
+    if (roomFrance) roomFrance.disabled = isRoomFlag;
+    if (isRoomFlag && roomRegionSelect.value === "france") {
+      roomRegionSelect.value = "world";
+    }
+  }
+
+  roomVariantSelect.addEventListener("change", updateRegionOptions);
+
   variantSelect.addEventListener("change", () => {
     roomVariantSelect.value = variantSelect.value;
+    updateRegionOptions();
     const isFlagMode = variantSelect.value === "flags";
     const isPanorama = variantSelect.value === "panorama";
     const title = document.getElementById("geo-home-title");
@@ -1816,4 +1921,6 @@
   }
   refreshLeaderboard();
   loadPanoramaConfig();
+  loadCountryBoundaries();
+  variantSelect.dispatchEvent(new Event("change"));
 })();

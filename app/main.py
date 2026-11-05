@@ -3674,13 +3674,17 @@ async def get_sudoku_room(room_id: str, player_id: str = Query(...)):
 def _geoguessr_metrics(
     results: List[Dict[str, Any]], total_score: int, region: str, variant: str,
 ) -> Dict[str, Any]:
-    distances = [float(result["distance_km"]) for result in results]
+    distances = [
+        float(result["distance_km"])
+        for result in results
+        if result.get("distance_km") is not None
+    ]
     return {
         "score": total_score,
         "average_distance_km": round(sum(distances) / len(distances), 1) if distances else 0,
         "best_distance_km": min(distances) if distances else None,
         "rounds": len(results),
-        "perfect_rounds": sum(result["score"] == GEOGUESSR_MAX_SCORE_PER_ROUND for result in results),
+        "perfect_rounds": sum(result.get("score") == GEOGUESSR_MAX_SCORE_PER_ROUND for result in results),
         "region": region,
         "variant": variant,
     }
@@ -3692,14 +3696,19 @@ def _record_geoguessr_solo_result(game) -> None:
     duration = max(0, int(time.time() - game.created_at))
     metrics = _geoguessr_metrics(game.results, game.total_score, game.region, game.variant)
     increment_player_score(game.player_name, game.total_score, "geoguessr")
+    target_rounds = game.round_count or GEOGUESSR_ROUND_COUNT
     record_user_game_finish(
         game.player_name,
-        won=game.total_score >= GEOGUESSR_ROUND_COUNT * GEOGUESSR_MAX_SCORE_PER_ROUND // 2,
+        won=game.total_score >= target_rounds * GEOGUESSR_MAX_SCORE_PER_ROUND // 2,
         attempts=len(game.results),
         points=game.total_score,
         session_id=f"geoguessr:{game.game_id}",
         mode="solo",
-        title="GeoGuessr — Photos immersives" if game.variant == "panorama" else "GeoGuessr",
+        title=(
+            "GeoGuessr — Photos immersives"
+            if game.variant == "panorama"
+            else ("GeoGuessr — Drapeaux" if game.variant == "flags" else "GeoGuessr")
+        ),
         duration_seconds=duration,
         game_id="geoguessr",
         difficulty=game.region,
@@ -3723,7 +3732,11 @@ def _record_geoguessr_room_results(room) -> None:
             points=player.total_score,
             session_id=f"geoguessr:{room.room_id}:{room.match_number}",
             mode="multiplayer",
-            title="GeoGuessr — Photos immersives" if room.variant == "panorama" else "GeoGuessr",
+            title=(
+                "GeoGuessr — Photos immersives"
+                if room.variant == "panorama"
+                else ("GeoGuessr — Drapeaux" if room.variant == "flags" else "GeoGuessr")
+            ),
             duration_seconds=duration,
             game_id="geoguessr",
             difficulty=room.region,
@@ -3799,7 +3812,9 @@ async def create_geoguessr_solo(req: GeoGuessrPlayerRequest):
         f"geoguessr:{game.game_id}",
         "geoguessr",
         "solo",
-        "GeoGuessr — Photos immersives" if game.variant == "panorama" else "GeoGuessr",
+        "GeoGuessr — Photos immersives"
+        if game.variant == "panorama"
+        else ("GeoGuessr — Drapeaux" if game.variant == "flags" else "GeoGuessr"),
         game.region,
     )
     return game.to_dict()
@@ -3905,7 +3920,9 @@ async def start_geoguessr_room(req: GeoGuessrRoomPlayerRequest):
         f"geoguessr:{room.room_id}:{room.match_number}",
         "geoguessr",
         "multiplayer",
-        "GeoGuessr — Photos immersives" if room.variant == "panorama" else "GeoGuessr",
+        "GeoGuessr — Photos immersives"
+        if room.variant == "panorama"
+        else ("GeoGuessr — Drapeaux" if room.variant == "flags" else "GeoGuessr"),
         room.region,
     )
     return room.to_dict(req.player_id)
@@ -3942,7 +3959,9 @@ async def restart_geoguessr_room(req: GeoGuessrRoomPlayerRequest):
         f"geoguessr:{room.room_id}:{room.match_number}",
         "geoguessr",
         "multiplayer",
-        "GeoGuessr — Photos immersives" if room.variant == "panorama" else "GeoGuessr",
+        "GeoGuessr — Photos immersives"
+        if room.variant == "panorama"
+        else ("GeoGuessr — Drapeaux" if room.variant == "flags" else "GeoGuessr"),
         room.region,
     )
     return room.to_dict(req.player_id)

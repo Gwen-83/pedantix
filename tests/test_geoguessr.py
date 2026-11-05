@@ -750,6 +750,117 @@ class GeoGuessrTests(unittest.TestCase):
                 self.assertFalse(database.reserve_geoguessr_google_usage(1, 5))
                 self.assertEqual(database.get_geoguessr_google_usage(), 5)
 
+    def test_solo_flags_game_lifecycle_and_infinite_mode(self):
+        # 1. Finite game with 2 rounds
+        game = self.manager.create_solo("bob", "Bob", "world", "flags", round_count=2)
+        self.assertEqual(game.variant, "flags")
+        self.assertEqual(game.round_count, 2)
+        d = game.to_dict()
+        self.assertEqual(d["round_number"], 1)
+        self.assertEqual(d["round_count"], 2)
+        self.assertTrue(d["flag_url"].startswith("https://flagcdn.com/"))
+
+        # Round 1: correct guess
+        t1 = game.target
+        game, res1 = self.manager.guess_solo(
+            game.game_id, "bob", latitude=10.0, longitude=20.0, country_name=t1[0], country_code=t1[1]
+        )
+        self.assertTrue(res1["correct"])
+        self.assertEqual(res1["score"], MAX_SCORE_PER_ROUND)
+        self.assertTrue(game.awaiting_next_round)
+
+        # Advance to round 2
+        game = self.manager.next_solo_round(game.game_id, "bob")
+        self.assertFalse(game.awaiting_next_round)
+        self.assertEqual(game.round_index, 1)
+
+        # Round 2: wrong guess finishes game
+        game, res2 = self.manager.guess_solo(
+            game.game_id, "bob", latitude=15.0, longitude=25.0, country_name="FakeCountry", country_code="ZZ"
+        )
+        self.assertFalse(res2["correct"])
+        self.assertEqual(res2["score"], 0)
+        self.assertEqual(game.status, "finished")
+
+        # Test infinite mode
+        inf_game = self.manager.create_solo("bob", "Bob", "world", "flags", round_count=None)
+        self.assertIsNone(inf_game.round_count)
+        self.assertIsNone(inf_game.to_dict()["round_count"])
+        inf_t = inf_game.target
+        inf_game, _ = self.manager.guess_solo(
+            inf_game.game_id, "bob", latitude=1.0, longitude=2.0, country_name=inf_t[0], country_code=inf_t[1]
+        )
+        self.assertTrue(inf_game.awaiting_next_round)
+        inf_game = self.manager.next_solo_round(inf_game.game_id, "bob")
+        self.assertEqual(inf_game.round_index, 1)
+        self.assertFalse(inf_game.awaiting_next_round)
+
+    def test_multiplayer_flags_room_lifecycle_and_restart(self):
+        room = self.manager.create_room("h1", "Host", "world", "flags", round_count=2)
+        self.assertEqual(room.variant, "flags")
+        self.assertEqual(room.round_count, 2)
+
+        # Room listing includes variant
+        rooms = self.manager.list_rooms("h1")
+        listed = next(r for r in rooms if r["room_id"] == room.room_id)
+        self.assertEqual(listed["variant"], "flags")
+
+        self.manager.join_room(room.room_id, "g1", "Guest")
+        self.manager.confirm_room_ready(room.room_id, "h1", True)
+        self.manager.confirm_room_ready(room.room_id, "g1", True)
+        self.manager.start_room(room.room_id, "h1")
+        self.assertEqual(room.status, "playing")
+
+        # Round 1
+        t1 = room.target
+        # Host guesses correct
+        room, partial = self.manager.guess_room(
+            room.room_id, "h1", latitude=48.8, longitude=2.3, country_name=t1[0], country_code=t1[1]
+        )
+        self.assertIsNone(partial)
+        # Verify public_state does not raise KeyError
+        h1_state = room.to_dict("h1")["players"][0]
+        self.assertTrue(h1_state["submitted"])
+        self.assertIsNotNone(h1_state["guess"]["latitude"])
+
+        # Guest guesses wrong
+        room, full_result = self.manager.guess_room(
+            room.room_id, "g1", latitude=50.0, longitude=10.0, country_name="OtherCountry", country_code="XX"
+        )
+        self.assertIsNotNone(full_result)
+        self.assertTrue(room.awaiting_next_round)
+        self.assertEqual(len(full_result["guesses"]), 2)
+
+        # Advance to round 2
+        self.manager.confirm_room_ready(room.room_id, "h1", True)
+        self.manager.confirm_room_ready(room.room_id, "g1", True)
+        self.assertEqual(room.round_index, 1)
+        self.assertFalse(room.awaiting_next_round)
+
+        # Round 2
+        t2 = room.target
+        self.manager.guess_room(
+            room.room_id, "h1", latitude=12.0, longitude=34.0, country_name="Wrong", country_code="YY"
+        )
+        room, round2_result = self.manager.guess_room(
+            room.room_id, "g1", latitude=12.0, longitude=34.0, country_name=t2[0], country_code=t2[1]
+        )
+        self.assertEqual(room.status, "finished")
+
+        # Recording metrics shouldn't crash with None distance_km
+        from app.main import _record_geoguessr_room_results
+        _record_geoguessr_room_results(room)
+        self.assertTrue(room.stats_recorded)
+
+        # Restart room
+        room = self.manager.restart_room(room.room_id, "h1")
+        self.assertEqual(room.status, "playing")
+        self.assertEqual(room.variant, "flags")
+        self.assertEqual(room.round_count, 2)
+        # Ensure targets are countries, not cities
+        self.assertTrue(room.target[2].startswith("https://flagcdn.com/"))
+        self.assertTrue(room.to_dict("h1")["flag_url"].startswith("https://flagcdn.com/"))
+
 
 if __name__ == "__main__":
     unittest.main()

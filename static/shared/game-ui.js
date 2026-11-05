@@ -135,6 +135,18 @@
     if (roomError && roomErrorParent) {
       roomErrorParent.insertBefore(roomError, roomErrorNextSibling);
     }
+    const soloButton = modeButtons.find((button) => button.dataset.sharedGameMode === 'solo');
+    if (soloButton) {
+      document.body.dataset.sharedMode = 'solo';
+      modeButtons.forEach((candidate) => {
+        const selected = candidate === soloButton;
+        candidate.classList.toggle('active', selected);
+        candidate.setAttribute('aria-pressed', String(selected));
+      });
+      if (lastTrigger && lastTrigger.dataset.sharedGameMode === 'multi') {
+        lastTrigger = soloButton;
+      }
+    }
     if (lastTrigger instanceof HTMLElement && !lastTrigger.closest('[hidden]')) lastTrigger.focus();
   }
 
