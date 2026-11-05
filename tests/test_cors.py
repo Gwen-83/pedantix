@@ -64,6 +64,17 @@ class CorsTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertNotIn(b"access-control-allow-origin", headers)
 
+    def test_flagcdn_images_are_allowed_by_csp(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        response = client.get("/api/geoguessr/config")
+        self.assertEqual(response.status_code, 200)
+        csp = response.headers.get("Content-Security-Policy", "")
+        self.assertIn("https://flagcdn.com", csp)
+        self.assertIn("img-src", csp)
+
 
 if __name__ == "__main__":
     unittest.main()
