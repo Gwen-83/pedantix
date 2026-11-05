@@ -118,7 +118,7 @@
     const button = document.getElementById("geo-refresh-leaderboard");
     button.disabled = true;
     try {
-      const scores = await request('/api/geoguessr/leaderboard');
+      const scores = await request("/api/geoguessr/leaderboard");
       list.replaceChildren();
       if (!scores.length) {
         const empty = document.createElement("li");
@@ -199,7 +199,7 @@
         round.round_number === state.round_number
       );
     }
-    if (gameType !== 'room') return false;
+    if (gameType !== "room") return false;
     return (
       state?.status === "playing" &&
       state.awaiting_next_round === true &&
@@ -553,7 +553,7 @@
       color: isPanorama ? "#63716f" : "#31444a",
       weight: isPanorama ? 1 : 0.9,
       opacity: isPanorama ? 0.9 : 0.76,
-      fillColor: '#65a84a',
+      fillColor: "#65a84a",
       fillOpacity: isPanorama ? 0 : 0.22,
     };
   }
@@ -564,14 +564,14 @@
         ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
         : "https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
       {
-        subdomains: ['a', 'b', 'c'],
+        subdomains: ["a", "b", "c"],
         maxZoom: 19,
         attribution: useFallback
           ? "&copy; Esri &mdash; Sources: HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), OpenStreetMap contributors, and the GIS User Community"
           : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap France</a>',
       },
     );
-    layer.on('tileerror', () => {
+    layer.on("tileerror", () => {
       if (mapLabelsLayer !== layer) return;
       if (!useFallback) {
         mapLabelsLayerFallback = true;
@@ -1395,8 +1395,8 @@
       }
     } else {
       document.getElementById("geo-target-label").textContent = isPanorama
-        ? 'Lieu à retrouver'
-        : 'Ville à trouver';
+        ? "Lieu à retrouver"
+        : "Ville à trouver";
       targetNameNode.textContent = waitingForNextRound
         ? "Consultez la distance avant de continuer"
         : isPanorama
