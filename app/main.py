@@ -526,7 +526,8 @@ class GeoGuessrPlayerRequest(BaseModel):
     player_id: str
     player_name: str
     region: Literal["france", "europe", "world"] = "world"
-    variant: Literal["cities", "panorama"] = "cities"
+    variant: Literal["cities", "panorama", "flags"] = "cities"
+    round_count: Optional[int] = None
 
 class GeoGuessrRoomPlayerRequest(BaseModel):
     room_id: str
@@ -541,16 +542,20 @@ class GeoGuessrRoomCreateRequest(GeoGuessrPlayerRequest):
 
 class GeoGuessrSoloGuessRequest(GeoGuessrPlayerRequest):
     game_id: str
-    latitude: float = Field(ge=-90, le=90)
-    longitude: float = Field(ge=-180, le=180)
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    country_name: Optional[str] = None
+    country_code: Optional[str] = None
 
 class GeoGuessrSoloNextRequest(BaseModel):
     game_id: str = Field(min_length=1, max_length=64)
     player_id: str = Field(min_length=1, max_length=100)
 
 class GeoGuessrRoomGuessRequest(GeoGuessrRoomPlayerRequest):
-    latitude: float = Field(ge=-90, le=90)
-    longitude: float = Field(ge=-180, le=180)
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    country_name: Optional[str] = None
+    country_code: Optional[str] = None
 
 class GeoGuessrPanoramaViewRequest(BaseModel):
     player_id: str
@@ -3786,6 +3791,7 @@ async def create_geoguessr_solo(req: GeoGuessrPlayerRequest):
             req.player_name,
             req.region,
             req.variant,
+            req.round_count,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -3833,6 +3839,8 @@ async def guess_geoguessr_solo(req: GeoGuessrSoloGuessRequest):
             req.player_id,
             req.latitude,
             req.longitude,
+            req.country_code,
+            req.country_name,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -3949,6 +3957,8 @@ async def guess_geoguessr_room(req: GeoGuessrRoomGuessRequest):
             req.player_id,
             req.latitude,
             req.longitude,
+            req.country_code,
+            req.country_name,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

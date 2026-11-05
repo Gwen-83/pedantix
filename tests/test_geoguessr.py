@@ -16,6 +16,7 @@ from app.geoguessr import (
     ROOM_ROUND_TIME_LIMIT_SECONDS,
     GeoGuessrManager,
     _city_pool,
+    _country_flag_pool,
     _diverse_city_order,
     _sample_city_round,
     distance_km,
@@ -72,6 +73,28 @@ class GeoGuessrTests(unittest.TestCase):
         first_cities = {(city[0], city[1]) for city in first_game.cities}
         second_cities = {(city[0], city[1]) for city in second_game.cities}
         self.assertFalse(first_cities & second_cities)
+
+    def test_flag_pool_contains_the_full_world_and_accepts_country_guesses(self):
+        pool = _country_flag_pool("world")
+        names = {country["name"] for country in pool}
+        self.assertGreaterEqual(len(pool), 190)
+        self.assertIn("France", names)
+        self.assertIn("United States of America", names)
+
+        game = self.manager.create_solo("alice", "Alice", "world", "flags", round_count=None)
+        self.assertEqual(game.variant, "flags")
+        self.assertIsNone(game.to_dict()["target"])
+        target = game.target
+
+        game, result = self.manager.guess_solo(
+            game.game_id,
+            "alice",
+            country_code=target[1],
+            country_name=target[0],
+        )
+        self.assertEqual(result["country"], target[0])
+        self.assertEqual(result["score"], MAX_SCORE_PER_ROUND)
+        self.assertEqual(game.status, "playing")
 
     def test_added_city_pools_respect_population_thresholds(self):
         thresholds = {"france": 50_000, "europe": 200_000, "world": 1_000_000}

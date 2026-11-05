@@ -1,3 +1,4 @@
+import json
 import math
 import logging
 import os
@@ -5,6 +6,7 @@ import random
 import threading
 import time
 import uuid
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -18,7 +20,7 @@ MAX_PLAYERS = 8
 MAX_SCORE_PER_ROUND = 5_000
 EARTH_RADIUS_KM = 6_371.0088
 GEOGUESSR_REGIONS = {"france", "europe", "world"}
-GEOGUESSR_VARIANTS = {"cities", "panorama"}
+GEOGUESSR_VARIANTS = {"cities", "panorama", "flags"}
 MAPILLARY_API_URL = "https://graph.mapillary.com/images"
 GOOGLE_STREETVIEW_METADATA_URL = "https://maps.googleapis.com/maps/api/streetview/metadata"
 GOOGLE_STREETVIEW_MONTHLY_LIMIT = 4_000
@@ -722,6 +724,16 @@ def _public_city(city: tuple[str, str, str, float, float]) -> Dict[str, Any]:
     }
 
 
+def _public_country(country: tuple[str, str, str, float, float]) -> Dict[str, Any]:
+    return {
+        "country": country[0],
+        "country_code": country[1],
+        "flag_url": country[2],
+        "latitude": country[3],
+        "longitude": country[4],
+    }
+
+
 def _score_guess(city: tuple[str, str, str, float, float], latitude: float, longitude: float) -> Dict[str, Any]:
     distance = distance_km(latitude, longitude, city[3], city[4])
     return {
@@ -729,6 +741,90 @@ def _score_guess(city: tuple[str, str, str, float, float], latitude: float, long
         "longitude": longitude,
         "distance_km": round(distance, 1),
         "score": score_distance_km(distance),
+    }
+
+
+def _country_flag_pool(region: str = "world") -> List[Dict[str, Any]]:
+    geojson_path = Path(__file__).resolve().parent.parent / "static" / "games" / "geoguessr" / "data" / "countries_50m.geojson"
+    with geojson_path.open(encoding="utf-8") as handle:
+        countries = json.load(handle).get("features", [])
+
+    results: List[Dict[str, Any]] = []
+    for feature in countries:
+        properties = feature.get("properties", {})
+        name = (properties.get("NAME_EN") or properties.get("ADMIN") or properties.get("NAME") or properties.get("NAME_FR") or "").strip()
+        iso_code = (properties.get("ISO_A2") or properties.get("WB_A2") or "").strip().upper()
+        if not name or not iso_code or name in {"Antarctica", "Bouvet Island"}:
+            continue
+        continent = (properties.get("CONTINENT") or "").strip()
+        if region == "france":
+            if name != "France":
+                continue
+        elif region == "europe":
+            if continent != "Europe":
+                continue
+        label_x = properties.get("LABEL_X")
+        label_y = properties.get("LABEL_Y")
+        results.append({
+            "name": name,
+            "code": iso_code,
+            "flag_url": f"https://flagcdn.com/w320/{iso_code.lower()}.png",
+            "latitude": float(label_y) if label_y is not None else 0.0,
+            "longitude": float(label_x) if label_x is not None else 0.0,
+            "continent": continent,
+        })
+
+    return sorted(results, key=lambda item: item["name"]) 
+
+
+def _sample_country_flag_round(
+    region: str,
+    round_count: int,
+    excluded_codes: Optional[Set[str]] = None,
+) -> List[tuple[str, str, str, float, float]]:
+    pool = _country_flag_pool(region)
+    excluded_codes = excluded_codes or set()
+    selected: List[tuple[str, str, str, float, float]] = []
+    if not pool:
+        raise ValueError("Aucun drapeau n’est disponible pour cette zone.")
+    remaining = [country for country in pool if country["code"] not in excluded_codes]
+    random.shuffle(remaining)
+    for country in remaining:
+        if len(selected) >= min(round_count, len(pool)):
+            break
+        selected.append((country["name"], country["code"], country["flag_url"], country["latitude"], country["longitude"]))
+    if len(selected) < min(round_count, len(pool)):
+        selected = [
+            (country["name"], country["code"], country["flag_url"], country["latitude"], country["longitude"])
+            for country in pool[: min(round_count, len(pool))]
+        ]
+    return selected
+
+
+def _score_flag_guess(target: tuple[str, str, str, float, float], guessed_country: Optional[str] = None, guessed_code: Optional[str] = None) -> Dict[str, Any]:
+    country_name = target[0]
+    country_code = target[1]
+    if guessed_code and guessed_code.upper() == country_code.upper():
+        score = MAX_SCORE_PER_ROUND
+        matched_country = country_name
+        correct = True
+    elif guessed_country and guessed_country.strip().lower() == country_name.strip().lower():
+        score = MAX_SCORE_PER_ROUND
+        matched_country = country_name
+        correct = True
+    else:
+        score = 0
+        matched_country = guessed_country or guessed_code or ""
+        correct = False
+    return {
+        "country": country_name,
+        "country_code": country_code,
+        "flag_url": target[2],
+        "guess_country": matched_country,
+        "guess_country_code": guessed_code or "",
+        "correct": correct,
+        "score": score,
+        "distance_km": 0.0 if correct else None,
     }
 
 
@@ -745,6 +841,7 @@ class GeoGuessrGame:
     google_viewed_rounds: Set[Tuple[str, int]] = field(default_factory=set)
     created_at: float = field(default_factory=time.time)
     round_index: int = 0
+    round_count: Optional[int] = ROUND_COUNT
     total_score: int = 0
     results: List[Dict[str, Any]] = field(default_factory=list)
     status: str = "playing"
@@ -761,6 +858,7 @@ class GeoGuessrGame:
             if self.status == "playing" and not self.awaiting_next_round
             else None
         )
+        public_round_count = self.round_count or ROUND_COUNT
         return {
             "game_id": self.game_id,
             "status": self.status,
@@ -768,20 +866,25 @@ class GeoGuessrGame:
             "variant": self.variant,
             "panorama_provider": self.panorama_provider,
             "region": self.region,
-            "round_number": min(self.round_index + 1, ROUND_COUNT),
-            "round_count": ROUND_COUNT,
+            "round_number": min(self.round_index + 1, public_round_count if self.status != "finished" else public_round_count),
+            "round_count": public_round_count,
             "total_score": self.total_score,
-            "max_total_score": ROUND_COUNT * MAX_SCORE_PER_ROUND,
+            "max_total_score": public_round_count * MAX_SCORE_PER_ROUND,
             "round_results": self.results,
             "last_result": last_result,
             "awaiting_next_round": self.awaiting_next_round,
-            "prompt": {"city": prompt[0], "country": prompt[1]} if prompt else None,
+            "prompt": {"city": prompt[0], "country": prompt[1]} if prompt and self.variant == "cities" else None,
+            "flag_url": (
+                prompt[2]
+                if self.variant == "flags" and prompt and not self.awaiting_next_round
+                else None
+            ),
             "image_id": (
                 self.image_ids[min(self.round_index, len(self.image_ids) - 1)]
                 if self.variant == "panorama" and self.image_ids
                 else None
             ),
-            "target": _public_city(self.cities[-1]) if self.status == "finished" else None,
+            "target": _public_country(self.cities[-1]) if self.status == "finished" and self.variant == "flags" else (_public_city(self.cities[-1]) if self.status == "finished" else None),
         }
 
 
@@ -882,6 +985,11 @@ class GeoGuessrRoom:
             "player": player.public_state(),
             "last_round": self.last_round,
             "prompt": {"city": prompt[0], "country": prompt[1]} if prompt else None,
+            "flag_url": (
+                self.cities[self.round_index][2]
+                if self.variant == "flags" and self.status == "playing" and self.round_index < len(self.cities)
+                else None
+            ),
             "image_id": (
                 self.image_ids[min(self.round_index, len(self.image_ids) - 1)]
                 if self.variant == "panorama" and self.image_ids and self.status != "lobby"
@@ -1158,7 +1266,12 @@ class GeoGuessrManager:
         return targets, [item["image_id"] for item in selected]
 
     def create_solo(
-        self, player_id: str, player_name: str, region: str = "world", variant: str = "cities",
+        self,
+        player_id: str,
+        player_name: str,
+        region: str = "world",
+        variant: str = "cities",
+        round_count: Optional[int] = None,
     ) -> GeoGuessrGame:
         region = validate_region(region)
         if variant not in GEOGUESSR_VARIANTS:
@@ -1170,6 +1283,28 @@ class GeoGuessrManager:
                 region,
                 reserve_google_views=True,
             )
+            game_round_count = ROUND_COUNT
+        elif variant == "flags":
+            if round_count is not None and (type(round_count) is not int or not 1 <= round_count <= 20):
+                raise ValueError("Le nombre de manches du mode drapeau doit être compris entre 1 et 20.")
+            pool = _country_flag_pool(region)
+            if not pool:
+                raise ValueError("Aucun drapeau n’est disponible pour cette zone.")
+            if round_count is None:
+                cities = [
+                    (
+                        country["name"],
+                        country["code"],
+                        country["flag_url"],
+                        country["latitude"],
+                        country["longitude"],
+                    )
+                    for country in [random.choice(pool)]
+                ]
+                game_round_count = None
+            else:
+                cities = _sample_country_flag_round(region, round_count)
+                game_round_count = round_count
         else:
             with self.lock:
                 history_key = (player_id, region)
@@ -1194,11 +1329,13 @@ class GeoGuessrManager:
                 self.last_solo_city_keys[history_key] = {
                     (city[0], city[1]) for city in cities
                 }
+                game_round_count = ROUND_COUNT
         with self.lock:
             game = GeoGuessrGame(
                 str(uuid.uuid4()), player_id, player_name.strip()[:24], region,
                 cities, variant, image_ids, panorama_provider,
             )
+            game.round_count = game_round_count
             self.solo_games[game.game_id] = game
             return game
 
@@ -1210,7 +1347,13 @@ class GeoGuessrManager:
             return game
 
     def guess_solo(
-        self, game_id: str, player_id: str, latitude: float, longitude: float,
+        self,
+        game_id: str,
+        player_id: str,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        country_code: Optional[str] = None,
+        country_name: Optional[str] = None,
     ) -> tuple[GeoGuessrGame, Dict[str, Any]]:
         with self.lock:
             game = self.get_solo(game_id, player_id)
@@ -1218,10 +1361,30 @@ class GeoGuessrManager:
                 raise ValueError("Cette partie est déjà terminée.")
             if game.awaiting_next_round:
                 raise ValueError("Consultez d'abord le résultat de la manche précédente.")
-            result = _score_guess(game.target, latitude, longitude)
+            target = game.target
+            if game.variant == "flags":
+                if not country_code and not country_name:
+                    raise ValueError("Sélectionnez un pays sur la carte pour valider votre drapeau.")
+                result = _score_flag_guess(target, country_name, country_code)
+                if latitude is not None: result["guess_latitude"] = latitude
+                if longitude is not None: result["guess_longitude"] = longitude
+                result["round_number"] = game.round_index + 1
+                result.update(_public_country(target))
+                game.results.append(result)
+                game.total_score += result["score"]
+                if game.round_count is None:
+                    game.awaiting_next_round = True
+                elif game.round_index + 1 == game.round_count:
+                    game.status = "finished"
+                else:
+                    game.awaiting_next_round = True
+                return game, result
+            if latitude is None or longitude is None:
+                raise ValueError("Sélectionnez un point sur la carte pour valider votre estimation.")
+            result = _score_guess(target, latitude, longitude)
             result["guess_latitude"] = latitude
             result["guess_longitude"] = longitude
-            result.update(_public_city(game.target))
+            result.update(_public_city(target))
             result["round_number"] = game.round_index + 1
             game.results.append(result)
             game.total_score += result["score"]
@@ -1238,6 +1401,19 @@ class GeoGuessrManager:
                 raise ValueError("Cette partie est déjà terminée.")
             if not game.awaiting_next_round:
                 raise ValueError("Aucun résultat n'attend votre confirmation.")
+            if game.variant == "flags" and game.round_count is None:
+                pool = _country_flag_pool(game.region)
+                available = [country for country in pool if country["code"] not in {item[1] for item in game.cities}]
+                if not available:
+                    available = pool
+                next_country = random.choice(available)
+                game.cities.append((
+                    next_country["name"],
+                    next_country["code"],
+                    next_country["flag_url"],
+                    next_country["latitude"],
+                    next_country["longitude"],
+                ))
             game.round_index += 1
             game.awaiting_next_round = False
             return game
@@ -1263,6 +1439,8 @@ class GeoGuessrManager:
                 reserve_google_views=False,
                 round_count=round_count,
             )
+        elif variant == "flags":
+            cities = _sample_country_flag_round(region, round_count)
         else:
             cities = _sample_city_round(region, round_count)
         with self.lock:
@@ -1448,7 +1626,13 @@ class GeoGuessrManager:
             return True
 
     def guess_room(
-        self, room_id: str, player_id: str, latitude: float, longitude: float,
+        self,
+        room_id: str,
+        player_id: str,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        country_code: Optional[str] = None,
+        country_name: Optional[str] = None,
     ) -> tuple[GeoGuessrRoom, Optional[Dict[str, Any]]]:
         with self.lock:
             room = self._get_room(room_id, player_id)
@@ -1467,7 +1651,16 @@ class GeoGuessrManager:
                 raise ValueError("La partie n'accepte pas de réponse pour le moment.")
             if player.guess is not None:
                 raise ValueError("Votre position est déjà validée pour cette manche.")
-            player.guess = _score_guess(room.target, latitude, longitude)
+            if room.variant == "flags":
+                if not country_code and not country_name:
+                    raise ValueError("Sélectionnez un pays sur la carte pour valider ce drapeau.")
+                player.guess = _score_flag_guess(room.target, country_name, country_code)
+                if latitude is not None: player.guess["guess_latitude"] = latitude
+                if longitude is not None: player.guess["guess_longitude"] = longitude
+            else:
+                if latitude is None or longitude is None:
+                    raise ValueError("Sélectionnez un point sur la carte pour valider votre estimation.")
+                player.guess = _score_guess(room.target, latitude, longitude)
             if room.round_deadline is None:
                 room.round_deadline = time.time() + ROOM_ROUND_TIME_LIMIT_SECONDS
             active_players = [
@@ -1534,7 +1727,7 @@ class GeoGuessrManager:
 
         room.last_round = {
             "round_number": room.round_index + 1,
-            "target": _public_city(room.target),
+            "target": _public_country(room.target) if room.variant == "flags" else _public_city(room.target),
             "guesses": guesses,
             "missed_players": missed_players,
         }
