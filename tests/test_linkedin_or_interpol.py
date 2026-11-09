@@ -81,6 +81,18 @@ class LinkedinOrInterpolTests(unittest.TestCase):
         self.assertIn("description", result["result"])
         self.assertEqual(result["result"]["answer"], guess)
 
+    def test_invalid_guess_still_reveals_the_profile_and_description(self):
+        state = self.manager.create_game("alice", rounds=1)
+        internal = self.manager.games[state["game_id"]]
+        expected = internal["rounds"][internal["round_index"]]
+
+        result = self.manager.submit_guess(state["game_id"], "alice", "???")
+
+        self.assertFalse(result["result"]["correct"])
+        self.assertEqual(result["result"]["answer"], expected["label"])
+        self.assertIn("description", result["result"])
+        self.assertTrue(result["result"]["full_name"])
+
     def test_create_game_supports_solo_and_multiplayer_modes(self):
         solo = self.manager.create_game("alice", rounds=10, mode="solo")
         multi = self.manager.create_game("alice", rounds=10, mode="multiplayer")

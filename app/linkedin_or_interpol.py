@@ -32,7 +32,7 @@ def _normalize_solo_mode(mode: str) -> str:
 def _evaluate_person_guess(person: Dict[str, Any], raw_guess: str) -> Tuple[str, bool, Optional[str]]:
     guess = (raw_guess or "").strip().lower()
     if guess not in VALID_CHOICES:
-        raise ValueError("Choix invalide. Répondez par linkedin ou interpol.")
+        return guess, False, "Choix invalide. Répondez par linkedin ou interpol."
 
     is_friend_case = person.get("special_case") == "friend"
     if is_friend_case:
