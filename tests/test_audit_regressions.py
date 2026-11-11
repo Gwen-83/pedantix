@@ -472,5 +472,133 @@ class IdleRoomCleanupTests(unittest.TestCase):
         self.assertEqual(list(manager.solo_games), [recent_solo.game_id])
 
 
+class AbsentPlayerEvictionTests(unittest.TestCase):
+    @contextmanager
+    def tracked(self, game_id, manager):
+        with (
+            store_game(game_id, manager) as recorded,
+            patch.dict(main._player_activity, {}, clear=True),
+            patch.dict(main._room_absence_checks, {}, clear=True),
+            patch.dict(main._room_activity, {}, clear=True),
+        ):
+            yield recorded
+
+    def expire(self, game_id, room, player_id):
+        ttl = main.PLAYER_ABSENCE_TTL_BY_GAME.get(
+            game_id, main.PLAYER_ABSENCE_TTL_SECONDS
+        )
+        main._player_activity[(game_id, room.room_id, player_id)] = (
+            time.time() - ttl - 1
+        )
+
+    def test_player_who_stops_polling_is_removed_and_the_game_recovers(self):
+        manager = MotusManager(
+            words={"talent", "tartes", "tanner", "tonton"}, answers={"talent"}
+        )
+        room = manager.create_room("alice", "Alice")
+        manager.join_room(room.room_id, "bob", "Bob")
+        manager.start_room(room.room_id, "alice")
+        manager.guess_room(room.room_id, "alice", "talent")
+
+        with self.tracked("motus", manager):
+            self.assertEqual(main._evict_absent_players("motus", room.room_id), [])
+            main._touch_room_activity("motus", room.room_id.lower(), "alice")
+            self.expire("motus", room, "bob")
+
+            evicted = main._evict_absent_players("motus", room.room_id, force=True)
+
+            self.assertEqual(evicted, ["bob"])
+            self.assertEqual(list(room.players), ["alice"])
+            self.assertEqual(room.status, "finished")
+            self.assertNotIn(("motus", room.room_id, "bob"), main._player_activity)
+
+    def test_absent_host_is_replaced_and_empty_rooms_disappear(self):
+        manager = MemoriesManager()
+        room = manager.create_room("alice", "Alice")
+        manager.join_room(room.room_id, "bob", "Bob")
+
+        with self.tracked("memories", manager):
+            main._touch_room_activity("memories", room.room_id, "bob")
+            self.expire("memories", room, "alice")
+            main._evict_absent_players("memories", room.room_id, force=True)
+            self.assertEqual(room.host_player_id, "bob")
+
+            self.expire("memories", room, "bob")
+            main._prune_idle_rooms(["memories"])
+
+        self.assertEqual(manager.rooms, {})
+
+    def test_checks_are_throttled_and_rejoining_resets_the_absence_timer(self):
+        manager = MemoriesManager()
+        room = manager.create_room("alice", "Alice")
+        manager.join_room(room.room_id, "bob", "Bob")
+
+        with self.tracked("memories", manager):
+            main._evict_absent_players("memories", room.room_id)
+            self.expire("memories", room, "bob")
+            self.assertEqual(main._evict_absent_players("memories", room.room_id), [])
+            main._touch_room_activity("memories", room.room_id, "bob")
+            self.assertEqual(
+                main._evict_absent_players("memories", room.room_id, force=True), []
+            )
+
+        self.assertIn("bob", room.players)
+
+    def test_solo_battleship_bot_is_never_evicted(self):
+        manager = BattleshipManager()
+        room = manager.create_solo("alice", "Alice")
+        bot_id = next(player_id for player_id in room.players if player_id != "alice")
+
+        with self.tracked("battleship", manager):
+            self.expire("battleship", room, bot_id)
+            self.assertEqual(
+                main._evict_absent_players("battleship", room.room_id, force=True), []
+            )
+
+        self.assertIn(bot_id, room.players)
+
+    def test_scribbl_artist_with_a_closed_tab_loses_the_turn_quickly(self):
+        manager = ScribblManager()
+        room = manager.create_room("a", "Alice", 1)
+        for player_id, name in (("b", "Bob"), ("c", "Chloé")):
+            manager.join_room(room.room_id, player_id, name)
+        manager.start_room(room.room_id, "a")
+
+        with self.tracked("scribbl", manager):
+            for player_id in ("b", "c"):
+                main._touch_room_activity("scribbl", room.room_id, player_id)
+            self.expire("scribbl", room, "a")
+
+            evicted = main._evict_absent_players("scribbl", room.room_id, force=True)
+
+        self.assertEqual(evicted, ["a"])
+        self.assertEqual(room.phase, "reveal")
+        self.assertEqual(room.host_player_id, "b")
+        self.assertLess(
+            main.PLAYER_ABSENCE_TTL_BY_GAME["scribbl"], main.PLAYER_ABSENCE_TTL_SECONDS
+        )
+
+    def test_room_polling_over_http_marks_the_player_present(self):
+        from fastapi.testclient import TestClient
+
+        manager = MemoriesManager()
+        room = manager.create_room("alice", "Alice")
+        manager.join_room(room.room_id, "bob", "Bob")
+
+        with (
+            self.tracked("memories", manager),
+            patch.object(main, "memories_manager", manager),
+        ):
+            self.expire("memories", room, "alice")
+            self.expire("memories", room, "bob")
+            response = TestClient(main.app).get(
+                f"/api/memories/room/{room.room_id}", params={"player_id": "alice"}
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(list(room.players), ["alice"])
+            self.assertEqual(response.json()["player_count"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
