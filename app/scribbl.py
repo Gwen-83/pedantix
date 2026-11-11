@@ -87,6 +87,7 @@ class ScribblRoom:
     chat: list[dict[str, Any]] = field(default_factory=list)
     stats_recorded: bool = False
     created_at: float = field(default_factory=time.time)
+    next_turn_ready: bool = False
 
     @property
     def turn_count(self) -> int:
@@ -238,6 +239,7 @@ class ScribblManager:
             room.status = "playing"
             room.started_at = time.time()
             room.turn_index = 0
+            room.next_turn_ready = False
             self._begin_turn(room)
             return room
 
@@ -379,6 +381,12 @@ class ScribblManager:
             clean_text = re.sub(r"[\x00-\x1f\x7f<>]", "", text).strip()[:180]
             if not clean_text:
                 raise ValueError("Écrivez un message.")
+            secret_word = _normalize_word(room.word or "")
+            if room.phase == "drawing" and secret_word and (
+                any(_normalize_word(part) == secret_word for part in clean_text.split())
+                or (len(secret_word) >= 6 and secret_word in _normalize_word(clean_text))
+            ):
+                raise ValueError("Ne révélez pas le mot à deviner dans la discussion.")
             player.last_message_at = now
             room.chat.append({
                 "kind": "message",
@@ -394,6 +402,10 @@ class ScribblManager:
             room = self.rooms.get(room_id.upper())
             if room is None:
                 return None
+            player_ids = list(room.players)
+            leaving_position = (
+                player_ids.index(player_id) if player_id in room.players else None
+            )
             room.players.pop(player_id, None)
             room.guessed_player_ids.discard(player_id)
             if not room.players:
@@ -401,6 +413,14 @@ class ScribblManager:
                 return None
             if room.host_player_id == player_id:
                 room.host_player_id = next(iter(room.players))
+            if room.status == "playing" and leaving_position is not None:
+                previous_count = len(player_ids)
+                round_index, position = divmod(room.turn_index, previous_count)
+                if leaving_position < position:
+                    position -= 1
+                elif leaving_position == position:
+                    room.next_turn_ready = True
+                room.turn_index = round_index * len(room.players) + position
             if room.status == "playing":
                 if len(room.players) < MIN_PLAYERS:
                     room.status = "finished"
@@ -428,6 +448,7 @@ class ScribblManager:
             room.status = "lobby"
             room.phase = "lobby"
             room.turn_index = 0
+            room.next_turn_ready = False
             room.artist_player_id = None
             room.word_choices.clear()
             room.word = None
@@ -465,7 +486,10 @@ class ScribblManager:
         elif room.phase == "drawing":
             self._reveal_turn(room, now)
         elif room.phase == "reveal":
-            room.turn_index += 1
+            if room.next_turn_ready:
+                room.next_turn_ready = False
+            else:
+                room.turn_index += 1
             if room.turn_index >= room.turn_count:
                 room.status = "finished"
                 room.phase = "finished"

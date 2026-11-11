@@ -174,9 +174,10 @@
   }
 
   function showPlay() {
+    const wasHidden = play.hidden;
     home.hidden = true;
     play.hidden = false;
-    hideError(playError);
+    if (wasHidden) hideError(playError);
   }
 
   function renderRoomDirectory(rooms) {
@@ -582,6 +583,8 @@
     }
   }
 
+  let pollFailed = false;
+
   async function refreshRoom() {
     if (gameType !== 'room' || !state?.room_id || roomRefreshing || roomBusy) return;
     const generation = roomRefreshGeneration;
@@ -592,9 +595,16 @@
       );
       if (generation !== roomRefreshGeneration || roomBusy) return;
       state = nextState;
+      if (pollFailed) {
+        pollFailed = false;
+        hideError(playError);
+      }
       updateView();
     } catch (error) {
-      if (generation === roomRefreshGeneration) showError(playError, error.message);
+      if (generation === roomRefreshGeneration) {
+        pollFailed = true;
+        showError(playError, error.message);
+      }
     } finally {
       roomRefreshing = false;
     }

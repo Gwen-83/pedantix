@@ -50,6 +50,7 @@
   let lastShotResult = null;
   let knownSunkShips = new Set();
   let sinkingAnnouncementExpiresAt = 0;
+  let pollFailed = false;
 
   document.getElementById('naval-player-name').textContent = playerName;
 
@@ -62,7 +63,11 @@
       },
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || 'Une erreur est survenue. Réessayez.');
+    if (!response.ok) {
+      const error = new Error(data.detail || 'Une erreur est survenue. Réessayez.');
+      error.status = response.status;
+      throw error;
+    }
     return data;
   }
 
@@ -170,9 +175,10 @@
   }
 
   function showPlay() {
+    const wasHidden = play.hidden;
     home.hidden = true;
     play.hidden = false;
-    hideError(playError);
+    if (wasHidden) hideError(playError);
   }
 
   function coordinate(row, column) {
@@ -745,6 +751,7 @@
   async function randomizeFleet() {
     if (!state || roomBusy) return;
     roomBusy = true;
+    hideError(playError);
     try {
       state = await post('/api/battleship/room/randomize', roomPayload());
       draftFleet = {};
@@ -760,6 +767,7 @@
   async function setReady(ready) {
     if (!state || roomBusy) return;
     roomBusy = true;
+    hideError(playError);
     try {
       state = await post('/api/battleship/room/ready', { ...roomPayload(), ready });
       updateView();
@@ -774,6 +782,7 @@
   async function startGame() {
     if (!state || roomBusy) return;
     roomBusy = true;
+    hideError(playError);
     try {
       state = await post('/api/battleship/room/start', roomPayload());
       updateView();
@@ -789,6 +798,7 @@
     roomBusy = true;
     const button = document.getElementById('naval-restart-button');
     button.disabled = true;
+    hideError(playError);
     try {
       state = await post('/api/battleship/room/restart', roomPayload());
       lastShotResult = null;
@@ -831,9 +841,14 @@
       state = await request(
         `/api/battleship/room/${encodeURIComponent(state.room_id)}?player_id=${encodeURIComponent(playerId)}`,
       );
+      if (pollFailed) {
+        pollFailed = false;
+        hideError(playError);
+      }
       updateView();
     } catch (error) {
-      stopPolling();
+      if (error.status === 404) stopPolling();
+      pollFailed = true;
       showError(playError, error.message);
     }
   }

@@ -36,7 +36,11 @@
       },
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || 'Une erreur est survenue. Réessayez.');
+    if (!response.ok) {
+      const error = new Error(data.detail || 'Une erreur est survenue. Réessayez.');
+      error.status = response.status;
+      throw error;
+    }
     return data;
   }
 
@@ -143,9 +147,10 @@
   }
 
   function showPlay() {
+    const wasHidden = play.hidden;
     home.hidden = true;
     play.hidden = false;
-    hideError(playError);
+    if (wasHidden) hideError(playError);
   }
 
   function updateView() {
@@ -635,6 +640,8 @@
     }
   }
 
+  let pollFailed = false;
+
   async function refreshRoom() {
     if (gameType !== 'room' || !state || roomRefreshing || roomBusy) return;
     roomRefreshing = true;
@@ -645,10 +652,15 @@
       );
       if (generation !== roomRefreshGeneration || gameType !== 'room') return;
       state = nextState;
+      if (pollFailed) {
+        pollFailed = false;
+        hideError(playError);
+      }
       updateView();
     } catch (error) {
       if (generation !== roomRefreshGeneration || gameType !== 'room') return;
-      stopPolling();
+      if (error.status === 404) stopPolling();
+      pollFailed = true;
       showError(playError, error.message);
     } finally {
       roomRefreshing = false;

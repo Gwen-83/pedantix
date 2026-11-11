@@ -1,7 +1,7 @@
 import unittest
 import random
 
-from app.battleship import BattleshipManager, SHIP_LENGTHS
+from app.battleship import BattleshipManager, SHIP_LENGTHS, parse_coordinate
 
 
 def simple_fleet(offset=0):
@@ -305,7 +305,7 @@ class BattleshipTests(unittest.TestCase):
             shot = self.manager.choose_bot_shot(room)
 
             self.assertNotEqual(shot, "A1")
-            self.assertEqual(len(shot), 2)
+            self.assertEqual(parse_coordinate(shot), shot)
 
     def test_hard_bot_uses_only_public_shot_history_not_hidden_fleet_layout(self):
         first_manager = BattleshipManager(rng=random.Random(31))

@@ -237,6 +237,8 @@ class BitoguessrManager:
             game = self.get_solo(game_id, player_id)
             if game.status != "playing":
                 raise ValueError("Cette partie est terminée.")
+            if len(game.results) > game.round_index:
+                raise ValueError("Vous avez déjà répondu à cette manche.")
             question = game.questions[game.round_index]
             if guess not in question["countries"]:
                 raise ValueError("Ce pays n’a pas de données pour cette partie.")

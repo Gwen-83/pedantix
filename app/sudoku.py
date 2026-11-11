@@ -226,8 +226,10 @@ class SudokuGame:
     finish_reason: Optional[str] = None
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
+    finished_at: Optional[float] = None
 
     def to_dict(self) -> Dict:
+        end_time = self.finished_at if self.finished_at is not None else time.time()
         return {
             "game_id": self.game_id,
             "status": self.status,
@@ -239,7 +241,7 @@ class SudokuGame:
             "lives": self.player.lives,
             "eliminated": self.player.eliminated,
             "incorrect_cells": [list(cell) for cell in sorted(self.player.incorrect_cells)],
-            "elapsed_seconds": max(0, int(time.time() - self.created_at)),
+            "elapsed_seconds": max(0, int(end_time - self.created_at)),
             "solution": self.solution if self.status == "finished" else None,
         }
 
@@ -401,10 +403,12 @@ class SudokuManager:
             if game.player.eliminated:
                 game.status = "finished"
                 game.finish_reason = "eliminated"
+                game.finished_at = self._clock()
                 return game
             if _is_solved(game.player.board, game.solution):
                 game.status = "finished"
                 game.finish_reason = "solved"
+                game.finished_at = self._clock()
             return game
 
     def create_room(self, player_id: str, player_name: str, difficulty: str) -> SudokuRoom:

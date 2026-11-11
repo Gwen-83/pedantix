@@ -43,7 +43,11 @@
       },
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || `Erreur serveur (${response.status}).`);
+    if (!response.ok) {
+      const error = new Error(data.detail || `Erreur serveur (${response.status}).`);
+      error.status = response.status;
+      throw error;
+    }
     return data;
   }
 
@@ -697,6 +701,8 @@
     }
   }
 
+  let pollFailed = false;
+
   async function refreshRoom() {
     if (refreshing || gameType !== 'room' || !state) return;
     refreshing = true;
@@ -705,11 +711,18 @@
         `/api/bitoguessr/room/${encodeURIComponent(state.room_id)}?player_id=${encodeURIComponent(playerId)}`,
       );
       state = latest;
+      if (pollFailed) {
+        pollFailed = false;
+        clearError(gameError);
+      }
       render();
     } catch (error) {
+      pollFailed = true;
       setError(gameError, `Connexion au salon interrompue : ${error.message}`);
-      clearInterval(pollTimer);
-      pollTimer = null;
+      if (error.status === 404 || error.status === 403) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
     } finally {
       refreshing = false;
     }

@@ -85,8 +85,13 @@
       },
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok)
-      throw new Error(data.detail || "Une erreur est survenue. Réessayez.");
+    if (!response.ok) {
+      const error = new Error(
+        data.detail || "Une erreur est survenue. Réessayez.",
+      );
+      error.status = response.status;
+      throw error;
+    }
     return data;
   }
 
@@ -1791,6 +1796,8 @@
     }
   }
 
+  let pollFailed = false;
+
   async function refreshRoom() {
     if (!state || gameType !== "room" || roomRefreshing) return;
     roomRefreshing = true;
@@ -1799,6 +1806,10 @@
         `/api/geoguessr/room/${encodeURIComponent(state.room_id)}?player_id=${encodeURIComponent(playerId)}`,
       );
       if ((updatedState.match_number || 1) < (state.match_number || 1)) return;
+      if (pollFailed) {
+        pollFailed = false;
+        hideError(playError);
+      }
       const finalStateUnchanged =
         state.status === "finished" &&
         updatedState.status === "finished" &&
@@ -1807,7 +1818,8 @@
       if (finalStateUnchanged) return;
       renderView();
     } catch (error) {
-      stopPolling();
+      if (error.status === 404) stopPolling();
+      pollFailed = true;
       showError(playError, `Connexion au salon interrompue : ${error.message}`);
     } finally {
       roomRefreshing = false;

@@ -238,6 +238,70 @@ async def security_headers_middleware(request: Request, call_next):
     )
     return response
 
+ROOM_IDLE_TTL_SECONDS = 30 * 60
+SOLO_GAME_TTL_SECONDS = 12 * 3600
+_room_activity: Dict[tuple[str, str], float] = {}
+_room_activity_lock = threading.Lock()
+
+
+def _touch_room_activity(game_id: str, room_id: str) -> None:
+    with _room_activity_lock:
+        _room_activity[(game_id, room_id.strip().upper())] = time.time()
+
+
+def _prune_idle_rooms(game_ids: Optional[List[str]] = None) -> None:
+    """Supprime les salons que plus aucun client ne consulte et les vieilles parties solo."""
+    now = time.time()
+    for game_id in game_ids or list(STORE_ACTIVE_ROOM_GAMES):
+        game = STORE_ACTIVE_ROOM_GAMES.get(game_id)
+        if game is None:
+            continue
+        manager = game[1]
+        lock = getattr(manager, "_lock", getattr(manager, "lock", None))
+        if lock is None:
+            continue
+        with lock:
+            for room_key in list(manager.rooms):
+                activity_key = (game_id, str(room_key).upper())
+                with _room_activity_lock:
+                    last_seen = _room_activity.setdefault(activity_key, now)
+                    expired = now - last_seen > ROOM_IDLE_TTL_SECONDS
+                    if expired:
+                        del _room_activity[activity_key]
+                if not expired:
+                    continue
+                room = manager.rooms.pop(room_key)
+                with private_store_invitation_rooms_lock:
+                    private_store_invitation_rooms.discard((game_id, room.room_id))
+            solo_games = getattr(manager, "solo_games", None)
+            if isinstance(solo_games, dict):
+                for solo_id, solo_game in list(solo_games.items()):
+                    created_at = getattr(
+                        solo_game, "created_at", getattr(solo_game, "started_at", now)
+                    )
+                    if now - created_at > SOLO_GAME_TTL_SECONDS:
+                        del solo_games[solo_id]
+    with _room_activity_lock:
+        for activity_key, last_seen in list(_room_activity.items()):
+            if now - last_seen > 2 * ROOM_IDLE_TTL_SECONDS:
+                del _room_activity[activity_key]
+
+
+@app.middleware("http")
+async def room_activity_middleware(request: Request, call_next):
+    if request.method == "GET":
+        parts = request.url.path.strip("/").split("/")
+        if len(parts) == 4 and parts[0] == "api" and parts[2] == "room":
+            if parts[1] in STORE_ACTIVE_ROOM_GAMES:
+                _touch_room_activity(parts[1], parts[3])
+        elif len(parts) == 3 and parts[0] == "api" and parts[2] == "rooms":
+            if parts[1] == "social":
+                _prune_idle_rooms()
+            elif parts[1] in STORE_ACTIVE_ROOM_GAMES:
+                _prune_idle_rooms([parts[1]])
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def device_tracker_middleware(request: Request, call_next):
     """Journalise les détails des appareils uniquement lorsque le niveau DEBUG est actif."""
@@ -596,10 +660,10 @@ class MemoriesSoloFlipRequest(MemoriesPlayerRequest):
 
 class MemoriesSoloFinishRequest(MemoriesPlayerRequest):
     game_id: str = Field(min_length=1, max_length=64)
-    flips: List[int] = Field(max_items=2000)
+    flips: List[int] = Field(max_length=2000)
     elapsed_ms: int = Field(ge=0, le=3_600_000)
     grid_size: Optional[Literal[4, 6]] = None
-    deck: Optional[List[str]] = Field(default=None, max_items=36)
+    deck: Optional[List[str]] = Field(default=None, max_length=36)
 
 class MemoriesReadyRequest(MemoriesRoomRequest):
     ready: bool = True
@@ -851,8 +915,8 @@ async def linkedin_or_interpol_page():
 @app.get("/api/linkedin-or-interpol/image/{filename}")
 async def linkedin_or_interpol_image(filename: str):
     base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "data", "linkedin_or_interpol", "images")
-    file_path = os.path.join(base_dir, filename)
-    if not os.path.exists(file_path):
+    file_path = os.path.join(base_dir, os.path.basename(filename))
+    if os.path.basename(filename) != filename or not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Image introuvable.")
     return FileResponse(file_path)
 
@@ -1461,6 +1525,13 @@ def _leave_store_multiplayer_room(
                 return {"status": "left"}
             _record_scribbl_room_results(updated_room)
             return {"status": "left"}
+        if game_id == "undercover":
+            if player_id not in room.players:
+                return {"status": "already_left"}
+            updated_room = manager.leave_room(room_id, player_id)
+            if updated_room is not None:
+                _record_undercover_room_results(updated_room)
+            return {"status": "left"}
         players = getattr(room, "players", None)
         if not isinstance(players, dict):
             raise RuntimeError(f"Le salon {game_id}/{room_id} n'a pas de liste de joueurs.")
@@ -1471,44 +1542,100 @@ def _leave_store_multiplayer_room(
         if game_id == "memories" and players:
             player_order = list(players)
             current_player_id = player_order[room.turn_index % len(player_order)]
+        next_battleship_player_id = (
+            room.next_alive(player_id) if game_id == "battleship" else None
+        )
 
         players.pop(player_id)
-
-        if game_id in {"bitoguessr", "linkedin-or-interpol"}:
-            for round_state in room.rounds:
-                round_state.guesses.pop(player_id, None)
-            if (
-                game_id == "linkedin-or-interpol"
-                and room.status == "playing"
-                and room.is_round_complete()
-                and room.round_index >= room.round_count - 1
-            ):
-                room.status = "finished"
-        elif game_id == "plongee":
-            room.answers.pop(player_id, None)
-        elif game_id == "memories":
-            if players:
-                remaining_order = list(players)
-                room.turn_index = (
-                    remaining_order.index(current_player_id)
-                    if current_player_id in players
-                    else room.turn_index % len(remaining_order)
-                )
-            else:
-                room.turn_index = 0
-        elif game_id == "battleship" and room.current_player_id == player_id:
-            next_players = [
-                candidate_id
-                for candidate_id, candidate in players.items()
-                if not candidate.is_spectator and not candidate.eliminated
-            ]
-            room.current_player_id = next_players[0] if next_players else None
 
         if not players:
             manager.rooms.pop(room_key)
             with private_store_invitation_rooms_lock:
                 private_store_invitation_rooms.discard((game_id, room.room_id))
             return {"status": "left"}
+
+        active_players = [
+            candidate for candidate in players.values()
+            if not getattr(candidate, "is_spectator", False)
+        ]
+        if game_id in {"bitoguessr", "linkedin-or-interpol"}:
+            for round_state in room.rounds:
+                round_state.guesses.pop(player_id, None)
+            round_complete = (
+                room.is_round_complete()
+                if game_id == "linkedin-or-interpol"
+                else len(room.current_round.guesses) == len(players)
+            )
+            if (
+                room.status == "playing"
+                and round_complete
+                and room.round_index >= room.round_count - 1
+            ):
+                room.status = "finished"
+            if game_id == "bitoguessr":
+                _record_bitoguessr_room_results(room)
+            else:
+                _record_linkedin_room_result(room)
+        elif game_id == "plongee":
+            room.answers.pop(player_id, None)
+            if (
+                room.status == "playing"
+                and room.last_round is None
+                and len(room.answers) == len(players)
+            ):
+                manager._finish_room_round(room)
+        elif game_id == "memories":
+            remaining_order = list(players)
+            if current_player_id == player_id:
+                room.opened.clear()
+                room.pending_mismatch_until = None
+                room.turn_index = room.turn_index % len(remaining_order)
+            else:
+                room.turn_index = remaining_order.index(current_player_id)
+        elif game_id == "battleship":
+            if room.status == "playing":
+                alive_ids = room._alive_ids()
+                if len(alive_ids) <= 1:
+                    room.status = "finished"
+                    room.winner_player_id = alive_ids[0] if alive_ids else None
+                    room.current_player_id = None
+                elif room.current_player_id == player_id:
+                    room.current_player_id = (
+                        next_battleship_player_id
+                        if next_battleship_player_id in alive_ids
+                        else alive_ids[0]
+                    )
+            _record_battleship_room_results(room)
+        elif game_id == "motus":
+            if room.status == "playing" and all(
+                candidate.finished for candidate in active_players
+            ):
+                room.status = "finished"
+            _record_motus_room_results(room)
+        elif game_id == "cemantix":
+            room.pending.pop(player_id, None)
+            manager._advance_room(room, manager._clock())
+            _record_cemantix_room_results(room)
+        elif game_id == "sudoku":
+            if room.status == "playing" and all(
+                candidate.rank is not None or candidate.eliminated
+                for candidate in active_players
+            ):
+                room.status = "finished"
+                room.finish_reason = "all_finished"
+            _record_sudoku_room_results(room)
+        elif game_id == "geoguessr":
+            if room.status == "playing":
+                if not active_players:
+                    for candidate in players.values():
+                        candidate.is_spectator = False
+                    active_players = list(players.values())
+                if room.awaiting_next_round:
+                    if all(candidate.ready for candidate in active_players):
+                        manager._advance_room_round(room)
+                elif all(candidate.guess is not None for candidate in active_players):
+                    manager._finish_room_round(room)
+            _record_geoguessr_room_results(room)
 
         if room.host_player_id == player_id:
             active_player_ids = [
@@ -2528,6 +2655,34 @@ async def guess_motus_solo(req: MotusSoloGuessRequest):
     return {"result": result, **game.to_dict()}
 
 
+def _record_motus_room_results(room) -> None:
+    if room.status != "finished" or room.stats_recorded:
+        return
+    room.stats_recorded = True
+    duration = max(0, int(time.time() - (room.started_at or time.time())))
+    for player in room.players.values():
+        if player.is_spectator:
+            continue
+        if player.score:
+            increment_player_score(player.name, player.score, "motus")
+        record_user_game_finish(
+            player.name,
+            won=player.solved,
+            attempts=len(player.guesses),
+            points=player.score,
+            session_id=f"motus:{room.room_id}:{room.match_number}",
+            mode="multiplayer",
+            title="Motus",
+            duration_seconds=duration,
+            game_id="motus",
+            difficulty=room.difficulty,
+            metrics={
+                "score": player.score,
+                "max_attempts": MOTUS_DIFFICULTIES[room.difficulty],
+            },
+        )
+
+
 @app.post("/api/motus/room/create")
 async def create_motus_room(req: MotusPlayerRequest):
     try:
@@ -2601,29 +2756,7 @@ async def guess_motus_room(req: MotusRoomGuessRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if room.status == "finished" and not room.stats_recorded:
-        room.stats_recorded = True
-        for player in room.players.values():
-            if player.is_spectator:
-                continue
-            if player.score:
-                increment_player_score(player.name, player.score, "motus")
-            record_user_game_finish(
-                player.name,
-                won=player.solved,
-                attempts=len(player.guesses),
-                points=player.score,
-                session_id=f"motus:{room.room_id}:{room.match_number}",
-                mode="multiplayer",
-                title="Motus",
-                duration_seconds=max(0, int(time.time() - (room.started_at or time.time()))),
-                game_id="motus",
-                difficulty=room.difficulty,
-                metrics={
-                    "score": player.score,
-                    "max_attempts": MOTUS_DIFFICULTIES[room.difficulty],
-                },
-            )
+    _record_motus_room_results(room)
     return {"result": result, **room.to_dict(req.player_id)}
 
 
@@ -2633,6 +2766,7 @@ async def get_motus_room(room_id: str, player_id: str = Query(...)):
         room = motus_manager.get_room(room_id, player_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_motus_room_results(room)
     return room.to_dict(player_id)
 
 
@@ -2644,9 +2778,11 @@ def _record_undercover_room_results(room) -> None:
     for player in room.players.values():
         if player.is_spectator:
             continue
+        if player.role is None:
+            continue
         won = (
-            (room.winner == "citizens" and player.role == "citizen")
-            or (room.winner == "impostors" and player.role in ("undercover", "mr_white"))
+            (room.winner == "civilians" and player.role == "civilian")
+            or (room.winner == "undercover" and player.role in ("undercover", "mr_white"))
             or (room.winner == "mr_white" and player.role == "mr_white")
         )
         points = 3 if won else 0
@@ -2664,7 +2800,7 @@ def _record_undercover_room_results(room) -> None:
             game_id="undercover",
             difficulty="classique",
             metrics={
-                "role": player.role or "citizen",
+                "role": player.role,
                 "winner": room.winner or "",
                 "rounds": room.round_number,
             },
@@ -2830,6 +2966,7 @@ async def scribbl_websocket(
             try:
                 message = await asyncio.wait_for(websocket.receive_json(), timeout=0.5)
             except asyncio.TimeoutError:
+                _touch_room_activity("scribbl", room.room_id)
                 if scribbl_manager.advance_timers(room.room_id):
                     try:
                         current_room = scribbl_manager.get_room(room.room_id, player_id)
@@ -3107,6 +3244,8 @@ async def giveup_cemantix_solo(req: CemantixSoloActionRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not game.gave_up:
+        return game.to_dict()
     record_user_game_finish(
         game.player_name,
         won=False,
@@ -3114,6 +3253,7 @@ async def giveup_cemantix_solo(req: CemantixSoloActionRequest):
         session_id=f"cemantix:{game.game_id}",
         mode="solo",
         title="Cémantix",
+        surrendered=True,
         duration_seconds=max(0, int(time.time() - game.created_at)),
         game_id="cemantix",
         difficulty=game.difficulty,
@@ -3667,7 +3807,7 @@ async def set_sudoku_room_cell(req: SudokuRoomCellRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if awarded:
-        increment_player_score(req.player_name, awarded, "sudoku")
+        increment_player_score(room.players[req.player_id].name, awarded, "sudoku")
     _record_sudoku_room_results(room)
     return room.to_dict(req.player_id, time.time())
 
@@ -3732,7 +3872,7 @@ def _record_geoguessr_room_results(room) -> None:
         return
     duration = max(0, int(time.time() - (room.started_at or room.created_at)))
     participants = [player for player in room.players.values() if player.results]
-    best_score = max(player.total_score for player in participants)
+    best_score = max((player.total_score for player in participants), default=0)
     for player in participants:
         metrics = _geoguessr_metrics(player.results, player.total_score, room.region, room.variant)
         increment_player_score(player.name, player.total_score, "geoguessr")
@@ -4552,6 +4692,39 @@ async def get_bitoguessr_room(room_id: str, request: Request, player_id: str = Q
     return room.to_dict(player_id)
 
 
+def _record_battleship_room_results(room) -> None:
+    if room.status != "finished" or room.stats_recorded:
+        return
+    room.stats_recorded = True
+    duration = max(0, int(time.time() - (room.started_at or time.time())))
+    for player in room.players.values():
+        if player.is_spectator or (room.is_solo and player.player_id != room.host_player_id):
+            continue
+        attacks = player.attacks
+        won = player.player_id == room.winner_player_id
+        points = 3 if room.is_solo and won else 0
+        if points:
+            increment_player_score(player.name, points, "battleship")
+        record_user_game_finish(
+            player.name,
+            won=won,
+            attempts=len(attacks),
+            points=points,
+            session_id=f"battleship:{room.room_id}:{room.match_number}",
+            mode="solo" if room.is_solo else "multiplayer",
+            title="Bataille navale contre l’IA" if room.is_solo else "Bataille navale",
+            duration_seconds=duration,
+            game_id="battleship",
+            difficulty=room.bot_difficulty if room.is_solo else room.difficulty,
+            metrics={
+                "attacks": len(attacks),
+                "hits": sum(attack["hit"] for attack in attacks),
+                "ships_sunk": sum(bool(attack["sunk_ship"]) for attack in attacks),
+                "turns": room.turn_number,
+            },
+        )
+
+
 @app.post("/api/battleship/room/fleet")
 async def set_battleship_fleet(req: BattleshipFleetRequest):
     try:
@@ -4626,56 +4799,7 @@ async def fire_battleship_shot(req: BattleshipFireRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if room.status == "finished" and not room.stats_recorded:
-        room.stats_recorded = True
-        duration = max(0, int(time.time() - (room.started_at or time.time())))
-        if room.is_solo:
-            player = room.players[req.player_id]
-            attacks = player.attacks
-            won = player.player_id == room.winner_player_id
-            points = 3 if won else 0
-            if points:
-                increment_player_score(player.name, points, "battleship")
-            record_user_game_finish(
-                player.name,
-                won=won,
-                attempts=len(attacks),
-                points=points,
-                session_id=f"battleship:{room.room_id}:{room.match_number}",
-                mode="solo",
-                title="Bataille navale contre l’IA",
-                duration_seconds=duration,
-                game_id="battleship",
-                difficulty=room.bot_difficulty,
-                metrics={
-                    "attacks": len(attacks),
-                    "hits": sum(attack["hit"] for attack in attacks),
-                    "ships_sunk": sum(bool(attack["sunk_ship"]) for attack in attacks),
-                    "turns": room.turn_number,
-                },
-            )
-            return {"result": result, **room.to_dict(req.player_id)}
-        for player in room.players.values():
-            if player.is_spectator:
-                continue
-            attacks = player.attacks
-            record_user_game_finish(
-                player.name,
-                won=player.player_id == room.winner_player_id,
-                attempts=len(attacks),
-                session_id=f"battleship:{room.room_id}:{room.match_number}",
-                mode="multiplayer",
-                title="Bataille navale",
-                duration_seconds=duration,
-                game_id="battleship",
-                difficulty=room.difficulty,
-                metrics={
-                    "attacks": len(attacks),
-                    "hits": sum(attack["hit"] for attack in attacks),
-                    "ships_sunk": sum(bool(attack["sunk_ship"]) for attack in attacks),
-                    "turns": room.turn_number,
-                },
-            )
+    _record_battleship_room_results(room)
     return {"result": result, **room.to_dict(req.player_id)}
 
 

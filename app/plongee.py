@@ -347,6 +347,8 @@ class PlongeeManager:
             room = self.get_room(room_id, player_id)
             if room.status != "playing":
                 raise ValueError("Cette partie n’accepte pas de réponse maintenant.")
+            if room.last_round is not None:
+                raise ValueError("Cette manche est terminée. Attendez la suivante.")
             if player_id in room.answers:
                 raise ValueError("Vous avez déjà répondu à cette manche.")
             canonical, score, known = self._score(answer, room.answer_indexes[room.round_index])

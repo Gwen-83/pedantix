@@ -26,6 +26,7 @@
   let roomBusy = false;
   let entry = '';
   let lockedLetters = {};
+  let pollFailed = false;
 
   document.getElementById('motus-player-name').textContent = playerName;
 
@@ -39,7 +40,9 @@
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data.detail || 'Une erreur est survenue. Réessayez.');
+      const error = new Error(data.detail || 'Une erreur est survenue. Réessayez.');
+      error.status = response.status;
+      throw error;
     }
     return data;
   }
@@ -147,9 +150,10 @@
   }
 
   function showPlay() {
+    const wasHidden = play.hidden;
     home.hidden = true;
     play.hidden = false;
-    hideError(playError);
+    if (wasHidden) hideError(playError);
   }
 
   function updateView() {
@@ -650,10 +654,15 @@
       const becameFinished = state.status !== 'finished' && nextState.status === 'finished';
       state = nextState;
       if (becameFinished) renderedGuesses = '';
+      if (pollFailed) {
+        pollFailed = false;
+        hideError(playError);
+      }
       updateView();
       if (state.status === 'finished' && !state.restart_available) stopPolling();
     } catch (error) {
-      stopPolling();
+      if (error.status === 404) stopPolling();
+      pollFailed = true;
       showError(playError, error.message);
     }
   }

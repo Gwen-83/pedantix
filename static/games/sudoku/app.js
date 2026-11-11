@@ -88,7 +88,11 @@
       },
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || 'Une erreur est survenue. Réessayez.');
+    if (!response.ok) {
+      const error = new Error(data.detail || 'Une erreur est survenue. Réessayez.');
+      error.status = response.status;
+      throw error;
+    }
     return data;
   }
 
@@ -197,9 +201,10 @@
   }
 
   function showPlay() {
+    const wasHidden = play.hidden;
     home.hidden = true;
     play.hidden = false;
-    hideError(playError);
+    if (wasHidden) hideError(playError);
   }
 
   function ownPlayer() {
@@ -658,6 +663,7 @@
     roomBusy = true;
     const button = document.getElementById('sudoku-start-game');
     button.disabled = true;
+    hideError(playError);
     try {
       state = await post('/api/sudoku/room/start', roomPayload());
       updateView();
@@ -674,6 +680,7 @@
     roomBusy = true;
     const button = document.getElementById('sudoku-restart-game');
     button.disabled = true;
+    hideError(playError);
     try {
       state = await post('/api/sudoku/room/restart', roomPayload());
       selectedCell = [0, 0];
@@ -750,16 +757,25 @@
     writeQueue = writeQueue.then(operation, operation);
   }
 
+  let pollFailed = false;
+
   async function refreshRoom() {
     if (gameType !== 'room' || !state || roomBusy || pendingWrites) return;
     try {
       state = await request(
         `/api/sudoku/room/${encodeURIComponent(state.room_id)}?player_id=${encodeURIComponent(playerId)}`,
       );
+      if (pollFailed) {
+        pollFailed = false;
+        hideError(playError);
+      }
       updateView();
     } catch (error) {
-      if (pollingTimer) window.clearInterval(pollingTimer);
-      pollingTimer = null;
+      if (error.status === 404) {
+        if (pollingTimer) window.clearInterval(pollingTimer);
+        pollingTimer = null;
+      }
+      pollFailed = true;
       showError(playError, error.message);
     }
   }

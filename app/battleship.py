@@ -522,7 +522,7 @@ class BattleshipManager:
                     "is_member": player_id in room.players if player_id else False,
                 }
                 for room in self.rooms.values()
-                if room.status != "finished"
+                if room.status != "finished" and not room.is_solo
             ]
 
     def set_fleet(

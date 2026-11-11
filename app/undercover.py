@@ -333,6 +333,7 @@ class UndercoverManager:
                 or room.phase != "mr_white_guess"
                 or player.role != "mr_white"
                 or player.alive
+                or (room.last_result or {}).get("player_id") != player_id
             ):
                 raise ValueError("Vous ne pouvez pas proposer de mot maintenant.")
             if normalize_text(guess.strip()) == normalize_text(room.civilian_word or ""):
@@ -351,6 +352,54 @@ class UndercoverManager:
                     "player_name": player.name,
                 }
                 self._finish_or_continue(room)
+            return room
+
+    def leave_room(self, room_id: str, player_id: str) -> UndercoverRoom | None:
+        with self._lock:
+            room = self.rooms.get(room_id.upper())
+            if room is None or player_id not in room.players:
+                return room
+            awaited_guess = (
+                room.status == "playing"
+                and room.phase == "mr_white_guess"
+                and (room.last_result or {}).get("player_id") == player_id
+            )
+            leaver = room.players.pop(player_id)
+            if not room.players:
+                self.rooms.pop(room.room_id, None)
+                return None
+            if room.host_player_id == player_id:
+                room.host_player_id = next(
+                    (
+                        item.player_id for item in room.players.values()
+                        if not item.is_spectator
+                    ),
+                    next(iter(room.players)),
+                )
+            if room.status != "playing" or leaver.is_spectator:
+                return room
+
+            for player in room.players.values():
+                if player.vote == player_id:
+                    player.vote = None
+            if awaited_guess:
+                room.last_result = {
+                    "type": "mr_white_failed",
+                    "player_id": player_id,
+                    "player_name": leaver.name,
+                }
+                self._finish_or_continue(room)
+                return room
+            if room.phase == "mr_white_guess" or not leaver.alive:
+                return room
+
+            if self._apply_winner(room):
+                return room
+            alive = self._alive_players(room)
+            if room.phase == "discussion" and all(item.spoken for item in alive):
+                self._begin_voting(room)
+            elif room.phase == "voting" and all(item.vote is not None for item in alive):
+                self._resolve_vote(room, alive)
             return room
 
     def restart_room(self, room_id: str, player_id: str) -> UndercoverRoom:
@@ -436,26 +485,26 @@ class UndercoverManager:
         self._finish_or_continue(room)
 
     def _finish_or_continue(self, room: UndercoverRoom) -> None:
+        if not self._apply_winner(room):
+            self._next_round(room)
+
+    def _apply_winner(self, room: UndercoverRoom) -> bool:
         alive = self._alive_players(room)
         undercovers = sum(player.role == "undercover" for player in alive)
         civilians = sum(player.role == "civilian" for player in alive)
         mr_whites = sum(player.role == "mr_white" for player in alive)
-        if undercovers == 0 and not any(player.role == "mr_white" for player in alive):
-            room.winner = "civilians"
-            room.status = "finished"
-            room.phase = "finished"
-            return
-        if undercovers and undercovers >= civilians:
-            room.winner = "undercover"
-            room.status = "finished"
-            room.phase = "finished"
-            return
-        if civilians == 0 and undercovers == 0 and mr_whites:
-            room.winner = "mr_white"
-            room.status = "finished"
-            room.phase = "finished"
-            return
-        self._next_round(room)
+        if undercovers == 0 and mr_whites == 0:
+            winner = "civilians"
+        elif undercovers and undercovers >= civilians:
+            winner = "undercover"
+        elif undercovers == 0 and civilians <= 1:
+            winner = "mr_white"
+        else:
+            return False
+        room.winner = winner
+        room.status = "finished"
+        room.phase = "finished"
+        return True
 
     @staticmethod
     def _format_vote_counts(

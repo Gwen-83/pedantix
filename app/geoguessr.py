@@ -928,9 +928,9 @@ class GeoGuessrRoomPlayer:
     is_spectator: bool = False
     ready: bool = False
 
-    def public_state(self) -> Dict[str, Any]:
+    def public_state(self, include_guess: bool = True) -> Dict[str, Any]:
         guess_data = None
-        if self.guess:
+        if self.guess and include_guess:
             lat = self.guess.get("latitude") if self.guess.get("latitude") is not None else self.guess.get("guess_latitude")
             lng = self.guess.get("longitude") if self.guess.get("longitude") is not None else self.guess.get("guess_longitude")
             guess_data = {
@@ -1019,7 +1019,16 @@ class GeoGuessrRoom:
             ),
             "player_count": sum(not item.is_spectator for item in self.players.values()),
             "spectator_count": sum(item.is_spectator for item in self.players.values()),
-            "players": [item.public_state() for item in self.players.values()],
+            "players": [
+                item.public_state(
+                    include_guess=(
+                        item.player_id == player_id
+                        or self.awaiting_next_round
+                        or self.status != "playing"
+                    )
+                )
+                for item in self.players.values()
+            ],
             "player": player.public_state(),
             "last_round": self.last_round,
             "prompt": {"city": prompt[0], "country": prompt[1]} if prompt else None,
@@ -1567,8 +1576,7 @@ class GeoGuessrManager:
                 cities = _sample_country_flag_round(room.region, room.round_count)
                 image_ids, provider = [], None
             else:
-                pool = _city_pool(room.region)
-                cities = random.sample(pool, k=room.round_count)
+                cities = _sample_city_round(room.region, room.round_count)
                 image_ids, provider = [], None
             cities, image_ids, provider = self._prepare_room_panorama_views(
                 room.region,

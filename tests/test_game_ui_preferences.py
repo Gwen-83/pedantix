@@ -24,6 +24,7 @@ GAME_SETTINGS = {
     "geoguessr": {
         "geo-variant": "solo-variant",
         "geo-region": "solo-region",
+        "geo-solo-round-count": "solo-round-count",
         "geo-room-variant": "room-variant",
         "geo-room-region": "room-region",
         "geo-room-round-count": "room-round-count",
@@ -61,7 +62,7 @@ class SettingsParser(HTMLParser):
             self.labels.add(attributes["for"])
         if tag in {"input", "select"} and attributes.get("data-game-setting"):
             self.settings[attributes.get("id", "")] = attributes["data-game-setting"]
-        if tag == "script" and attributes.get("src") == "/static/shared/game-ui.js":
+        if tag == "script" and (attributes.get("src") or "").split("?")[0] == "/static/shared/game-ui.js":
             self.shared_ui_loaded = True
 
 

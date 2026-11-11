@@ -258,7 +258,7 @@ class MemoriesManager:
                 game.grid_size, game.cards, started_at=game.started_at,
             )
             for index in flips:
-                self._flip_solo_game(replay, index)
+                self._flip_solo_game(replay, index, replay=True)
             if replay.status != "finished":
                 raise ValueError("La séquence ne termine pas la partie.")
 
@@ -312,7 +312,7 @@ class MemoriesManager:
                 started_at=started_at,
             )
             for index in flips:
-                self._flip_solo_game(game, index)
+                self._flip_solo_game(game, index, replay=True)
             if game.status != "finished":
                 raise ValueError("La séquence ne termine pas la partie.")
             game.finished_at = started_at + max(0, elapsed_ms) / 1000
@@ -320,7 +320,12 @@ class MemoriesManager:
             return game
 
     @staticmethod
-    def _flip_solo_game(game: MemoryGame, index: int) -> None:
+    def _flip_solo_game(game: MemoryGame, index: int, replay: bool = False) -> None:
+        if replay and game.pending_mismatch_until is not None and index in game.opened:
+            # Une séquence rejouée n'a pas d'horodatage : le client n'autorise ce
+            # clic qu'une fois les deux cartes retournées face cachée.
+            game.opened.clear()
+            game.pending_mismatch_until = None
         _resolve_mismatch(game)
         if game.status != "playing":
             raise ValueError("Cette partie est terminée.")
