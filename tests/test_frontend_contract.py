@@ -199,6 +199,15 @@ class FrontendContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "static" / "shared" / "presence.js"
         ).read_text()
         self.assertIn("refreshGeneralChatNotifications", presence_script)
+
+    def test_chat_notification_prompt_remembers_a_dismissal(self):
+        presence_script = (
+            Path(__file__).resolve().parents[1] / "static" / "shared" / "presence.js"
+        ).read_text()
+        self.assertIn("pedantix_chat_notification_prompt_dismissed_at", presence_script)
+        self.assertIn("if (permission !== 'granted') pauseChatNotificationPrompt();", presence_script)
+        self.assertIn("permission !== 'default' || isChatNotificationPromptPaused()", presence_script)
+        self.assertIn("Ne plus proposer les notifications du chat pendant 30 jours", presence_script)
         self.assertIn("window.setInterval(refreshGeneralChatNotifications, 3_000)", presence_script)
         self.assertIn("window.Notification.requestPermission()", presence_script)
         self.assertIn("new window.Notification(", presence_script)

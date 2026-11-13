@@ -33,6 +33,26 @@
   let chatNotificationTimer = null;
   let chatNotificationStack = null;
   let chatNotificationPermissionButton = null;
+  let chatNotificationPermissionPrompt = null;
+  const chatNotificationPromptKey = 'pedantix_chat_notification_prompt_dismissed_at';
+  const chatNotificationPromptPauseMs = 30 * 24 * 60 * 60 * 1000;
+
+  function isChatNotificationPromptPaused() {
+    try {
+      const dismissedAt = Number(localStorage.getItem(chatNotificationPromptKey)) || 0;
+      return Date.now() - dismissedAt < chatNotificationPromptPauseMs;
+    } catch {
+      return false;
+    }
+  }
+
+  function pauseChatNotificationPrompt() {
+    try {
+      localStorage.setItem(chatNotificationPromptKey, String(Date.now()));
+    } catch (error) {
+      console.warn('Impossible de mémoriser le choix des notifications du chat.', error);
+    }
+  }
 
   const invitationGames = {
     motus: 'Motus',
@@ -108,15 +128,18 @@
       .shared-chat-notification a:hover { text-decoration: underline; }
       .shared-chat-notification strong, .shared-chat-notification span { display: block; }
       .shared-chat-notification span { margin-top: 3px; color: #d1d5db; overflow-wrap: anywhere; }
-      .shared-chat-notification button, .shared-chat-notification-permission {
+      .shared-chat-notification button, .shared-chat-notification-permission button {
         border: 1px solid rgba(255,255,255,.25); border-radius: 9px;
         background: rgba(255,255,255,.1); color: #fff; font: inherit; cursor: pointer;
       }
       .shared-chat-notification button { padding: 2px 8px; }
       .shared-chat-notification-permission {
         position: fixed; z-index: 14999; left: 16px; bottom: 64px;
-        padding: 9px 12px; background: #17212b; box-shadow: 0 6px 22px rgba(0,0,0,.25);
+        display: flex; gap: 6px; padding: 6px; border-radius: 12px;
+        background: #17212b; box-shadow: 0 6px 22px rgba(0,0,0,.25);
+        font: 500 .9rem/1.45 system-ui,sans-serif;
       }
+      .shared-chat-notification-permission button { padding: 7px 11px; }
       .shared-chat-notification-permission[hidden] { display: none; }
       @media (max-width: 520px) {
         .shared-chat-notification-stack { right: 10px; bottom: 10px; width: calc(100vw - 20px); }
@@ -132,33 +155,43 @@
     document.body.append(chatNotificationStack);
 
     if ('Notification' in window) {
+      chatNotificationPermissionPrompt = document.createElement('div');
+      chatNotificationPermissionPrompt.className = 'shared-chat-notification-permission';
       chatNotificationPermissionButton = document.createElement('button');
       chatNotificationPermissionButton.type = 'button';
-      chatNotificationPermissionButton.className = 'shared-chat-notification-permission';
       chatNotificationPermissionButton.textContent = 'Activer les notifications du chat';
       chatNotificationPermissionButton.addEventListener('click', async () => {
         chatNotificationPermissionButton.disabled = true;
         try {
-          await window.Notification.requestPermission();
+          const permission = await window.Notification.requestPermission();
+          if (permission !== 'granted') pauseChatNotificationPrompt();
         } catch (error) {
           console.warn('Impossible d’activer les notifications du chat.', error);
+          pauseChatNotificationPrompt();
         } finally {
           updateChatNotificationPermissionButton();
         }
       });
-      document.body.append(chatNotificationPermissionButton);
+      const dismissButton = document.createElement('button');
+      dismissButton.type = 'button';
+      dismissButton.textContent = '×';
+      dismissButton.title = 'Ne plus proposer pendant 30 jours';
+      dismissButton.setAttribute('aria-label', 'Ne plus proposer les notifications du chat pendant 30 jours');
+      dismissButton.addEventListener('click', () => {
+        pauseChatNotificationPrompt();
+        updateChatNotificationPermissionButton();
+      });
+      chatNotificationPermissionPrompt.append(chatNotificationPermissionButton, dismissButton);
+      document.body.append(chatNotificationPermissionPrompt);
       updateChatNotificationPermissionButton();
     }
   }
 
   function updateChatNotificationPermissionButton() {
-    if (!chatNotificationPermissionButton || !('Notification' in window)) return;
+    if (!chatNotificationPermissionPrompt || !('Notification' in window)) return;
     const permission = window.Notification.permission;
-    chatNotificationPermissionButton.hidden = permission !== 'default';
+    chatNotificationPermissionPrompt.hidden = permission !== 'default' || isChatNotificationPromptPaused();
     chatNotificationPermissionButton.disabled = false;
-    chatNotificationPermissionButton.title = permission === 'denied'
-      ? 'Les notifications sont bloquées dans les paramètres du navigateur.'
-      : '';
   }
 
   function showGeneralChatNotification(message) {
