@@ -387,10 +387,11 @@
     if (!state.trick.length) {
       const empty = document.createElement('li');
       empty.className = 'tarot-trick-empty';
+      const leaderIsMe = state.leader_seat === state.my_seat;
       empty.textContent = state.phase === 'bidding'
-        ? `Annonces en cours. ${seatName(state.leader_seat)} entamera le premier pli.`
+        ? `Annonces en cours. ${leaderIsMe ? 'Vous entamerez' : `${seatName(state.leader_seat)} entamera`} le premier pli.`
         : state.phase === 'playing'
-          ? `${seatName(state.leader_seat)} entame le pli.`
+          ? `${leaderIsMe ? 'Vous entamez' : `${seatName(state.leader_seat)} entame`} le pli.`
           : '';
       zone.replaceChildren(empty);
       return;

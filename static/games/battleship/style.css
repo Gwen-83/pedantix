@@ -275,6 +275,9 @@ footer { padding-top: 18px; color: #707b8e; font-size: 0.72rem; text-align: cent
   .naval-panel { border-radius: 18px; }
   .naval-battle-boards { grid-template-columns: 1fr; }
   .naval-board-card { padding: 12px; }
+  .naval-mode-card { flex-wrap: wrap; }
+  .naval-mode-content { flex: 1 1 180px; }
+  .naval-mode-card > button { flex: 1 1 100%; }
 }
 
 @media (max-width: 420px) {

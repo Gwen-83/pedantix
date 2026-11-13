@@ -125,6 +125,7 @@ button:disabled,
 main[class$="-shell"] {
   width: min(920px, 100%);
   padding: 20px 24px 18px;
+  box-sizing: border-box;
 }
 
 main.naval-shell { width: min(1180px, 100%); }

@@ -91,7 +91,7 @@
 }
 
 .scribbl-join { display: flex; gap: 8px; }
-.scribbl-join input { flex: 1; text-transform: uppercase; }
+.scribbl-join input { flex: 1 1 0; width: 0; text-transform: uppercase; }
 .scribbl-directory { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--game-border); }
 .scribbl-section-heading p { margin: 4px 0 0; color: var(--game-muted); font-size: .8rem; }
 .scribbl-room-directory { display: grid; gap: 8px; margin-top: 13px; }
@@ -302,6 +302,7 @@
   border-radius: 8px;
   background: var(--game-panel);
   border: 1px solid var(--game-border);
+}
 .scribbl-banner-tip {
   font-size: .78rem;
   color: var(--game-muted);
