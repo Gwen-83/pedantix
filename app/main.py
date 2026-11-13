@@ -90,6 +90,10 @@ from app.scribbl import (
     MAX_PLAYERS as SCRIBBL_MAX_PLAYERS,
     scribbl_manager,
 )
+from app.tarot_africain import (
+    MAX_PLAYERS as TAROT_MAX_PLAYERS,
+    tarot_africain_manager,
+)
 from app.game import GameManager, GameSession
 from app.room import room_manager
 from app.network import get_primary_lan_ip, get_all_lan_ips
@@ -112,7 +116,7 @@ logger = logging.getLogger(__name__)
 GAME_LAUNCH_SLUGS = {
     "motus", "undercover", "cemantix", "chiffrantix", "battleship",
     "sudoku", "geoguessr", "bitoguessr", "plongee", "memories", "scribbl",
-    "linkedin-or-interpol",
+    "linkedin-or-interpol", "tarot-africain",
 }
 GAME_PAUSE_MAINTENANCE_MESSAGE = (
     "Les parties sont en pause pour cause de maintenance. Réessayez plus tard."
@@ -245,7 +249,7 @@ _room_activity_lock = threading.Lock()
 
 
 PLAYER_ABSENCE_TTL_SECONDS = 90
-PLAYER_ABSENCE_TTL_BY_GAME = {"scribbl": 30}
+PLAYER_ABSENCE_TTL_BY_GAME = {"scribbl": 30, "tarot-africain": 30}
 PLAYER_ABSENCE_CHECK_INTERVAL_SECONDS = 3
 _player_activity: Dict[tuple[str, str, str], float] = {}
 _room_absence_checks: Dict[tuple[str, str], float] = {}
@@ -364,8 +368,11 @@ async def room_activity_middleware(request: Request, call_next):
                 _touch_room_activity(
                     parts[1], parts[3], request.query_params.get("player_id")
                 )
-                if _evict_absent_players(parts[1], parts[3]) and parts[1] == "scribbl":
-                    await _broadcast_scribbl_state(parts[3])
+                if _evict_absent_players(parts[1], parts[3]):
+                    if parts[1] == "scribbl":
+                        await _broadcast_scribbl_state(parts[3])
+                    elif parts[1] == "tarot-africain":
+                        await _broadcast_tarot_state(parts[3])
         elif len(parts) == 3 and parts[0] == "api" and parts[2] == "rooms":
             if parts[1] == "social":
                 _prune_idle_rooms()
@@ -435,7 +442,7 @@ class PresenceRequest(BaseModel):
     game_id: Literal[
         "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship", "geoguessr",
         "undercover", "bitoguessr", "plongee", "store", "memories", "scribbl",
-        "linkedin-or-interpol",
+        "linkedin-or-interpol", "tarot-africain",
     ]
 
 class StoreChatMessageRequest(BaseModel):
@@ -446,6 +453,7 @@ class StoreInvitationRequest(BaseModel):
     game_id: Literal[
         "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
         "geoguessr", "plongee", "memories", "scribbl", "linkedin-or-interpol",
+        "tarot-africain",
     ]
 
 class StoreInvitationActionRequest(BaseModel):
@@ -668,6 +676,13 @@ class ScribblRoomRequest(ScribblPlayerRequest):
 
 class ScribblRoomCreateRequest(ScribblPlayerRequest):
     rounds_per_player: Literal[1, 2, 3] = 2
+
+class TarotPlayerRequest(BaseModel):
+    player_id: str = Field(min_length=1, max_length=100)
+    player_name: str = Field(min_length=1, max_length=40)
+
+class TarotRoomRequest(TarotPlayerRequest):
+    room_id: str = Field(min_length=1, max_length=6)
 
 class GeoGuessrPlayerRequest(BaseModel):
     player_id: str
@@ -900,6 +915,13 @@ async def scribbl_page():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="La page Scribbl est introuvable.")
+
+@app.get("/games/tarot-africain/")
+async def tarot_africain_page():
+    index_path = os.path.join(STATIC_DIR, "games", "tarot-africain", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="La page Tarot africain est introuvable.")
 
 @app.get("/games/undercover/")
 async def undercover_page():
@@ -1454,6 +1476,7 @@ STORE_INVITATION_GAMES = {
     "plongee": ("Plongée", plongee_manager, "plongee_player_id"),
     "memories": ("Memory", memories_manager, "memories_player_id"),
     "scribbl": ("Scribbl", scribbl_manager, "scribbl_player_id"),
+    "tarot-africain": ("Tarot africain", tarot_africain_manager, "tarot_player_id"),
     "linkedin-or-interpol": (
         "LinkedIn ou Interpol",
         linkedin_or_interpol_manager,
@@ -1472,6 +1495,7 @@ STORE_ROOM_PLAYER_LIMITS = {
     "plongee": 8,
     "memories": 8,
     "scribbl": SCRIBBL_MAX_PLAYERS,
+    "tarot-africain": TAROT_MAX_PLAYERS,
     "linkedin-or-interpol": 8,
 }
 STORE_ACTIVE_ROOM_GAMES = {
@@ -1597,6 +1621,14 @@ def _leave_store_multiplayer_room(
                     private_store_invitation_rooms.discard((game_id, room.room_id))
                 return {"status": "left"}
             _record_scribbl_room_results(updated_room)
+            return {"status": "left"}
+        if game_id == "tarot-africain":
+            if room.seat_index(player_id) is None:
+                return {"status": "already_left"}
+            updated_room = manager.leave_room(room_id, player_id)
+            if updated_room is None:
+                with private_store_invitation_rooms_lock:
+                    private_store_invitation_rooms.discard((game_id, room.room_id))
             return {"status": "left"}
         if game_id == "undercover":
             if player_id not in room.players:
@@ -1734,6 +1766,8 @@ async def leave_store_multiplayer_room(
     _forget_player_activity(game_id, req.room_id, req.player_id)
     if game_id == "scribbl":
         await _broadcast_scribbl_state(req.room_id)
+    elif game_id == "tarot-africain":
+        await _broadcast_tarot_state(req.room_id)
     return result
 
 
@@ -3141,6 +3175,202 @@ async def scribbl_websocket(
         room_connections.pop(websocket, None)
         if not room_connections:
             _scribbl_sockets.pop(room.room_id, None)
+
+
+_tarot_sockets: dict[str, dict[WebSocket, str]] = {}
+_tarot_broadcast_locks: dict[str, asyncio.Lock] = {}
+
+
+def _tarot_room_broadcast_lock(room_id: str) -> asyncio.Lock:
+    return _tarot_broadcast_locks.setdefault(room_id.upper(), asyncio.Lock())
+
+
+def _record_tarot_room_results(room) -> None:
+    if room.status != "finished" or room.stats_recorded or room.started_at is None:
+        return
+    room.stats_recorded = True
+    duration = max(0, int(time.time() - room.started_at))
+    winner_ids = set(room.winner_ids())
+    for seat in room.seats:
+        if seat.is_bot:
+            continue
+        won = seat.player_id in winner_ids
+        points = 3 if won else 0
+        if points:
+            increment_player_score(seat.name, points, "tarot-africain")
+        record_user_game_finish(
+            seat.name,
+            won=won,
+            attempts=seat.penalties,
+            points=points,
+            session_id=f"tarot-africain:{room.room_id}:{room.match_number}",
+            mode="multiplayer",
+            title="Tarot africain",
+            duration_seconds=duration,
+            game_id="tarot-africain",
+            difficulty=f"{len(room.seats)} joueurs",
+            metrics={
+                "penalties": seat.penalties,
+                "exact_bids": seat.exact_bids,
+                "rounds": len(room.schedule),
+                "players": len(room.seats),
+            },
+        )
+
+
+async def _broadcast_tarot_state(room_id: str) -> None:
+    async with _tarot_room_broadcast_lock(room_id):
+        connections = list(_tarot_sockets.get(room_id.upper(), {}).items())
+        for websocket, player_id in connections:
+            try:
+                room = tarot_africain_manager.get_room(room_id, player_id)
+                await websocket.send_json({
+                    "type": "state",
+                    "state": room.to_dict(player_id),
+                })
+            except KeyError:
+                try:
+                    await websocket.send_json({"type": "left"})
+                except (RuntimeError, WebSocketDisconnect, OSError):
+                    _tarot_sockets.get(room_id.upper(), {}).pop(websocket, None)
+            except (RuntimeError, WebSocketDisconnect, OSError) as exc:
+                logger.warning("Envoi Tarot africain impossible au joueur %s : %s", player_id, exc)
+                _tarot_sockets.get(room_id.upper(), {}).pop(websocket, None)
+
+
+def _tarot_session_start(room) -> None:
+    record_multigame_session_start(
+        f"tarot-africain:{room.room_id}:{room.match_number}",
+        "tarot-africain",
+        "multiplayer",
+        "Tarot africain",
+        f"{len(room.seats)} joueurs",
+    )
+
+
+@app.get("/api/tarot-africain/rooms")
+async def list_tarot_rooms(player_id: Optional[str] = Query(None)):
+    rooms = tarot_africain_manager.list_rooms(player_id)
+    for room in list(tarot_africain_manager.rooms.values()):
+        _record_tarot_room_results(room)
+    return {"rooms": _filter_private_invitation_rooms("tarot-africain", rooms)}
+
+
+@app.post("/api/tarot-africain/room/create")
+async def create_tarot_room(req: TarotPlayerRequest):
+    room = tarot_africain_manager.create_room(req.player_id, req.player_name)
+    _touch_room_activity("tarot-africain", room.room_id, req.player_id)
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/tarot-africain/room/join")
+async def join_tarot_room(req: TarotRoomRequest):
+    _require_invitation_room_member("tarot-africain", req.room_id, req.player_id)
+    _touch_room_activity("tarot-africain", req.room_id, req.player_id)
+    try:
+        room = tarot_africain_manager.join_room(req.room_id, req.player_id, req.player_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record_tarot_room_results(room)
+    await _broadcast_tarot_state(room.room_id)
+    return room.to_dict(req.player_id)
+
+
+@app.get("/api/tarot-africain/room/{room_id}")
+async def get_tarot_room(room_id: str, player_id: str = Query(...)):
+    try:
+        room = tarot_africain_manager.get_room(room_id, player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _record_tarot_room_results(room)
+    return room.to_dict(player_id)
+
+
+@app.websocket("/ws/tarot-africain/{room_id}")
+async def tarot_websocket(
+    websocket: WebSocket,
+    room_id: str,
+    player_id: str = Query(..., min_length=1, max_length=100),
+):
+    try:
+        room = tarot_africain_manager.get_room(room_id, player_id)
+    except KeyError:
+        await websocket.close(code=4404, reason="Salon ou joueur introuvable.")
+        return
+
+    await websocket.accept()
+    connections = _tarot_sockets.setdefault(room.room_id, {})
+    connections[websocket] = player_id
+    try:
+        await websocket.send_json({"type": "state", "state": room.to_dict(player_id)})
+        while True:
+            _touch_room_activity("tarot-africain", room.room_id, player_id)
+            if _evict_absent_players("tarot-africain", room.room_id):
+                await _broadcast_tarot_state(room.room_id)
+            try:
+                message = await asyncio.wait_for(websocket.receive_json(), timeout=0.5)
+            except asyncio.TimeoutError:
+                if tarot_africain_manager.advance_timers(room.room_id):
+                    try:
+                        current_room = tarot_africain_manager.get_room(room.room_id, player_id)
+                    except KeyError:
+                        continue
+                    _record_tarot_room_results(current_room)
+                    await _broadcast_tarot_state(room.room_id)
+                continue
+
+            action = message.get("type") if isinstance(message, dict) else None
+            try:
+                if action == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    continue
+                if action == "start":
+                    async with _game_launch_process_lock():
+                        with global_game_launch_guard() as paused:
+                            if paused:
+                                raise ValueError(GAME_PAUSE_MAINTENANCE_MESSAGE)
+                            room = tarot_africain_manager.start_room(room.room_id, player_id)
+                    _tarot_session_start(room)
+                elif action == "bid":
+                    room = tarot_africain_manager.place_bid(
+                        room.room_id, player_id, message.get("bid")
+                    )
+                elif action == "play":
+                    room = tarot_africain_manager.play_card(
+                        room.room_id,
+                        player_id,
+                        message.get("card"),
+                        message.get("excuse_mode"),
+                    )
+                elif action == "restart":
+                    async with _game_launch_process_lock():
+                        with global_game_launch_guard() as paused:
+                            if paused:
+                                raise ValueError(GAME_PAUSE_MAINTENANCE_MESSAGE)
+                            room = tarot_africain_manager.restart_room(room.room_id, player_id)
+                else:
+                    raise ValueError("Action Tarot africain inconnue.")
+            except KeyError as exc:
+                await websocket.send_json({"type": "error", "message": str(exc)})
+                continue
+            except (ValueError, PermissionError, TypeError) as exc:
+                await websocket.send_json({"type": "error", "message": str(exc)})
+                continue
+
+            _record_tarot_room_results(room)
+            await _broadcast_tarot_state(room.room_id)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Erreur WebSocket Tarot africain dans le salon %s.", room.room_id)
+        raise
+    finally:
+        room_connections = _tarot_sockets.get(room.room_id, {})
+        room_connections.pop(websocket, None)
+        if not room_connections:
+            _tarot_sockets.pop(room.room_id, None)
 
 
 @app.get("/api/undercover/room/{room_id}")

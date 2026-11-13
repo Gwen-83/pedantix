@@ -631,6 +631,7 @@ _GAME_CATALOG = (
     ("memories", "Memory"),
     ("scribbl", "Scribbl"),
     ("linkedin-or-interpol", "LinkedIn ou Interpol"),
+    ("tarot-africain", "Tarot africain"),
 )
 
 
@@ -2541,6 +2542,17 @@ def _summarize_game_metrics(game_id: str, metric_rows: List[Dict[str, Any]]) -> 
             "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
             "best_score": max(scores) if scores else None,
             "best_streak": max(streaks) if streaks else None,
+        }
+    if game_id == "tarot-africain":
+        penalties = numbers("penalties")
+        exact_bids = numbers("exact_bids")
+        rounds = numbers("rounds")
+        total_rounds = sum(rounds)
+        return {
+            "avg_penalties": round(sum(penalties) / len(penalties), 1) if penalties else None,
+            "best_penalties": min(penalties) if penalties else None,
+            "exact_bid_rate": round(sum(exact_bids) / total_rounds * 100, 1)
+            if total_rounds else None,
         }
     return {}
 

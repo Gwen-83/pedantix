@@ -14,6 +14,7 @@
     memories: 'Memory',
     scribbl: 'Scribbl',
     'linkedin-or-interpol': 'LinkedIn ou Interpol',
+    'tarot-africain': 'Tarot africain',
     store: 'La ludothèque',
   };
   const gameId = document.documentElement.dataset.presenceGame
@@ -44,6 +45,7 @@
     memories: 'Memory',
     scribbl: 'Scribbl',
     'linkedin-or-interpol': 'LinkedIn ou Interpol',
+    'tarot-africain': 'Tarot africain',
   };
   const gamePlayerStorageKeys = {
     motus: 'motus_player_id',
@@ -56,6 +58,7 @@
     memories: 'memories_player_id',
     scribbl: 'scribbl_player_id',
     'linkedin-or-interpol': 'linkedin_player_id',
+    'tarot-africain': 'tarot_player_id',
   };
 
   function socialHeaders(json = false) {

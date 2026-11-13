@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="fr" data-presence-game="tarot-africain">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#273238">
+  <title>Tarot africain — La ludothèque</title>
+  <script>
+    (() => {
+      if (!localStorage.getItem('pedantix_auth_user') || !localStorage.getItem('pedantix_auth_token')) {
+        const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.replace(`/?login=1&next=${encodeURIComponent(next)}`);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/shared/game-ui.css">
+  <link rel="stylesheet" href="/static/games/tarot-africain/style.css">
+</head>
+<body>
+  <main class="tarot-shell">
+    <header class="tarot-header">
+      <a class="tarot-back" href="/">← Ludothèque</a>
+      <div class="tarot-brand"><span aria-hidden="true">🂡</span> TAROT AFRICAIN</div>
+      <span id="tarot-player-name" class="tarot-account"></span>
+      <label class="tarot-theme" for="shared-theme-select">
+        <span aria-hidden="true">🎨</span>
+        <select id="shared-theme-select" aria-label="Thème de l’interface">
+          <option value="dark-colorful">Coloré sombre</option>
+          <option value="midnight">Nuit étoilée</option>
+          <option value="light-colorful">Coloré clair</option>
+          <option value="light-grey">Gris clair</option>
+          <option value="dark-grey">Charbon sombre</option>
+          <option value="parchment">Parchemin</option>
+        </select>
+      </label>
+    </header>
+
+    <section id="tarot-home" class="tarot-panel">
+      <p class="tarot-kicker">Cartes · plis · prédiction</p>
+      <h1>Annoncez juste !</h1>
+      <p class="tarot-intro">Avant chaque manche, annoncez le nombre exact de plis que vous allez remporter. Chaque pli d’écart coûte un point de pénalité : le joueur qui en a le moins à la fin gagne.</p>
+      <div class="tarot-home-grid">
+        <section class="tarot-home-card">
+          <h2>Créer un salon</h2>
+          <p class="tarot-muted">De 2 à 6 joueurs. Chaque joueur distribue à son tour un cycle complet de manches.</p>
+          <button id="tarot-create" class="tarot-button tarot-button-primary" type="button">Créer un salon</button>
+        </section>
+        <section class="tarot-home-card">
+          <h2>Rejoindre un salon</h2>
+          <label class="sr-only" for="tarot-room-code">Code du salon</label>
+          <div class="tarot-join">
+            <input id="tarot-room-code" maxlength="6" autocomplete="off" placeholder="Code du salon">
+            <button id="tarot-join" class="tarot-button" type="button">Rejoindre</button>
+          </div>
+        </section>
+      </div>
+      <p id="tarot-home-error" class="tarot-error" role="alert" hidden></p>
+      <section class="tarot-directory">
+        <div class="tarot-section-heading">
+          <div><h2>Salons ouverts</h2><p>Retrouvez vos amis ou reprenez une partie que vous avez quittée.</p></div>
+          <button id="tarot-refresh" class="tarot-button" type="button">Actualiser</button>
+        </div>
+        <div id="tarot-room-directory" class="tarot-room-directory" aria-live="polite"></div>
+      </section>
+      <details class="tarot-rules">
+        <summary>Règles du jeu</summary>
+        <ul>
+          <li>22 cartes : les atouts 1 à 21 et l’Excuse. L’Excuse vaut 0 (MIN) ou 22 (MAX), au choix de celui qui la joue, annoncé publiquement.</li>
+          <li>Toutes les cartes sont mélangées avant chaque manche. Les cartes non distribuées sont mises de côté et ne sont jamais révélées.</li>
+          <li>Les annonces commencent à gauche du distributeur ; le distributeur annonce en dernier. Une annonce est libre, mais le distributeur ne peut pas rendre la somme des annonces égale au nombre de cartes distribuées.</li>
+          <li>Chaque joueur joue la carte de son choix ; la plus forte remporte le pli et son gagnant entame le suivant.</li>
+          <li>Pénalité de la manche = écart entre plis annoncés et plis remportés.</li>
+          <li>Chaque cycle se termine par deux manches à une carte : la première avec sa carte visible, la seconde avec sa carte cachée mais celles des autres visibles.</li>
+          <li>Vous disposez de 60 secondes pour annoncer ou jouer ; passé ce délai, le jeu agit automatiquement. Si vous quittez la table, un bot joue à votre place jusqu’à votre retour.</li>
+        </ul>
+      </details>
+      <p class="tarot-stats-note">Les vainqueurs gagnent 3 points au classement général. Vos parties terminées alimentent vos statistiques.</p>
+    </section>
+
+    <section id="tarot-game" class="tarot-panel" hidden>
+      <div class="tarot-game-heading">
+        <div>
+          <p id="tarot-phase-label" class="tarot-kicker">Salon d’attente</p>
+          <h1 id="tarot-room-title">Salon</h1>
+        </div>
+        <button id="tarot-leave" class="tarot-button" type="button">Quitter</button>
+      </div>
+      <p id="tarot-game-error" class="tarot-error" role="alert" hidden></p>
+
+      <section id="tarot-lobby" class="tarot-lobby" hidden>
+        <div class="tarot-invite">
+          <span>Code du salon</span><strong id="tarot-invite-code"></strong>
+          <button id="tarot-copy" class="tarot-button" type="button">Copier le lien</button>
+        </div>
+        <p id="tarot-lobby-message" class="tarot-muted"></p>
+        <ul id="tarot-lobby-players" class="tarot-player-list"></ul>
+        <div class="tarot-lobby-actions">
+          <span id="tarot-lobby-summary"></span>
+          <button id="tarot-start" class="tarot-button tarot-button-primary" type="button" hidden>Démarrer</button>
+        </div>
+      </section>
+
+      <section id="tarot-play" hidden>
+        <div class="tarot-roundbar">
+          <div class="tarot-round-info">
+            <span id="tarot-round-label" class="tarot-round-label"></span>
+            <span id="tarot-round-detail" class="tarot-round-detail"></span>
+          </div>
+          <div id="tarot-countdown" class="tarot-countdown" aria-live="off">--</div>
+          <div class="tarot-round-kind">
+            <span id="tarot-round-badge" class="tarot-round-badge" hidden></span>
+          </div>
+        </div>
+
+        <div id="tarot-status" class="tarot-status" aria-live="polite">
+          <span id="tarot-status-icon" class="tarot-status-icon" aria-hidden="true">⏳</span>
+          <div>
+            <strong id="tarot-status-title"></strong>
+            <p id="tarot-status-desc"></p>
+          </div>
+        </div>
+
+        <div class="tarot-layout">
+          <section class="tarot-table" aria-label="Table de jeu">
+            <ul id="tarot-opponents" class="tarot-opponents"></ul>
+
+            <section class="tarot-trick-zone" aria-label="Pli en cours">
+              <div class="tarot-trick-heading">
+                <h2 id="tarot-trick-title">Pli en cours</h2>
+                <span id="tarot-bids-total" class="tarot-tag"></span>
+              </div>
+              <ol id="tarot-trick" class="tarot-trick"></ol>
+            </section>
+
+            <section id="tarot-round-summary" class="tarot-round-summary" hidden aria-live="polite">
+              <h2 id="tarot-round-summary-title">Fin de la manche</h2>
+              <div class="tarot-table-scroll">
+                <table class="tarot-summary-table">
+                  <thead><tr><th scope="col">Joueur</th><th scope="col">Annonce</th><th scope="col">Plis</th><th scope="col">Pénalité</th><th scope="col">Total</th></tr></thead>
+                  <tbody id="tarot-round-summary-body"></tbody>
+                </table>
+              </div>
+              <p id="tarot-round-summary-next" class="tarot-muted"></p>
+            </section>
+
+            <section id="tarot-me" class="tarot-me" aria-label="Votre jeu">
+              <div class="tarot-me-heading">
+                <div id="tarot-me-identity" class="tarot-me-identity"></div>
+                <div id="tarot-me-stats" class="tarot-me-stats"></div>
+              </div>
+
+              <div id="tarot-bid-panel" class="tarot-bid-panel" hidden>
+                <div id="tarot-bid-choose">
+                  <label for="tarot-bid-input" class="tarot-bid-label">Combien de plis pensez-vous remporter ?</label>
+                  <div class="tarot-bid-controls">
+                    <button id="tarot-bid-minus" class="tarot-button tarot-bid-step" type="button" aria-label="Retirer un pli">−</button>
+                    <input id="tarot-bid-input" type="number" inputmode="numeric" min="0" step="1" value="0">
+                    <button id="tarot-bid-plus" class="tarot-button tarot-bid-step" type="button" aria-label="Ajouter un pli">+</button>
+                    <div id="tarot-bid-quick" class="tarot-bid-quick" role="group" aria-label="Annonces rapides"></div>
+                  </div>
+                  <p id="tarot-bid-rule" class="tarot-bid-rule" hidden></p>
+                  <button id="tarot-bid-submit" class="tarot-button tarot-button-primary" type="button">Annoncer</button>
+                </div>
+                <div id="tarot-bid-confirm" class="tarot-bid-confirm" hidden>
+                  <p id="tarot-bid-confirm-text"></p>
+                  <div class="tarot-actions-row">
+                    <button id="tarot-bid-confirm-yes" class="tarot-button tarot-button-primary" type="button">Confirmer l’annonce</button>
+                    <button id="tarot-bid-confirm-back" class="tarot-button" type="button">Revenir en arrière</button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="tarot-excuse-panel" class="tarot-excuse-panel" hidden>
+                <p>Vous jouez l’Excuse : choisissez sa valeur, elle sera annoncée à tous.</p>
+                <div class="tarot-actions-row">
+                  <button id="tarot-excuse-min" class="tarot-button" type="button">MIN · vaut 0</button>
+                  <button id="tarot-excuse-max" class="tarot-button tarot-button-primary" type="button">MAX · vaut 22</button>
+                  <button id="tarot-excuse-cancel" class="tarot-button" type="button">Annuler</button>
+                </div>
+              </div>
+
+              <ul id="tarot-hand" class="tarot-hand" aria-label="Vos cartes"></ul>
+            </section>
+          </section>
+
+          <aside class="tarot-sidebar">
+            <section class="tarot-side-panel">
+              <div class="tarot-side-heading">
+                <h2>Feuille de marque</h2>
+                <span id="tarot-score-tag" class="tarot-tag"></span>
+              </div>
+              <div class="tarot-table-scroll">
+                <table class="tarot-score-table">
+                  <thead id="tarot-score-head"></thead>
+                  <tbody id="tarot-score-body"></tbody>
+                  <tfoot id="tarot-score-foot"></tfoot>
+                </table>
+              </div>
+            </section>
+            <section class="tarot-side-panel">
+              <div class="tarot-side-heading"><h2>Journal</h2></div>
+              <ol id="tarot-log" class="tarot-log" aria-live="polite" aria-relevant="additions"></ol>
+            </section>
+          </aside>
+        </div>
+
+        <section id="tarot-finished" class="tarot-finished-overlay" hidden aria-live="polite">
+          <div class="tarot-finished-modal" role="dialog" aria-modal="true" aria-labelledby="tarot-finished-title" tabindex="-1">
+            <span class="tarot-finished-icon" aria-hidden="true">🏆</span>
+            <h2 id="tarot-finished-title">Partie terminée !</h2>
+            <p id="tarot-finished-subtitle" class="tarot-muted"></p>
+            <ol id="tarot-finished-ranks" class="tarot-finished-ranks"></ol>
+            <div class="tarot-actions-row">
+              <button id="tarot-restart" class="tarot-button tarot-button-primary" type="button" hidden>Rejouer une partie</button>
+              <button id="tarot-finished-leave" class="tarot-button" type="button">Quitter le salon</button>
+            </div>
+          </div>
+        </section>
+      </section>
+    </section>
+  </main>
+  <script src="/static/shared/config.js"></script>
+  <script src="/static/shared/game-ui.js"></script>
+  <script src="/static/shared/presence.js"></script>
+  <script src="/static/games/tarot-africain/app.js"></script>
+</body>
+</html>

@@ -38,6 +38,7 @@ GAME_SETTINGS = {
     },
     "plongee": {},
     "undercover": {},
+    "tarot-africain": {},
     "linkedin-or-interpol": {
         "linkedin-solo-mode": "solo-mode",
         "linkedin-round-count": "round-count",

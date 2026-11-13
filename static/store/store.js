@@ -60,6 +60,7 @@
       launchTarget.searchParams.get("game") === "plongee" ||
       launchTarget.searchParams.get("game") === "memories" ||
       launchTarget.searchParams.get("game") === "scribbl" ||
+      launchTarget.searchParams.get("game") === "tarot-africain" ||
       launchTarget.searchParams.get("game") === "undercover" ||
       launchTarget.searchParams.has("assist") ||
       launchTarget.searchParams.has("room") ||
@@ -78,6 +79,7 @@
         plongee: "/games/plongee/",
         memories: "/games/memories/",
         scribbl: "/games/scribbl/",
+        "tarot-africain": "/games/tarot-africain/",
         undercover: "/games/undercover/",
         bitoguessr: "/games/bitoguessr/",
         "linkedin-or-interpol": "/games/linkedin-or-interpol/",
@@ -101,6 +103,7 @@
       "/games/memories/",
       "/games/scribbl/",
       "/games/linkedin-or-interpol/",
+      "/games/tarot-africain/",
     ].includes(launchTarget.pathname)
       ? launchTarget
       : null;
@@ -417,6 +420,7 @@
       memories: "Memory",
       scribbl: "Scribbl",
       "linkedin-or-interpol": "LinkedIn ou Interpol",
+      "tarot-africain": "Tarot africain",
     };
     invitations.forEach((invitation) => {
       const item = document.createElement("li");
@@ -538,6 +542,7 @@
       memories: "memories_player_id",
       scribbl: "scribbl_player_id",
       "linkedin-or-interpol": "linkedin_player_id",
+      "tarot-africain": "tarot_player_id",
     };
     const storageKey = playerStorageKeys[invitation.game_id];
     if (!storageKey || !invitation.room_id || !invitation.sender_player_id) {

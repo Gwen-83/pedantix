@@ -308,7 +308,7 @@ class MultiGameStatsMigrationTests(unittest.TestCase):
             {
                 "pedantix", "motus", "cemantix", "chiffrantix", "sudoku", "battleship",
                 "geoguessr", "undercover", "bitoguessr", "plongee", "memories",
-                "scribbl", "linkedin-or-interpol",
+                "scribbl", "linkedin-or-interpol", "tarot-africain",
             },
         )
 
