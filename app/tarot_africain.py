@@ -226,10 +226,15 @@ class TarotAfricainManager:
         difficulties = list(solo_bot_difficulties or SOLO_BOT_DIFFICULTIES)
         if len(difficulties) != 3:
             difficulties = list(SOLO_BOT_DIFFICULTIES)
+        names = {
+            "facile": "Angélica",
+            "moyen": "Nina",
+            "difficile": "Axel",
+        }
         return [
             TarotSeat(
                 player_id=f"bot-{difficulty}-{uuid.uuid4().hex[:4]}",
-                name=f"Bot {difficulty.title()}",
+                name=names.get(difficulty, f"Bot {difficulty.title()}"),
                 is_bot=True,
                 bot_difficulty=difficulty,
             )
