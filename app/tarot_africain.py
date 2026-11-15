@@ -304,15 +304,23 @@ class TarotAfricainManager:
         difficulties = list(solo_bot_difficulties or SOLO_BOT_DIFFICULTIES)
         if len(difficulties) != 3:
             difficulties = list(SOLO_BOT_DIFFICULTIES)
-        return [
-            TarotSeat(
-                player_id=f"bot-{difficulty}-{uuid.uuid4().hex[:4]}",
-                name=f"Bot {difficulty.title()}",
-                is_bot=True,
-                bot_difficulty=difficulty,
+        per_difficulty = {}
+        for difficulty in difficulties:
+            per_difficulty[difficulty] = per_difficulty.get(difficulty, 0) + 1
+        seats = []
+        seen_difficulties = {}
+        for difficulty in difficulties:
+            seen_difficulties[difficulty] = seen_difficulties.get(difficulty, 0) + 1
+            suffix = f" {seen_difficulties[difficulty]}" if per_difficulty[difficulty] > 1 else ""
+            seats.append(
+                TarotSeat(
+                    player_id=f"bot-{difficulty}-{uuid.uuid4().hex[:4]}",
+                    name=f"Bot {difficulty.title()}{suffix}",
+                    is_bot=True,
+                    bot_difficulty=difficulty,
+                )
             )
-            for difficulty in difficulties
-        ]
+        return seats
 
     @staticmethod
     def _normalize_solo_bot_difficulties(

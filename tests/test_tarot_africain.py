@@ -418,6 +418,18 @@ class TarotAfricainRulesTests(unittest.TestCase):
         self.assertEqual([seat.player_id for seat in room.seats], [f"p{i}" for i in range(5)])
         self.assertTrue(all(seat.penalties == 0 for seat in room.seats))
 
+    def test_solo_bot_names_are_numbered_when_levels_repeat(self):
+        room = self.manager.create_room(
+            "p0",
+            "Alice",
+            solo=True,
+            solo_bot_difficulties=["moyen", "moyen", "facile"],
+        )
+        self.assertEqual(
+            [seat.name for seat in room.seats if seat.is_bot],
+            ["Bot Moyen 1", "Bot Moyen 2", "Bot Facile"],
+        )
+
     def test_solo_room_creates_three_bots_with_three_levels(self):
         room = self.manager.create_room("p0", "Alice", solo=True)
         self.assertTrue(room.is_solo)
