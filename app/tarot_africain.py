@@ -696,14 +696,20 @@ def choose_bot_bid(room: TarotRoom, index: int, rng: random.Random | None = None
         estimate = sum(_win_probability(card, seat.hand, opponents) for card in seat.hand)
     bid = int(estimate + 0.5)
     bot_level = (room.seats[index].bot_difficulty or "moyen").lower()
+
     if bot_level == "facile":
-        offset = (rng.choice([-2, -1, 0, 0, 1, 2]) if rng is not None else random.choice([-2, -1, 0, 0, 1, 2]))
-        bid = max(0, min(MAX_BID, bid + offset))
-    elif bot_level == "difficile":
+        noise = (rng.choice([-3, -2, -1, 0, 0, 1, 2, 3]) if rng is not None else random.choice([-3, -2, -1, 0, 0, 1, 2, 3]))
+        bid = max(0, min(MAX_BID, bid + noise))
+    elif bot_level == "moyen":
+        noise = (rng.choice([-1, 0, 0, 1]) if rng is not None else random.choice([-1, 0, 0, 1]))
+        bid = max(0, min(MAX_BID, bid + noise))
+    else:
         if estimate - bid > 0.25:
             bid += 1
         elif bid > 0 and estimate - bid < -0.25:
             bid = max(0, bid - 1)
+        if max(seat.hand, default=0) >= 18 and bid == 0 and estimate >= 0.75:
+            bid = 1
     return _respect_dealer_rule(room, index, bid, estimate)
 
 
@@ -717,34 +723,67 @@ def choose_bot_card(room: TarotRoom, index: int, rng: random.Random | None = Non
     is_last = len(room.trick) == len(room.seats) - 1
     bot_level = (room.seats[index].bot_difficulty or "moyen").lower()
 
-    if bot_level == "facile" and hand and rng is not None and rng.random() < 0.35:
-        return rng.choice(hand), None
+    if bot_level == "facile":
+        legal = numbers + ([EXCUSE] if has_excuse else [])
+        if not legal:
+            return EXCUSE, "min"
+        if rng is not None and rng.random() < 0.35:
+            return rng.choice(legal), None
+        if best is None:
+            if numbers:
+                return rng.choice(numbers[: max(1, len(numbers) // 2)] or numbers), None
+            return EXCUSE, "min"
+        if numbers:
+            return rng.choice([card for card in numbers if card < (best or 999)] or numbers), None
+        return EXCUSE, "min"
 
     if wants_tricks:
         if best is None:
-            decision = (numbers[-1], None) if numbers else (EXCUSE, "max")
             if bot_level == "difficile" and numbers:
+                if len(numbers) > 1 and max(numbers) >= 18:
+                    return numbers[-2], None
                 return max(numbers), None
-            return decision
+            return (numbers[-1], None) if numbers else (EXCUSE, "max")
         winners = [card for card in numbers if card > best]
         if winners:
             if bot_level == "difficile":
-                return max(winners), None
+                if best >= 18 and len(numbers) > 1:
+                    strong_remainder = [card for card in numbers if card >= best - 1]
+                    if len(strong_remainder) > 1:
+                        safe_winners = [card for card in winners if card <= max(strong_remainder) - 1]
+                        if safe_winners:
+                            return max(safe_winners), None
+                return min(winners), None
+            if bot_level == "moyen":
+                return (winners[0] if is_last else winners[-1], None)
             return (winners[0] if is_last else winners[-1], None)
         if has_excuse:
             return EXCUSE, "max"
-        return numbers[0], None
+        return min(numbers), None
 
     if best is None:
-        decision = (EXCUSE, "min") if has_excuse else (numbers[0], None)
         if bot_level == "difficile" and numbers:
+            if len(numbers) > 1 and max(numbers) >= 18:
+                return numbers[-2], None
             return min(numbers), None
-        return decision
+        if bot_level == "moyen":
+            return (EXCUSE, "min") if has_excuse and numbers and numbers[0] > 10 else (numbers[0], None)
+        return (EXCUSE, "min") if has_excuse else (numbers[0], None)
+
     losers = [card for card in numbers if card < best]
     if losers:
         if bot_level == "difficile":
-            return max(losers), None
+            if best >= 18 and len(numbers) > 1:
+                protected = [card for card in numbers if card >= best - 1]
+                if len(protected) > 1:
+                    safe_losers = [card for card in losers if card <= max(protected) - 2]
+                    if safe_losers:
+                        return max(safe_losers), None
+            return min(losers), None
+        if bot_level == "moyen":
+            return losers[-1], None
         return losers[-1], None
+
     if has_excuse:
         return EXCUSE, "min"
     decision = (numbers[-1] if is_last else numbers[0]), None

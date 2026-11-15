@@ -17,6 +17,7 @@ from app.tarot_africain import (
     TRICK_PAUSE_SECONDS,
     TarotAfricainManager,
     build_schedule,
+    choose_bot_card,
 )
 
 
@@ -282,6 +283,49 @@ class TarotAfricainRulesTests(unittest.TestCase):
         self.assertFalse(room.seats[0].is_bot)
         self.assertEqual(room.current_seat, 1)
         self.assertTrue(any("Temps écoulé" in entry["text"] for entry in room.log))
+
+    def test_difficult_bot_does_not_open_with_excuse_when_regular_cards_exist(self):
+        room = self.make_room(2)
+        room.status = "playing"
+        room.phase = "playing"
+        room.current_seat = 0
+        room.trick = []
+        room.leader_seat = 0
+        room.seats[0].hand = [EXCUSE, 20, 21]
+        room.seats[0].bid = 0
+        room.seats[0].tricks = 0
+        room.seats[0].bot_difficulty = "difficile"
+        card, mode = choose_bot_card(room, 0, random.Random(0))
+        self.assertNotEqual(card, EXCUSE)
+        self.assertEqual((card, mode), (20, None))
+
+    def test_difficult_bot_keeps_strong_cards_when_a_higher_card_is_already_out(self):
+        room = self.make_room(2)
+        room.status = "playing"
+        room.phase = "playing"
+        room.current_seat = 0
+        room.trick = [{"seat": 1, "card": 21, "value": 21, "excuse_mode": None}]
+        room.leader_seat = 1
+        room.seats[0].hand = [21, 20, 8]
+        room.seats[0].bid = 0
+        room.seats[0].tricks = 0
+        room.seats[0].bot_difficulty = "difficile"
+        card, mode = choose_bot_card(room, 0, random.Random(0))
+        self.assertEqual((card, mode), (8, None))
+
+    def test_expert_bot_does_not_use_excessive_high_cards_when_a_stronger_card_is_already_out(self):
+        room = self.make_room(2)
+        room.status = "playing"
+        room.phase = "playing"
+        room.current_seat = 0
+        room.trick = [{"seat": 1, "card": 21, "value": 21, "excuse_mode": None}]
+        room.leader_seat = 1
+        room.seats[0].hand = [21, 20, 18, 8]
+        room.seats[0].bid = 2
+        room.seats[0].tricks = 1
+        room.seats[0].bot_difficulty = "difficile"
+        card, mode = choose_bot_card(room, 0, random.Random(0))
+        self.assertEqual((card, mode), (8, None))
 
     def test_a_bot_replaces_a_leaving_player_until_they_come_back(self):
         room = self.make_room(3)
