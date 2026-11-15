@@ -178,6 +178,27 @@ class TarotAfricainRulesTests(unittest.TestCase):
         self.assertIsNone(state["seats"][1]["hand"])
         self.assertIsNone(state["seats"][2]["hand"])
 
+    def test_voice_chat_is_host_toggleable_and_tracks_members(self):
+        room = self.make_room(3)
+
+        enabled = room.toggle_voice_chat("p0", True)
+        self.assertTrue(enabled["enabled"])
+        self.assertTrue(room.to_dict("p0")["voice_chat"]["enabled"])
+
+        joined = room.join_voice_chat("p1")
+        self.assertIn("p1", joined["members"])
+        self.assertFalse(joined["muted"].get("p1", False))
+
+        muted = room.set_voice_chat_muted("p1", True)
+        self.assertTrue(muted["muted"]["p1"])
+
+        left = room.leave_voice_chat("p1")
+        self.assertNotIn("p1", left["members"])
+
+        disabled = room.toggle_voice_chat("p0", False)
+        self.assertFalse(disabled["enabled"])
+        self.assertEqual(disabled["members"], [])
+
     def test_highest_card_wins_and_the_winner_leads_the_next_trick(self):
         room = self.make_room(4)
         self.set_round(room, 3, 2, ROUND_NORMAL, [[4, 1], [17, 2], [9, 3], [12, 5]])

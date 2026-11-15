@@ -139,6 +139,27 @@ class ScribblManagerTests(unittest.TestCase):
         self.assertEqual(room.players["guest"].score, 0)
         self.assertEqual(room.status, "lobby")
 
+    def test_voice_chat_is_host_toggleable_and_tracks_members(self):
+        room = self.make_room()
+
+        enabled = room.toggle_voice_chat("host", True)
+        self.assertTrue(enabled["enabled"])
+        self.assertTrue(room.to_dict("host")["voice_chat"]["enabled"])
+
+        joined = room.join_voice_chat("guest")
+        self.assertIn("guest", joined["members"])
+        self.assertFalse(joined["muted"].get("guest", False))
+
+        muted = room.set_voice_chat_muted("guest", True)
+        self.assertTrue(muted["muted"]["guest"])
+
+        left = room.leave_voice_chat("guest")
+        self.assertNotIn("guest", left["members"])
+
+        disabled = room.toggle_voice_chat("host", False)
+        self.assertFalse(disabled["enabled"])
+        self.assertEqual(disabled["members"], [])
+
 
 class ScribblApiTests(unittest.TestCase):
     def test_page_room_routes_and_websocket_share_realtime_game_state(self):

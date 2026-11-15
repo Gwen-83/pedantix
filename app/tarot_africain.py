@@ -88,6 +88,12 @@ class TarotRoom:
     started_at: float | None = None
     created_at: float = field(default_factory=time.time)
     stats_recorded: bool = False
+    voice_chat: dict[str, Any] = field(default_factory=lambda: {
+        "enabled": False,
+        "members": [],
+        "muted": {},
+        "host_id": None,
+    })
 
     @property
     def players(self) -> dict[str, TarotSeat]:
@@ -110,6 +116,77 @@ class TarotRoom:
             return []
         lowest = min(seat.penalties for seat in self.seats)
         return [seat.player_id for seat in self.seats if seat.penalties == lowest]
+
+    def _sanitize_voice_chat_members(self) -> None:
+        valid_members = []
+        for player_id in self.voice_chat.get("members", []):
+            if player_id in self.players:
+                valid_members.append(player_id)
+        self.voice_chat["members"] = valid_members
+        muted = self.voice_chat.get("muted", {})
+        self.voice_chat["muted"] = {
+            player_id: bool(muted.get(player_id, False))
+            for player_id in valid_members
+        }
+        self.voice_chat["host_id"] = self.host_player_id
+
+    def get_voice_chat_state(self) -> dict[str, Any]:
+        self._sanitize_voice_chat_members()
+        members = list(self.voice_chat.get("members", []))
+        muted = {
+            player_id: bool(self.voice_chat.get("muted", {}).get(player_id, False))
+            for player_id in members
+        }
+        return {
+            "enabled": bool(self.voice_chat.get("enabled", False)),
+            "members": members,
+            "muted": muted,
+            "host_id": self.host_player_id,
+            "room_id": self.room_id,
+        }
+
+    def toggle_voice_chat(self, player_id: str, enabled: bool | None = None) -> dict[str, Any]:
+        if player_id != self.host_player_id:
+            return self.get_voice_chat_state()
+        target_enabled = enabled if enabled is not None else not bool(self.voice_chat.get("enabled", False))
+        self.voice_chat["enabled"] = bool(target_enabled)
+        self.voice_chat["host_id"] = self.host_player_id
+        if not self.voice_chat["enabled"]:
+            self.voice_chat["members"] = []
+            self.voice_chat["muted"] = {}
+        else:
+            self._sanitize_voice_chat_members()
+        return self.get_voice_chat_state()
+
+    def join_voice_chat(self, player_id: str) -> dict[str, Any]:
+        if player_id not in self.players:
+            return self.get_voice_chat_state()
+        if not self.voice_chat.get("enabled", False):
+            return self.get_voice_chat_state()
+        members = self.voice_chat.setdefault("members", [])
+        if player_id not in members:
+            members.append(player_id)
+        self.voice_chat.setdefault("muted", {})[player_id] = bool(
+            self.voice_chat["muted"].get(player_id, False)
+        )
+        return self.get_voice_chat_state()
+
+    def leave_voice_chat(self, player_id: str) -> dict[str, Any]:
+        members = self.voice_chat.setdefault("members", [])
+        if player_id in members:
+            members.remove(player_id)
+        self.voice_chat.setdefault("muted", {}).pop(player_id, None)
+        if not self.voice_chat.get("members") and not self.voice_chat.get("enabled", False):
+            self.voice_chat["muted"] = {}
+        return self.get_voice_chat_state()
+
+    def set_voice_chat_muted(self, player_id: str, muted: bool) -> dict[str, Any]:
+        if player_id not in self.players:
+            return self.get_voice_chat_state()
+        self.voice_chat.setdefault("muted", {})[player_id] = bool(muted)
+        if player_id not in self.voice_chat.setdefault("members", []):
+            self.join_voice_chat(player_id)
+        return self.get_voice_chat_state()
 
     def forbidden_dealer_bid(self) -> int | None:
         spec = self.round_spec
@@ -211,6 +288,7 @@ class TarotRoom:
             "action_seconds": ACTION_SECONDS,
             "history": [dict(item) for item in self.history],
             "log": self.log[-MAX_LOG_ENTRIES:],
+            "voice_chat": self.get_voice_chat_state(),
             "winner_ids": self.winner_ids(),
         }
 

@@ -628,6 +628,12 @@ class BattleshipFleetRequest(BattleshipRoomPlayerRequest):
 class BattleshipReadyRequest(BattleshipRoomPlayerRequest):
     ready: bool
 
+class BattleshipVoiceToggleRequest(BattleshipRoomPlayerRequest):
+    enabled: Optional[bool] = None
+
+class BattleshipVoiceMuteRequest(BattleshipRoomPlayerRequest):
+    muted: bool = False
+
 class BattleshipFireRequest(BattleshipRoomPlayerRequest):
     coordinate: str
 
@@ -3185,6 +3191,46 @@ async def scribbl_websocket(
                     room, _ = scribbl_manager.send_message(
                         room.room_id, player_id, str(message.get("text", ""))
                     )
+                elif action == "voice_chat_toggle":
+                    state = room.toggle_voice_chat(player_id, bool(message.get("enabled", False)))
+                    await _broadcast_scribbl_event(
+                        room.room_id,
+                        {"type": "voice_chat_state", "room_id": room.room_id, "voice_chat": state},
+                    )
+                    continue
+                elif action == "voice_chat_join":
+                    state = room.join_voice_chat(player_id)
+                    await _broadcast_scribbl_event(
+                        room.room_id,
+                        {"type": "voice_chat_state", "room_id": room.room_id, "voice_chat": state},
+                    )
+                    continue
+                elif action == "voice_chat_leave":
+                    state = room.leave_voice_chat(player_id)
+                    await _broadcast_scribbl_event(
+                        room.room_id,
+                        {"type": "voice_chat_state", "room_id": room.room_id, "voice_chat": state},
+                    )
+                    continue
+                elif action == "voice_chat_mute_toggle":
+                    state = room.set_voice_chat_muted(player_id, bool(message.get("muted", False)))
+                    await _broadcast_scribbl_event(
+                        room.room_id,
+                        {"type": "voice_chat_state", "room_id": room.room_id, "voice_chat": state},
+                    )
+                    continue
+                elif action == "voice_chat_signal":
+                    target_player_id = message.get("target_player_id")
+                    if target_player_id:
+                        payload = {
+                            "type": "voice_chat_signal",
+                            **{k: v for k, v in message.items() if k != "type"},
+                        }
+                        for websocket_item, socket_player_id in list(_scribbl_sockets.get(room.room_id.upper(), {}).items()):
+                            if socket_player_id == target_player_id:
+                                await websocket_item.send_json(payload)
+                                break
+                    continue
                 elif action == "restart":
                     async with _game_launch_process_lock():
                         with global_game_launch_guard() as paused:
@@ -3283,6 +3329,22 @@ async def _broadcast_tarot_state(room_id: str) -> None:
             except (RuntimeError, WebSocketDisconnect, OSError) as exc:
                 logger.warning("Envoi Tarot africain impossible au joueur %s : %s", player_id, exc)
                 _tarot_sockets.get(room_id.upper(), {}).pop(websocket, None)
+
+
+async def _broadcast_tarot_event(
+    room_id: str, event: dict[str, Any], skip_player_id: str | None = None,
+) -> None:
+    async with _tarot_room_broadcast_lock(room_id):
+        connections = list(_tarot_sockets.get(room_id.upper(), {}).items())
+        for websocket, player_id in connections:
+            if player_id == skip_player_id:
+                continue
+            try:
+                await websocket.send_json(event)
+            except (RuntimeError, WebSocketDisconnect, OSError) as exc:
+                logger.warning("Événement Tarot africain impossible au joueur %s : %s", player_id, exc)
+                _tarot_sockets.get(room_id.upper(), {}).pop(websocket, None)
+                continue
 
 
 def _tarot_session_start(room) -> None:
@@ -3408,6 +3470,46 @@ async def tarot_websocket(
                         message.get("card"),
                         message.get("excuse_mode"),
                     )
+                elif action == "voice_chat_toggle":
+                    state = room.toggle_voice_chat(player_id, bool(message.get("enabled", False)))
+                    await _broadcast_tarot_event(
+                        room.room_id,
+                        {"type": "voice_chat_state", "room_id": room.room_id, "voice_chat": state},
+                    )
+                    continue
+                elif action == "voice_chat_join":
+                    state = room.join_voice_chat(player_id)
+                    await _broadcast_tarot_event(
+                        room.room_id,
+                        {"type": "voice_chat_state", "room_id": room.room_id, "voice_chat": state},
+                    )
+                    continue
+                elif action == "voice_chat_leave":
+                    state = room.leave_voice_chat(player_id)
+                    await _broadcast_tarot_event(
+                        room.room_id,
+                        {"type": "voice_chat_state", "room_id": room.room_id, "voice_chat": state},
+                    )
+                    continue
+                elif action == "voice_chat_mute_toggle":
+                    state = room.set_voice_chat_muted(player_id, bool(message.get("muted", False)))
+                    await _broadcast_tarot_event(
+                        room.room_id,
+                        {"type": "voice_chat_state", "room_id": room.room_id, "voice_chat": state},
+                    )
+                    continue
+                elif action == "voice_chat_signal":
+                    target_player_id = message.get("target_player_id")
+                    if target_player_id:
+                        payload = {
+                            "type": "voice_chat_signal",
+                            **{k: v for k, v in message.items() if k != "type"},
+                        }
+                        for websocket_item, socket_player_id in list(_tarot_sockets.get(room.room_id.upper(), {}).items()):
+                            if socket_player_id == target_player_id:
+                                await websocket_item.send_json(payload)
+                                break
+                    continue
                 elif action == "restart":
                     async with _game_launch_process_lock():
                         with global_game_launch_guard() as paused:
@@ -4014,6 +4116,42 @@ async def get_battleship_room(room_id: str, player_id: str = Query(...)):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return room.to_dict(player_id)
+
+
+@app.post("/api/battleship/room/voice/toggle")
+async def toggle_battleship_voice(req: BattleshipVoiceToggleRequest):
+    try:
+        room = battleship_manager.toggle_voice_chat(req.room_id, req.player_id, req.enabled)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/voice/join")
+async def join_battleship_voice(req: BattleshipRoomPlayerRequest):
+    try:
+        room = battleship_manager.join_voice_chat(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/voice/leave")
+async def leave_battleship_voice(req: BattleshipRoomPlayerRequest):
+    try:
+        room = battleship_manager.leave_voice_chat(req.room_id, req.player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/voice/mute")
+async def mute_battleship_voice(req: BattleshipVoiceMuteRequest):
+    try:
+        room = battleship_manager.set_voice_chat_muted(req.room_id, req.player_id, req.muted)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return room.to_dict(req.player_id)
 
 
 def _record_sudoku_solo_result(game) -> None:

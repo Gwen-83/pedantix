@@ -241,6 +241,27 @@ class BattleshipTests(unittest.TestCase):
             self.manager.set_ready(room.room_id, player_id, True)
         self.assertEqual(self.manager.start_room(room.room_id, "p1").status, "playing")
 
+    def test_voice_chat_is_host_toggleable_and_tracks_members(self):
+        room = self.create_room(3)
+
+        state = room.toggle_voice_chat("p1", True)
+        self.assertTrue(state["enabled"])
+        self.assertTrue(room.voice_chat["enabled"])
+
+        join_state = room.join_voice_chat("p2")
+        self.assertIn("p2", join_state["members"])
+        self.assertFalse(join_state["muted"].get("p2", False))
+
+        muted_state = room.set_voice_chat_muted("p2", True)
+        self.assertTrue(muted_state["muted"]["p2"])
+
+        leave_state = room.leave_voice_chat("p2")
+        self.assertNotIn("p2", leave_state["members"])
+
+        off_state = room.toggle_voice_chat("p1", False)
+        self.assertFalse(off_state["enabled"])
+        self.assertEqual(off_state["members"], [])
+
     def test_solo_fleet_can_be_placed_before_starting_and_bot_fleet_stays_hidden(self):
         room = self.manager.create_solo("human", "Capitaine", "difficile")
         state = room.to_dict("human")
