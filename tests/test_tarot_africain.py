@@ -17,6 +17,7 @@ from app.tarot_africain import (
     TRICK_PAUSE_SECONDS,
     TarotAfricainManager,
     build_schedule,
+    choose_bot_bid,
     choose_bot_card,
 )
 
@@ -283,6 +284,34 @@ class TarotAfricainRulesTests(unittest.TestCase):
         self.assertFalse(room.seats[0].is_bot)
         self.assertEqual(room.current_seat, 1)
         self.assertTrue(any("Temps écoulé" in entry["text"] for entry in room.log))
+
+    def test_bots_do_not_open_with_excuse_when_regular_cards_are_available(self):
+        room = self.make_room(2)
+        room.status = "playing"
+        room.phase = "playing"
+        room.current_seat = 0
+        room.trick = []
+        room.leader_seat = 0
+        room.seats[0].hand = [EXCUSE, 12, 17]
+        room.seats[0].bid = 0
+        room.seats[0].tricks = 0
+        for difficulty in ("facile", "moyen", "difficile"):
+            with self.subTest(difficulty=difficulty):
+                room.seats[0].bot_difficulty = difficulty
+                card, mode = choose_bot_card(room, 0, random.Random(0))
+                self.assertNotEqual(card, EXCUSE)
+
+    def test_bots_never_bid_more_than_cards_in_the_current_round(self):
+        room = self.make_room(4)
+        room.status = "playing"
+        room.phase = "bidding"
+        room.current_seat = 0
+        room.round_index = 0
+        room.schedule = [(0, 3, ROUND_NORMAL)]
+        room.seats[0].hand = [18, 20, 21]
+        room.seats[0].bid = None
+        room.seats[0].bot_difficulty = "facile"
+        self.assertLessEqual(choose_bot_bid(room, 0, random.Random(0)), 3)
 
     def test_difficult_bot_does_not_open_with_excuse_when_regular_cards_exist(self):
         room = self.make_room(2)

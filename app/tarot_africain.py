@@ -226,15 +226,10 @@ class TarotAfricainManager:
         difficulties = list(solo_bot_difficulties or SOLO_BOT_DIFFICULTIES)
         if len(difficulties) != 3:
             difficulties = list(SOLO_BOT_DIFFICULTIES)
-        names = {
-            "facile": "Angélica",
-            "moyen": "Nina",
-            "difficile": "Axel",
-        }
         return [
             TarotSeat(
                 player_id=f"bot-{difficulty}-{uuid.uuid4().hex[:4]}",
-                name=names.get(difficulty, f"Bot {difficulty.title()}"),
+                name=f"Bot {difficulty.title()}",
                 is_bot=True,
                 bot_difficulty=difficulty,
             )
@@ -715,7 +710,9 @@ def choose_bot_bid(room: TarotRoom, index: int, rng: random.Random | None = None
             bid = max(0, bid - 1)
         if max(seat.hand, default=0) >= 18 and bid == 0 and estimate >= 0.75:
             bid = 1
-    return _respect_dealer_rule(room, index, bid, estimate)
+    bid = _respect_dealer_rule(room, index, bid, estimate)
+    round_cards = room.schedule[room.round_index][1]
+    return max(0, min(round_cards, bid))
 
 
 def choose_bot_card(room: TarotRoom, index: int, rng: random.Random | None = None) -> tuple[int, str | None]:
@@ -728,27 +725,57 @@ def choose_bot_card(room: TarotRoom, index: int, rng: random.Random | None = Non
     is_last = len(room.trick) == len(room.seats) - 1
     bot_level = (room.seats[index].bot_difficulty or "moyen").lower()
 
+    def _lead_card_for_level() -> tuple[int, str | None]:
+        if not numbers:
+            if bot_level == "difficile":
+                return EXCUSE, "max"
+            return EXCUSE, "min"
+
+        if bot_level == "facile":
+            if len(numbers) >= 2 and max(numbers) >= 18:
+                return numbers[-2], None
+            if rng is not None and rng.random() < 0.25:
+                return numbers[min(len(numbers) - 1, max(1, len(numbers) // 2))], None
+            return min(numbers), None
+        if bot_level == "moyen":
+            if len(numbers) >= 2 and max(numbers) >= 16:
+                return numbers[-2], None
+            return min(numbers), None
+        if len(numbers) >= 2 and max(numbers) >= 18:
+            return numbers[-2], None
+        return min(numbers), None
+
     if bot_level == "facile":
         legal = numbers + ([EXCUSE] if has_excuse else [])
         if not legal:
             return EXCUSE, "min"
-        if rng is not None and rng.random() < 0.35:
-            return rng.choice(legal), None
         if best is None:
             if numbers:
-                return rng.choice(numbers[: max(1, len(numbers) // 2)] or numbers), None
-            return EXCUSE, "min"
+                return _lead_card_for_level()
+            return EXCUSE, "max"
         if numbers:
-            return rng.choice([card for card in numbers if card < (best or 999)] or numbers), None
+            if len(numbers) == 1:
+                if has_excuse and best < 10:
+                    return EXCUSE, "max"
+                return numbers[0], None
+            if best < 10 and any(card >= 15 for card in numbers):
+                return max(card for card in numbers if card < best), None
+            if best >= 15 and has_excuse:
+                return EXCUSE, "max" if (seat.bid or 0) > seat.tricks else max(numbers), None
+            if any(card > best for card in numbers):
+                return min(card for card in numbers if card > best), None
+            if has_excuse and best <= 12:
+                return EXCUSE, "max"
+            return max(numbers), None
+        if has_excuse:
+            return EXCUSE, "max"
         return EXCUSE, "min"
 
     if wants_tricks:
         if best is None:
-            if bot_level == "difficile" and numbers:
-                if len(numbers) > 1 and max(numbers) >= 18:
-                    return numbers[-2], None
-                return max(numbers), None
-            return (numbers[-1], None) if numbers else (EXCUSE, "max")
+            if numbers:
+                return _lead_card_for_level()
+            return EXCUSE, "max"
         winners = [card for card in numbers if card > best]
         if winners:
             if bot_level == "difficile":
@@ -767,13 +794,11 @@ def choose_bot_card(room: TarotRoom, index: int, rng: random.Random | None = Non
         return min(numbers), None
 
     if best is None:
-        if bot_level == "difficile" and numbers:
-            if len(numbers) > 1 and max(numbers) >= 18:
-                return numbers[-2], None
-            return min(numbers), None
-        if bot_level == "moyen":
-            return (EXCUSE, "min") if has_excuse and numbers and numbers[0] > 10 else (numbers[0], None)
-        return (EXCUSE, "min") if has_excuse else (numbers[0], None)
+        if numbers:
+            return _lead_card_for_level()
+        if has_excuse:
+            return EXCUSE, "max" if bot_level == "difficile" else "min"
+        return EXCUSE, "min"
 
     losers = [card for card in numbers if card < best]
     if losers:
