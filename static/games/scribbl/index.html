@@ -124,6 +124,39 @@
           hidden
         ></p>
 
+        <div id="scribbl-voice-panel" class="scribbl-voice-panel" hidden>
+          <div class="scribbl-voice-header">
+            <h2>🎙️ Chat vocal</h2>
+            <span id="scribbl-voice-status" class="scribbl-voice-status"
+              >Fermé</span
+            >
+          </div>
+          <div class="scribbl-voice-actions">
+            <button
+              id="scribbl-voice-toggle"
+              class="scribbl-button"
+              type="button"
+            >
+              Activer le chat vocal
+            </button>
+            <button
+              id="scribbl-voice-join"
+              class="scribbl-button"
+              type="button"
+            >
+              Rejoindre le chat vocal
+            </button>
+            <button
+              id="scribbl-voice-mute"
+              class="scribbl-button"
+              type="button"
+            >
+              Micro actif
+            </button>
+          </div>
+          <ul id="scribbl-voice-members" class="scribbl-player-list"></ul>
+        </div>
+
         <section id="scribbl-lobby" class="scribbl-lobby" hidden>
           <div class="scribbl-invite">
             <span>Code du salon</span><strong id="scribbl-invite-code"></strong>
@@ -146,39 +179,6 @@
         </section>
 
         <section id="scribbl-play" hidden>
-          <div id="scribbl-voice-panel" class="scribbl-voice-panel" hidden>
-            <div class="scribbl-voice-header">
-              <h2>🎙️ Chat vocal</h2>
-              <span id="scribbl-voice-status" class="scribbl-voice-status"
-                >Fermé</span
-              >
-            </div>
-            <div class="scribbl-voice-actions">
-              <button
-                id="scribbl-voice-toggle"
-                class="scribbl-button"
-                type="button"
-              >
-                Activer le chat vocal
-              </button>
-              <button
-                id="scribbl-voice-join"
-                class="scribbl-button"
-                type="button"
-              >
-                Rejoindre le chat vocal
-              </button>
-              <button
-                id="scribbl-voice-mute"
-                class="scribbl-button"
-                type="button"
-              >
-                Micro actif
-              </button>
-            </div>
-            <ul id="scribbl-voice-members" class="scribbl-player-list"></ul>
-          </div>
-
           <div class="scribbl-roundbar">
             <div class="scribbl-round-info">
               <span id="scribbl-round-label" class="scribbl-round-label"></span>

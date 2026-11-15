@@ -193,6 +193,27 @@
         </div>
         <p id="tarot-game-error" class="tarot-error" role="alert" hidden></p>
 
+        <div id="tarot-voice-panel" class="tarot-voice-panel" hidden>
+          <div class="tarot-voice-header">
+            <h2>🎙️ Chat vocal</h2>
+            <span id="tarot-voice-status" class="tarot-voice-status"
+              >Fermé</span
+            >
+          </div>
+          <div class="tarot-voice-actions">
+            <button id="tarot-voice-toggle" class="tarot-button" type="button">
+              Activer le chat vocal
+            </button>
+            <button id="tarot-voice-join" class="tarot-button" type="button">
+              Rejoindre le chat vocal
+            </button>
+            <button id="tarot-voice-mute" class="tarot-button" type="button">
+              Micro actif
+            </button>
+          </div>
+          <ul id="tarot-voice-members" class="tarot-player-list"></ul>
+        </div>
+
         <section id="tarot-lobby" class="tarot-lobby" hidden>
           <div class="tarot-invite">
             <span>Code du salon</span><strong id="tarot-invite-code"></strong>
@@ -216,31 +237,6 @@
         </section>
 
         <section id="tarot-play" hidden>
-          <div id="tarot-voice-panel" class="tarot-voice-panel" hidden>
-            <div class="tarot-voice-header">
-              <h2>🎙️ Chat vocal</h2>
-              <span id="tarot-voice-status" class="tarot-voice-status"
-                >Fermé</span
-              >
-            </div>
-            <div class="tarot-voice-actions">
-              <button
-                id="tarot-voice-toggle"
-                class="tarot-button"
-                type="button"
-              >
-                Activer le chat vocal
-              </button>
-              <button id="tarot-voice-join" class="tarot-button" type="button">
-                Rejoindre le chat vocal
-              </button>
-              <button id="tarot-voice-mute" class="tarot-button" type="button">
-                Micro actif
-              </button>
-            </div>
-            <ul id="tarot-voice-members" class="tarot-player-list"></ul>
-          </div>
-
           <div class="tarot-roundbar">
             <div class="tarot-round-info">
               <span id="tarot-round-label" class="tarot-round-label"></span>
