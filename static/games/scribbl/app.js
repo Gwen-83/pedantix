@@ -1,32 +1,47 @@
 (() => {
-  const apiBase = window.PEDANTIX_CONFIG?.BACKEND_URL?.replace(/\/+$/, '') || '';
+  const apiBase =
+    window.PEDANTIX_CONFIG?.BACKEND_URL?.replace(/\/+$/, "") || "";
   const wsBase = apiBase
-    ? apiBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
-    : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+    ? apiBase.replace(/^http:/, "ws:").replace(/^https:/, "wss:")
+    : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
   const palette = [
-    '#172033', '#ffffff', '#f43f5e', '#f97316', '#facc15', '#22c55e',
-    '#14b8a6', '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#92400e',
+    "#172033",
+    "#ffffff",
+    "#f43f5e",
+    "#f97316",
+    "#facc15",
+    "#22c55e",
+    "#14b8a6",
+    "#0ea5e9",
+    "#6366f1",
+    "#a855f7",
+    "#ec4899",
+    "#92400e",
   ];
-  const playerName = (
-    localStorage.getItem('pedantix_auth_user')
-    || localStorage.getItem('pedantix_player_name')
-    || 'Joueur'
-  ).trim().slice(0, 24) || 'Joueur';
-  let playerId = localStorage.getItem('scribbl_player_id');
+  const playerName =
+    (
+      localStorage.getItem("pedantix_auth_user") ||
+      localStorage.getItem("pedantix_player_name") ||
+      "Joueur"
+    )
+      .trim()
+      .slice(0, 24) || "Joueur";
+  let playerId = localStorage.getItem("scribbl_player_id");
   if (!playerId) {
-    playerId = globalThis.crypto?.randomUUID?.()
-      || `scribbl-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    localStorage.setItem('scribbl_player_id', playerId);
+    playerId =
+      globalThis.crypto?.randomUUID?.() ||
+      `scribbl-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem("scribbl_player_id", playerId);
   }
 
   const $ = (id) => document.getElementById(id);
-  const home = $('scribbl-home');
-  const game = $('scribbl-game');
-  const canvas = $('scribbl-canvas');
-  const ctx = canvas.getContext('2d');
+  const home = $("scribbl-home");
+  const game = $("scribbl-game");
+  const canvas = $("scribbl-canvas");
+  const ctx = canvas.getContext("2d");
   let state = null;
   let socket = null;
-  let activeRoomId = '';
+  let activeRoomId = "";
   let reconnectTimer = null;
   let reconnectDelay = 500;
   let deliberateClose = false;
@@ -39,20 +54,26 @@
   let pointerDown = false;
   let pendingPoints = [];
   let flushFrame = 0;
+  let voiceChatState = { enabled: false, members: [], muted: {} };
+  let voiceChatJoined = false;
+  let voiceChatLocalStream = null;
+  let voiceChatPeerConnections = {};
+  let voiceChatRemoteAudio = {};
 
-  $('scribbl-player-name').textContent = playerName;
-  $('scribbl-brush').addEventListener('input', (event) => {
+  $("scribbl-player-name").textContent = playerName;
+  $("scribbl-brush").addEventListener("input", (event) => {
     brushWidth = Number(event.currentTarget.value);
   });
 
   async function request(path, body) {
     const response = await fetch(`${apiBase}${path}`, {
-      method: body ? 'POST' : 'GET',
-      headers: body ? { 'Content-Type': 'application/json' } : {},
+      method: body ? "POST" : "GET",
+      headers: body ? { "Content-Type": "application/json" } : {},
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || 'Une erreur est survenue.');
+    if (!response.ok)
+      throw new Error(data.detail || "Une erreur est survenue.");
     return data;
   }
 
@@ -63,13 +84,16 @@
   }
 
   function clearError(id) {
-    $(id).textContent = '';
+    $(id).textContent = "";
     $(id).hidden = true;
   }
 
   function send(message) {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      showError('scribbl-game-error', new Error('Connexion au salon interrompue. Reconnexion…'));
+      showError(
+        "scribbl-game-error",
+        new Error("Connexion au salon interrompue. Reconnexion…"),
+      );
       return false;
     }
     socket.send(JSON.stringify(message));
@@ -79,15 +103,15 @@
   function setRoom(nextState, updateUrl = false) {
     state = nextState;
     activeRoomId = state.room_id;
-    localStorage.setItem('scribbl_active_room_id', activeRoomId);
+    localStorage.setItem("scribbl_active_room_id", activeRoomId);
     if (updateUrl) {
       history.replaceState(
         null,
-        '',
+        "",
         `${window.location.pathname}?room=${encodeURIComponent(activeRoomId)}`,
       );
     }
-    clearError('scribbl-game-error');
+    clearError("scribbl-game-error");
     home.hidden = true;
     game.hidden = false;
     render();
@@ -99,27 +123,54 @@
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = null;
     if (socket) socket.close();
-    const url = `${wsBase}/ws/scribbl/${encodeURIComponent(activeRoomId)}`
-      + `?player_id=${encodeURIComponent(playerId)}`;
+    const url =
+      `${wsBase}/ws/scribbl/${encodeURIComponent(activeRoomId)}` +
+      `?player_id=${encodeURIComponent(playerId)}`;
     const connection = new WebSocket(url);
     socket = connection;
-    connection.addEventListener('open', () => {
+    connection.addEventListener("open", () => {
       reconnectDelay = 500;
-      clearError('scribbl-game-error');
-      $('scribbl-chat-input').disabled = false;
+      clearError("scribbl-game-error");
+      $("scribbl-chat-input").disabled = false;
     });
-    connection.addEventListener('message', (event) => {
+    connection.addEventListener("message", (event) => {
       let message;
       try {
         message = JSON.parse(event.data);
       } catch (error) {
-        console.error('Message Scribbl illisible :', error);
+        console.error("Message Scribbl illisible :", error);
         return;
       }
-      if (message.type === 'state') {
+      if (message.type === "state") {
         state = message.state;
+        voiceChatState = state?.voice_chat || {
+          enabled: false,
+          members: [],
+          muted: {},
+        };
+        voiceChatJoined = (voiceChatState.members || []).includes(playerId);
         render();
-      } else if (message.type === 'draw') {
+      } else if (message.type === "voice_chat_state") {
+        state = {
+          ...state,
+          voice_chat: message.voice_chat || {
+            enabled: false,
+            members: [],
+            muted: {},
+          },
+        };
+        voiceChatState = state.voice_chat;
+        voiceChatJoined = (voiceChatState.members || []).includes(playerId);
+        if (!voiceChatState.enabled && voiceChatLocalStream) {
+          stopVoiceLocalStream();
+        }
+        updateVoiceChatUI();
+        if (voiceChatState.enabled && voiceChatJoined && voiceChatLocalStream) {
+          connectVoicePeers();
+        }
+      } else if (message.type === "voice_chat_signal") {
+        handleVoiceChatSignal(message);
+      } else if (message.type === "draw") {
         let previousPoint = null;
         if (message.start || !state.strokes.length) {
           state.strokes.push({
@@ -138,133 +189,214 @@
           message.start,
           previousPoint,
         );
-      } else if (message.type === 'clear') {
+      } else if (message.type === "clear") {
         state.strokes = [];
         paintCanvas();
-      } else if (message.type === 'left') {
+      } else if (message.type === "left") {
         deliberateClose = true;
         socket.close();
         returnHome(false);
-      } else if (message.type === 'guess_result' && message.correct) {
-        $('scribbl-chat-input').value = '';
-      } else if (message.type === 'error') {
-        showError('scribbl-game-error', new Error(message.message));
+      } else if (message.type === "guess_result" && message.correct) {
+        $("scribbl-chat-input").value = "";
+      } else if (message.type === "error") {
+        showError("scribbl-game-error", new Error(message.message));
       }
     });
-    connection.addEventListener('close', (event) => {
+    connection.addEventListener("close", (event) => {
       if (socket !== connection) return;
-      $('scribbl-chat-input').disabled = true;
+      $("scribbl-chat-input").disabled = true;
       if (event.code === 4404) {
-        showError('scribbl-game-error', new Error('Salon introuvable ou participation expirée.'));
+        showError(
+          "scribbl-game-error",
+          new Error("Salon introuvable ou participation expirée."),
+        );
         returnHome(false);
         return;
       }
       if (!deliberateClose && activeRoomId) {
-        showError('scribbl-game-error', new Error('Connexion interrompue. Reconnexion…'));
+        showError(
+          "scribbl-game-error",
+          new Error("Connexion interrompue. Reconnexion…"),
+        );
         if (reconnectTimer) clearTimeout(reconnectTimer);
         reconnectTimer = setTimeout(connectSocket, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 2, 8000);
       }
     });
-    connection.addEventListener('error', () => {
-      showError('scribbl-game-error', new Error('Connexion au salon indisponible.'));
+    connection.addEventListener("error", () => {
+      showError(
+        "scribbl-game-error",
+        new Error("Connexion au salon indisponible."),
+      );
     });
   }
 
+  function updateVoiceChatUI() {
+    const panel = $("scribbl-voice-panel");
+    const status = $("scribbl-voice-status");
+    const toggle = $("scribbl-voice-toggle");
+    const join = $("scribbl-voice-join");
+    const mute = $("scribbl-voice-mute");
+    const membersList = $("scribbl-voice-members");
+    const voice = state?.voice_chat || {
+      enabled: false,
+      members: [],
+      muted: {},
+    };
+    const multiplayer = !!state && state.player_count > 1;
+    const joined = (voice.members || []).includes(playerId);
+    const mutedValue = !!(voice.muted && voice.muted[playerId]);
+
+    panel.hidden = !multiplayer;
+    toggle.hidden = !multiplayer || playerId !== state.host_player_id;
+    toggle.textContent = voice.enabled
+      ? "Désactiver le chat vocal"
+      : "Activer le chat vocal";
+    join.hidden = !multiplayer || !voice.enabled;
+    join.textContent = joined
+      ? "Quitter le chat vocal"
+      : "Rejoindre le chat vocal";
+    mute.hidden = !multiplayer || !voice.enabled || !joined;
+    mute.textContent = mutedValue ? "Micro muet" : "Micro actif";
+    status.textContent = voice.enabled
+      ? joined
+        ? "En ligne"
+        : "Ouvert"
+      : "Fermé";
+
+    membersList.replaceChildren(
+      ...((voice.members || []).length
+        ? (voice.members || []).map((memberId) => {
+            const item = document.createElement("li");
+            item.className = "scribbl-voice-member";
+            const label = document.createElement("span");
+            label.textContent = memberId === playerId ? "Vous" : memberId;
+            const badge = document.createElement("small");
+            badge.textContent =
+              voice.muted && voice.muted[memberId] ? "Muet" : "Micro OK";
+            item.append(label, badge);
+            return item;
+          })
+        : [
+            (() => {
+              const empty = document.createElement("li");
+              empty.className = "scribbl-voice-member empty";
+              empty.textContent = voice.enabled
+                ? "Aucun participant actif."
+                : "Le salon vocal est fermé.";
+              return empty;
+            })(),
+          ]),
+    );
+  }
+
   function renderLobby() {
-    $('scribbl-lobby').hidden = false;
-    $('scribbl-play').hidden = true;
-    $('scribbl-phase-label').textContent = 'Salon d’attente';
-    $('scribbl-room-title').textContent = `Salon ${state.room_id}`;
-    $('scribbl-invite-code').textContent = state.room_id;
-    $('scribbl-lobby-message').textContent =
-      `${state.player_count} joueur${state.player_count === 1 ? '' : 's'} · 2 à 8 joueurs pour jouer.`;
-    $('scribbl-round-summary').textContent =
-      `${state.rounds_per_player} manche${state.rounds_per_player === 1 ? '' : 's'} par joueur`;
-    $('scribbl-lobby-players').replaceChildren(...state.players.map((player) => {
-      const item = document.createElement('li');
-      const name = document.createElement('span');
-      name.textContent = `${player.name}${player.player_id === state.host_player_id ? ' · hôte' : ''}`;
-      const detail = document.createElement('small');
-      detail.textContent = 'Prêt';
-      item.append(name, detail);
-      return item;
-    }));
-    const start = $('scribbl-start');
+    updateVoiceChatUI();
+    $("scribbl-lobby").hidden = false;
+    $("scribbl-play").hidden = true;
+    $("scribbl-phase-label").textContent = "Salon d’attente";
+    $("scribbl-room-title").textContent = `Salon ${state.room_id}`;
+    $("scribbl-invite-code").textContent = state.room_id;
+    $("scribbl-lobby-message").textContent =
+      `${state.player_count} joueur${state.player_count === 1 ? "" : "s"} · 2 à 8 joueurs pour jouer.`;
+    $("scribbl-round-summary").textContent =
+      `${state.rounds_per_player} manche${state.rounds_per_player === 1 ? "" : "s"} par joueur`;
+    $("scribbl-lobby-players").replaceChildren(
+      ...state.players.map((player) => {
+        const item = document.createElement("li");
+        const name = document.createElement("span");
+        name.textContent = `${player.name}${player.player_id === state.host_player_id ? " · hôte" : ""}`;
+        const detail = document.createElement("small");
+        detail.textContent = "Prêt";
+        item.append(name, detail);
+        return item;
+      }),
+    );
+    const start = $("scribbl-start");
     start.hidden = state.host_player_id !== playerId;
     start.disabled = !state.can_start;
   }
 
   function renderScoreboard() {
-    const scores = $('scribbl-score-list');
-    const countTag = $('scribbl-score-count');
+    const scores = $("scribbl-score-list");
+    const countTag = $("scribbl-score-count");
     if (countTag) {
-      countTag.textContent = `${state.players.length} joueur${state.players.length > 1 ? 's' : ''}`;
+      countTag.textContent = `${state.players.length} joueur${state.players.length > 1 ? "s" : ""}`;
     }
-    scores.replaceChildren(...state.players
-      .slice()
-      .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
-      .map((player) => {
-        const item = document.createElement('li');
-        if (player.player_id === playerId) item.classList.add('is-self');
-        if (player.is_artist) item.classList.add('is-artist');
-        if (player.guessed) item.classList.add('is-found');
+    scores.replaceChildren(
+      ...state.players
+        .slice()
+        .sort(
+          (left, right) =>
+            right.score - left.score || left.name.localeCompare(right.name),
+        )
+        .map((player) => {
+          const item = document.createElement("li");
+          if (player.player_id === playerId) item.classList.add("is-self");
+          if (player.is_artist) item.classList.add("is-artist");
+          if (player.guessed) item.classList.add("is-found");
 
-        const leftMeta = document.createElement('div');
-        leftMeta.className = 'scribbl-player-meta';
+          const leftMeta = document.createElement("div");
+          leftMeta.className = "scribbl-player-meta";
 
-        const name = document.createElement('span');
-        name.textContent = player.player_id === playerId ? `${player.name} (moi)` : player.name;
-        leftMeta.append(name);
+          const name = document.createElement("span");
+          name.textContent =
+            player.player_id === playerId
+              ? `${player.name} (moi)`
+              : player.name;
+          leftMeta.append(name);
 
-        if (player.is_artist) {
-          const badge = document.createElement('span');
-          badge.className = 'scribbl-player-badge is-artist-badge';
-          badge.textContent = '🎨 Peintre';
-          leftMeta.append(badge);
-        } else if (player.guessed) {
-          const badge = document.createElement('span');
-          badge.className = 'scribbl-player-badge is-found-badge';
-          badge.textContent = '✅ Trouvé';
-          leftMeta.append(badge);
-        }
+          if (player.is_artist) {
+            const badge = document.createElement("span");
+            badge.className = "scribbl-player-badge is-artist-badge";
+            badge.textContent = "🎨 Peintre";
+            leftMeta.append(badge);
+          } else if (player.guessed) {
+            const badge = document.createElement("span");
+            badge.className = "scribbl-player-badge is-found-badge";
+            badge.textContent = "✅ Trouvé";
+            leftMeta.append(badge);
+          }
 
-        const score = document.createElement('strong');
-        score.textContent = `${player.score} pts`;
+          const score = document.createElement("strong");
+          score.textContent = `${player.score} pts`;
 
-        item.append(leftMeta, score);
-        return item;
-      }));
+          item.append(leftMeta, score);
+          return item;
+        }),
+    );
   }
 
   function renderChat() {
-    const list = $('scribbl-chat-list');
-    const badge = $('scribbl-chat-badge');
+    const list = $("scribbl-chat-list");
+    const badge = $("scribbl-chat-badge");
     if (badge) {
-      badge.textContent = `${state.chat.length} msg${state.chat.length > 1 ? 's' : ''}`;
+      badge.textContent = `${state.chat.length} msg${state.chat.length > 1 ? "s" : ""}`;
     }
-    list.replaceChildren(...state.chat.map((message) => {
-      const item = document.createElement('li');
-      item.className = 'scribbl-chat-item';
-      if (message.player_id === playerId) {
-        item.classList.add('is-self');
-      }
-      if (message.kind === 'correct') {
-        item.classList.add('is-correct');
-        const icon = document.createElement('span');
-        icon.textContent = '🎉 ';
-        item.append(icon, document.createTextNode(message.text));
-      } else if (message.kind === 'system') {
-        item.classList.add('is-system');
-        item.textContent = message.text;
-      } else {
-        const author = document.createElement('strong');
-        author.className = 'scribbl-chat-author';
-        author.textContent = `${message.player_name}: `;
-        item.append(author, document.createTextNode(message.text));
-      }
-      return item;
-    }));
+    list.replaceChildren(
+      ...state.chat.map((message) => {
+        const item = document.createElement("li");
+        item.className = "scribbl-chat-item";
+        if (message.player_id === playerId) {
+          item.classList.add("is-self");
+        }
+        if (message.kind === "correct") {
+          item.classList.add("is-correct");
+          const icon = document.createElement("span");
+          icon.textContent = "🎉 ";
+          item.append(icon, document.createTextNode(message.text));
+        } else if (message.kind === "system") {
+          item.classList.add("is-system");
+          item.textContent = message.text;
+        } else {
+          const author = document.createElement("strong");
+          author.className = "scribbl-chat-author";
+          author.textContent = `${message.player_name}: `;
+          item.append(author, document.createTextNode(message.text));
+        }
+        return item;
+      }),
+    );
     // Auto-scroll to always show the latest messages sent
     list.scrollTop = list.scrollHeight;
     requestAnimationFrame(() => {
@@ -273,49 +405,60 @@
   }
 
   function renderWordChoices() {
-    const choice = $('scribbl-choice');
-    const isChoosing = state.phase === 'choosing' && state.is_artist;
+    const choice = $("scribbl-choice");
+    const isChoosing = state.phase === "choosing" && state.is_artist;
     choice.hidden = !isChoosing;
-    const choices = $('scribbl-word-choices');
-    choices.replaceChildren(...(isChoosing ? state.word_choices : []).map((word, index) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'scribbl-button scribbl-button-primary scribbl-word-choice-btn';
-      button.textContent = word;
-      button.addEventListener('click', () => send({ type: 'choose', index }));
-      return button;
-    }));
+    const choices = $("scribbl-word-choices");
+    choices.replaceChildren(
+      ...(isChoosing ? state.word_choices : []).map((word, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className =
+          "scribbl-button scribbl-button-primary scribbl-word-choice-btn";
+        button.textContent = word;
+        button.addEventListener("click", () => send({ type: "choose", index }));
+        return button;
+      }),
+    );
   }
 
   function renderTurnBanner() {
-    const artist = state.players.find((player) => player.player_id === state.artist_player_id);
-    const selfPlayer = state.players.find((player) => player.player_id === playerId);
-    const artistBanner = $('scribbl-artist-banner');
-    const guesserBanner = $('scribbl-guesser-banner');
-    const statusBanner = $('scribbl-status-banner');
+    const artist = state.players.find(
+      (player) => player.player_id === state.artist_player_id,
+    );
+    const selfPlayer = state.players.find(
+      (player) => player.player_id === playerId,
+    );
+    const artistBanner = $("scribbl-artist-banner");
+    const guesserBanner = $("scribbl-guesser-banner");
+    const statusBanner = $("scribbl-status-banner");
 
-    if (state.status === 'finished') {
+    if (state.status === "finished") {
       artistBanner.hidden = true;
       guesserBanner.hidden = true;
       statusBanner.hidden = false;
-      $('scribbl-status-icon').textContent = '🏆';
-      $('scribbl-status-title').textContent = 'Partie terminée !';
-      $('scribbl-status-desc').textContent = `Toutes les manches (${state.rounds_per_player}/${state.rounds_per_player}) sont achevées. Consultez le podium ci-dessous.`;
+      $("scribbl-status-icon").textContent = "🏆";
+      $("scribbl-status-title").textContent = "Partie terminée !";
+      $("scribbl-status-desc").textContent =
+        `Toutes les manches (${state.rounds_per_player}/${state.rounds_per_player}) sont achevées. Consultez le podium ci-dessous.`;
       return;
     }
 
-    if (state.phase === 'drawing') {
+    if (state.phase === "drawing") {
       statusBanner.hidden = true;
       if (state.is_artist) {
         artistBanner.hidden = false;
         guesserBanner.hidden = true;
-        $('scribbl-secret-word').textContent = (state.word || '---').toUpperCase();
+        $("scribbl-secret-word").textContent = (
+          state.word || "---"
+        ).toUpperCase();
       } else {
         artistBanner.hidden = true;
         guesserBanner.hidden = false;
-        $('scribbl-guesser-artist-tag').textContent = `✏️ Peintre : ${artist?.name || 'Joueur'}`;
-        $('scribbl-word-hint').textContent = state.word_hint || '_ _ _ _ _';
-        const successBadge = $('scribbl-guesser-success-badge');
+        $("scribbl-guesser-artist-tag").textContent =
+          `✏️ Peintre : ${artist?.name || "Joueur"}`;
+        $("scribbl-word-hint").textContent = state.word_hint || "_ _ _ _ _";
+        const successBadge = $("scribbl-guesser-success-badge");
         successBadge.hidden = !Boolean(selfPlayer?.guessed);
       }
       return;
@@ -325,27 +468,31 @@
     artistBanner.hidden = true;
     guesserBanner.hidden = true;
 
-    if (state.phase === 'choosing') {
+    if (state.phase === "choosing") {
       if (state.is_artist) {
         // Only show the word choice card directly; no duplicate status banner
         statusBanner.hidden = true;
       } else {
         statusBanner.hidden = false;
-        $('scribbl-status-icon').textContent = '⏳';
-        $('scribbl-status-title').textContent = `${artist?.name || 'Le peintre'} choisit un mot...`;
-        $('scribbl-status-desc').textContent = 'Préparez-vous à deviner dans le chat dès que le dessin commence !';
+        $("scribbl-status-icon").textContent = "⏳";
+        $("scribbl-status-title").textContent =
+          `${artist?.name || "Le peintre"} choisit un mot...`;
+        $("scribbl-status-desc").textContent =
+          "Préparez-vous à deviner dans le chat dès que le dessin commence !";
       }
-    } else if (state.phase === 'reveal') {
+    } else if (state.phase === "reveal") {
       statusBanner.hidden = false;
-      $('scribbl-status-icon').textContent = '🔔';
-      $('scribbl-status-title').textContent = 'Tour terminé !';
-      $('scribbl-status-desc').textContent = state.word ? `Le mot secret était : « ${(state.word || '').toUpperCase()} »` : 'Révélation du mot...';
+      $("scribbl-status-icon").textContent = "🔔";
+      $("scribbl-status-title").textContent = "Tour terminé !";
+      $("scribbl-status-desc").textContent = state.word
+        ? `Le mot secret était : « ${(state.word || "").toUpperCase()} »`
+        : "Révélation du mot...";
     }
   }
 
   function renderFinished() {
-    const finishedOverlay = $('scribbl-finished');
-    if (state.status !== 'finished') {
+    const finishedOverlay = $("scribbl-finished");
+    if (state.status !== "finished") {
       finishedOverlay.hidden = true;
       return;
     }
@@ -355,13 +502,15 @@
     const winnerNames = state.players
       .filter((player) => winners.has(player.player_id))
       .map((player) => player.name)
-      .join(', ');
+      .join(", ");
 
-    $('scribbl-finished-title').textContent =
-      winners.size === 1 ? `Victoire de ${winnerNames} ! 🏆` : 'Égalité au sommet ! 🏆';
-    $('scribbl-finished-subtitle').textContent =
+    $("scribbl-finished-title").textContent =
+      winners.size === 1
+        ? `Victoire de ${winnerNames} ! 🏆`
+        : "Égalité au sommet ! 🏆";
+    $("scribbl-finished-subtitle").textContent =
       `Toutes les manches sont finies — Manche ${state.rounds_per_player}/${state.rounds_per_player} terminée !`;
-    $('scribbl-finished-summary').textContent =
+    $("scribbl-finished-summary").textContent =
       `Félicitations ${winnerNames} ! Les points ont été ajoutés à vos statistiques de jeu.`;
 
     const sorted = state.players
@@ -372,10 +521,11 @@
     const myRank = sorted.findIndex((p) => p.player_id === playerId) + 1;
     const myPlayer = sorted.find((p) => p.player_id === playerId);
     if (myPlayer) {
-      const rankLabel = myRank === 1 ? '1er' : `${myRank}ème`;
-      const medal = myRank === 1 ? '🥇' : myRank === 2 ? '🥈' : myRank === 3 ? '🥉' : '🎖️';
-      $('scribbl-finished-personal').innerHTML = `
-        <div class="scribbl-personal-box ${myRank === 1 ? 'is-winner' : ''}">
+      const rankLabel = myRank === 1 ? "1er" : `${myRank}ème`;
+      const medal =
+        myRank === 1 ? "🥇" : myRank === 2 ? "🥈" : myRank === 3 ? "🥉" : "🎖️";
+      $("scribbl-finished-personal").innerHTML = `
+        <div class="scribbl-personal-box ${myRank === 1 ? "is-winner" : ""}">
           <span class="scribbl-personal-medal">${medal}</span>
           <div>
             <strong>Vous terminez ${rankLabel} avec ${myPlayer.score} pts !</strong>
@@ -386,133 +536,166 @@
     }
 
     // Podium ranks list
-    const medals = ['🥇', '🥈', '🥉'];
-    $('scribbl-finished-ranks').replaceChildren(...sorted.map((player, idx) => {
-      const li = document.createElement('li');
-      li.className = 'scribbl-rank-item';
-      if (winners.has(player.player_id)) li.classList.add('is-winner');
+    const medals = ["🥇", "🥈", "🥉"];
+    $("scribbl-finished-ranks").replaceChildren(
+      ...sorted.map((player, idx) => {
+        const li = document.createElement("li");
+        li.className = "scribbl-rank-item";
+        if (winners.has(player.player_id)) li.classList.add("is-winner");
 
-      const left = document.createElement('div');
-      left.className = 'scribbl-rank-left';
+        const left = document.createElement("div");
+        left.className = "scribbl-rank-left";
 
-      const badge = document.createElement('span');
-      badge.className = 'scribbl-rank-badge';
-      badge.textContent = medals[idx] || `${idx + 1}.`;
+        const badge = document.createElement("span");
+        badge.className = "scribbl-rank-badge";
+        badge.textContent = medals[idx] || `${idx + 1}.`;
 
-      const details = document.createElement('div');
-      const name = document.createElement('strong');
-      name.textContent = player.player_id === playerId ? `${player.name} (moi)` : player.name;
-      const stats = document.createElement('div');
-      stats.className = 'scribbl-rank-stats';
-      stats.textContent = `${player.correct_guesses} trouvé(s) · ${player.turns_drawn} dessiné(s)`;
-      details.append(name, stats);
+        const details = document.createElement("div");
+        const name = document.createElement("strong");
+        name.textContent =
+          player.player_id === playerId ? `${player.name} (moi)` : player.name;
+        const stats = document.createElement("div");
+        stats.className = "scribbl-rank-stats";
+        stats.textContent = `${player.correct_guesses} trouvé(s) · ${player.turns_drawn} dessiné(s)`;
+        details.append(name, stats);
 
-      left.append(badge, details);
+        left.append(badge, details);
 
-      const score = document.createElement('strong');
-      score.textContent = `${player.score} pts`;
+        const score = document.createElement("strong");
+        score.textContent = `${player.score} pts`;
 
-      li.append(left, score);
-      return li;
-    }));
+        li.append(left, score);
+        return li;
+      }),
+    );
 
-    $('scribbl-restart').hidden = state.host_player_id !== playerId;
+    $("scribbl-restart").hidden = state.host_player_id !== playerId;
   }
 
   function renderPalette() {
-    $('scribbl-palette').replaceChildren(...palette.map((color) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'scribbl-color';
-      button.style.backgroundColor = color;
-      button.setAttribute('aria-label', `Couleur ${color}`);
-      button.setAttribute('aria-pressed', String(!erasing && selectedColor === color));
-      button.addEventListener('click', () => {
-        selectedColor = color;
-        erasing = false;
-        $('scribbl-eraser').setAttribute('aria-pressed', 'false');
-        renderPalette();
-      });
-      return button;
-    }));
+    $("scribbl-palette").replaceChildren(
+      ...palette.map((color) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "scribbl-color";
+        button.style.backgroundColor = color;
+        button.setAttribute("aria-label", `Couleur ${color}`);
+        button.setAttribute(
+          "aria-pressed",
+          String(!erasing && selectedColor === color),
+        );
+        button.addEventListener("click", () => {
+          selectedColor = color;
+          erasing = false;
+          $("scribbl-eraser").setAttribute("aria-pressed", "false");
+          renderPalette();
+        });
+        return button;
+      }),
+    );
+  }
+
+  function updateVoiceChatPanelVisibility() {
+    updateVoiceChatUI();
   }
 
   function render() {
+    updateVoiceChatPanelVisibility();
     if (!state) return;
-    if (state.status === 'lobby') {
+    if (state.status === "lobby") {
       renderLobby();
       return;
     }
 
-    $('scribbl-lobby').hidden = true;
-    $('scribbl-play').hidden = false;
-    $('scribbl-room-title').textContent = `Salon ${state.room_id}`;
-    $('scribbl-phase-label').textContent = ({
-      choosing: 'Choix du mot',
-      drawing: 'À vos crayons !',
-      reveal: 'Mot dévoilé',
-      finished: 'Partie terminée',
-    })[state.phase] || 'En jeu';
+    $("scribbl-lobby").hidden = true;
+    $("scribbl-play").hidden = false;
+    $("scribbl-room-title").textContent = `Salon ${state.room_id}`;
+    $("scribbl-phase-label").textContent =
+      {
+        choosing: "Choix du mot",
+        drawing: "À vos crayons !",
+        reveal: "Mot dévoilé",
+        finished: "Partie terminée",
+      }[state.phase] || "En jeu";
 
     const currentRound = Math.min(state.round_number, state.rounds_per_player);
     const isFinalRound = currentRound === state.rounds_per_player;
 
-    if (state.status === 'finished') {
-      $('scribbl-round-label').textContent =
+    if (state.status === "finished") {
+      $("scribbl-round-label").textContent =
         `🏁 Manche ${state.rounds_per_player} / ${state.rounds_per_player} terminée`;
-      $('scribbl-round-badge').hidden = true;
-      $('scribbl-turn-label').textContent = 'Partie terminée !';
-      $('scribbl-turn-label').className = 'scribbl-turn-label is-finished';
+      $("scribbl-round-badge").hidden = true;
+      $("scribbl-turn-label").textContent = "Partie terminée !";
+      $("scribbl-turn-label").className = "scribbl-turn-label is-finished";
     } else {
-      $('scribbl-round-label').textContent =
+      $("scribbl-round-label").textContent =
         `Manche ${currentRound} / ${state.rounds_per_player}`;
-      $('scribbl-round-badge').hidden = !isFinalRound;
+      $("scribbl-round-badge").hidden = !isFinalRound;
 
-      const artist = state.players.find((player) => player.player_id === state.artist_player_id);
+      const artist = state.players.find(
+        (player) => player.player_id === state.artist_player_id,
+      );
       if (state.is_artist) {
-        $('scribbl-turn-label').textContent = '🎨 Vous êtes le peintre';
-        $('scribbl-turn-label').className = 'scribbl-turn-label is-self-artist';
+        $("scribbl-turn-label").textContent = "🎨 Vous êtes le peintre";
+        $("scribbl-turn-label").className = "scribbl-turn-label is-self-artist";
       } else {
-        $('scribbl-turn-label').textContent = artist ? `✏️ Peintre : ${artist.name}` : '';
-        $('scribbl-turn-label').className = 'scribbl-turn-label';
+        $("scribbl-turn-label").textContent = artist
+          ? `✏️ Peintre : ${artist.name}`
+          : "";
+        $("scribbl-turn-label").className = "scribbl-turn-label";
       }
     }
 
-    $('scribbl-reveal').hidden = state.phase !== 'reveal';
-    $('scribbl-reveal').textContent = state.phase === 'reveal'
-      ? `Le mot secret était : ${(state.word || '').toUpperCase()}`
-      : '';
+    $("scribbl-reveal").hidden = state.phase !== "reveal";
+    $("scribbl-reveal").textContent =
+      state.phase === "reveal"
+        ? `Le mot secret était : ${(state.word || "").toUpperCase()}`
+        : "";
 
-    const canDraw = state.status === 'playing' && state.phase === 'drawing' && state.is_artist;
-    const toolbar = $('scribbl-toolbar');
+    const canDraw =
+      state.status === "playing" &&
+      state.phase === "drawing" &&
+      state.is_artist;
+    const toolbar = $("scribbl-toolbar");
     toolbar.hidden = !canDraw;
-    toolbar.style.display = canDraw ? 'flex' : 'none';
-    $('scribbl-canvas').classList.toggle('is-drawable', canDraw);
+    toolbar.style.display = canDraw ? "flex" : "none";
+    $("scribbl-canvas").classList.toggle("is-drawable", canDraw);
 
-    const placeholder = $('scribbl-canvas-placeholder');
-    const artist = state.players.find((player) => player.player_id === state.artist_player_id);
-    if (state.phase === 'drawing' || state.status === 'finished' || state.phase === 'reveal') {
+    const placeholder = $("scribbl-canvas-placeholder");
+    const artist = state.players.find(
+      (player) => player.player_id === state.artist_player_id,
+    );
+    if (
+      state.phase === "drawing" ||
+      state.status === "finished" ||
+      state.phase === "reveal"
+    ) {
       placeholder.hidden = true;
-    } else if (state.phase === 'choosing' && !state.is_artist) {
+    } else if (state.phase === "choosing" && !state.is_artist) {
       placeholder.hidden = false;
-      placeholder.textContent = `${artist?.name || 'Le peintre'} choisit un mot…`;
+      placeholder.textContent = `${artist?.name || "Le peintre"} choisit un mot…`;
     } else {
       placeholder.hidden = true;
     }
 
-    const selfPlayer = state.players.find((player) => player.player_id === playerId);
-    if (state.status === 'finished') {
-      $('scribbl-chat-input').placeholder = 'Partie terminée ! Discutez du match…';
+    const selfPlayer = state.players.find(
+      (player) => player.player_id === playerId,
+    );
+    if (state.status === "finished") {
+      $("scribbl-chat-input").placeholder =
+        "Partie terminée ! Discutez du match…";
     } else if (state.is_artist) {
-      $('scribbl-chat-input').placeholder = 'Vous êtes le peintre ! (Chat uniquement)';
-    } else if (state.phase === 'drawing') {
+      $("scribbl-chat-input").placeholder =
+        "Vous êtes le peintre ! (Chat uniquement)";
+    } else if (state.phase === "drawing") {
       if (selfPlayer?.guessed) {
-        $('scribbl-chat-input').placeholder = 'Vous avez déjà trouvé le mot ! 🎉';
+        $("scribbl-chat-input").placeholder =
+          "Vous avez déjà trouvé le mot ! 🎉";
       } else {
-        $('scribbl-chat-input').placeholder = 'Devinez le mot…';
+        $("scribbl-chat-input").placeholder = "Devinez le mot…";
       }
     } else {
-      $('scribbl-chat-input').placeholder = 'Écrire dans le chat…';
+      $("scribbl-chat-input").placeholder = "Écrire dans le chat…";
     }
 
     renderTurnBanner();
@@ -530,17 +713,21 @@
     clockStartedAt = Date.now();
     if (clockTimer) clearInterval(clockTimer);
     const update = () => {
-      const display = $('scribbl-countdown');
-      if (state?.status === 'finished') {
-        display.textContent = 'FIN';
-        display.classList.remove('is-low');
+      const display = $("scribbl-countdown");
+      if (state?.status === "finished") {
+        display.textContent = "FIN";
+        display.classList.remove("is-low");
         return;
       }
-      const remaining = state?.status === 'playing'
-        ? Math.max(0, clockBase - Math.floor((Date.now() - clockStartedAt) / 1000))
-        : 0;
+      const remaining =
+        state?.status === "playing"
+          ? Math.max(
+              0,
+              clockBase - Math.floor((Date.now() - clockStartedAt) / 1000),
+            )
+          : 0;
       display.textContent = String(remaining);
-      display.classList.toggle('is-low', remaining <= 10);
+      display.classList.toggle("is-low", remaining <= 10);
     };
     update();
     clockTimer = setInterval(update, 200);
@@ -573,12 +760,15 @@
   function paintSegment(points, color, width, start, previousPoint = null) {
     if (!points?.length) return;
     const bounds = canvas.getBoundingClientRect();
-    const converted = points.map(([x, y]) => [x * bounds.width, y * bounds.height]);
+    const converted = points.map(([x, y]) => [
+      x * bounds.width,
+      y * bounds.height,
+    ]);
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = width;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     if (start && converted.length === 1) {
       ctx.beginPath();
       ctx.arc(converted[0][0], converted[0][1], width / 2, 0, Math.PI * 2);
@@ -608,28 +798,43 @@
   function flushStroke(start = false) {
     if (!pendingPoints.length) return;
     const points = pendingPoints.splice(0, 32);
-    const color = erasing ? '#ffffff' : selectedColor;
+    const color = erasing ? "#ffffff" : selectedColor;
     const width = erasing ? 24 : brushWidth;
-    if (!send({ type: 'stroke', start, points, color, width })) {
+    if (!send({ type: "stroke", start, points, color, width })) {
       pointerDown = false;
       pendingPoints = [];
     }
   }
 
-  canvas.addEventListener('pointerdown', (event) => {
-    if (!state?.is_artist || state.phase !== 'drawing' || state.status !== 'playing') return;
+  canvas.addEventListener("pointerdown", (event) => {
+    if (
+      !state?.is_artist ||
+      state.phase !== "drawing" ||
+      state.status !== "playing"
+    )
+      return;
     event.preventDefault();
     pointerDown = true;
     canvas.setPointerCapture(event.pointerId);
     pendingPoints = [pointFromEvent(event)];
-    paintSegment(pendingPoints, erasing ? '#ffffff' : selectedColor, erasing ? 24 : brushWidth, true);
+    paintSegment(
+      pendingPoints,
+      erasing ? "#ffffff" : selectedColor,
+      erasing ? 24 : brushWidth,
+      true,
+    );
     flushStroke(true);
   });
-  canvas.addEventListener('pointermove', (event) => {
+  canvas.addEventListener("pointermove", (event) => {
     if (!pointerDown) return;
     pendingPoints.push(pointFromEvent(event));
     const latest = pendingPoints.slice(-2);
-    paintSegment(latest, erasing ? '#ffffff' : selectedColor, erasing ? 24 : brushWidth, true);
+    paintSegment(
+      latest,
+      erasing ? "#ffffff" : selectedColor,
+      erasing ? 24 : brushWidth,
+      true,
+    );
     if (!flushFrame) {
       flushFrame = requestAnimationFrame(() => {
         flushFrame = 0;
@@ -643,48 +848,52 @@
     flushFrame = 0;
     while (pendingPoints.length) flushStroke(false);
   }
-  canvas.addEventListener('pointerup', finishStroke);
-  canvas.addEventListener('pointercancel', finishStroke);
-  canvas.addEventListener('lostpointercapture', finishStroke);
+  canvas.addEventListener("pointerup", finishStroke);
+  canvas.addEventListener("pointercancel", finishStroke);
+  canvas.addEventListener("lostpointercapture", finishStroke);
   new ResizeObserver(() => {
     resizeCanvas();
     paintCanvas();
   }).observe(canvas);
 
   function renderDirectory(rooms) {
-    const directory = $('scribbl-room-directory');
+    const directory = $("scribbl-room-directory");
     directory.replaceChildren();
     if (!rooms.length) {
-      directory.textContent = 'Aucun salon ouvert pour le moment.';
+      directory.textContent = "Aucun salon ouvert pour le moment.";
       return;
     }
     rooms.forEach((room) => {
-      const card = document.createElement('article');
-      card.className = 'scribbl-room-card';
-      const label = document.createElement('span');
-      const title = document.createElement('strong');
+      const card = document.createElement("article");
+      card.className = "scribbl-room-card";
+      const label = document.createElement("span");
+      const title = document.createElement("strong");
       title.textContent = `Salon ${room.room_id} · ${room.host_name}`;
-      const detail = document.createElement('small');
-      detail.textContent = `${room.player_count}/${room.max_players} joueurs · ${room.status === 'lobby' ? 'en attente' : 'en cours'}`;
+      const detail = document.createElement("small");
+      detail.textContent = `${room.player_count}/${room.max_players} joueurs · ${room.status === "lobby" ? "en attente" : "en cours"}`;
       label.append(title, detail);
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'scribbl-button';
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "scribbl-button";
       button.textContent = room.is_member
-        ? 'Reprendre'
-        : room.status === 'playing' ? 'Partie en cours' : 'Rejoindre';
-      button.disabled = !room.is_member && room.status !== 'lobby';
-      button.addEventListener('click', () => joinRoom(room.room_id));
+        ? "Reprendre"
+        : room.status === "playing"
+          ? "Partie en cours"
+          : "Rejoindre";
+      button.disabled = !room.is_member && room.status !== "lobby";
+      button.addEventListener("click", () => joinRoom(room.room_id));
       card.append(label, button);
       directory.append(card);
     });
   }
 
   async function refreshDirectory() {
-    const directory = $('scribbl-room-directory');
-    directory.textContent = 'Chargement des salons…';
+    const directory = $("scribbl-room-directory");
+    directory.textContent = "Chargement des salons…";
     try {
-      const result = await request(`/api/scribbl/rooms?player_id=${encodeURIComponent(playerId)}`);
+      const result = await request(
+        `/api/scribbl/rooms?player_id=${encodeURIComponent(playerId)}`,
+      );
       renderDirectory(result.rooms || []);
     } catch (error) {
       directory.textContent = `Impossible de charger les salons : ${error.message}`;
@@ -692,32 +901,32 @@
   }
 
   async function createRoom() {
-    clearError('scribbl-home-error');
-    $('scribbl-create').disabled = true;
+    clearError("scribbl-home-error");
+    $("scribbl-create").disabled = true;
     try {
-      const nextState = await request('/api/scribbl/room/create', {
+      const nextState = await request("/api/scribbl/room/create", {
         player_id: playerId,
         player_name: playerName,
-        rounds_per_player: Number($('scribbl-rounds').value),
+        rounds_per_player: Number($("scribbl-rounds").value),
       });
       deliberateClose = false;
       setRoom(nextState, true);
     } catch (error) {
-      showError('scribbl-home-error', error);
+      showError("scribbl-home-error", error);
     } finally {
-      $('scribbl-create').disabled = false;
+      $("scribbl-create").disabled = false;
     }
   }
 
   async function joinRoom(rawRoomId) {
     const roomId = rawRoomId.trim().toUpperCase();
     if (!roomId) {
-      showError('scribbl-home-error', new Error('Saisissez le code du salon.'));
+      showError("scribbl-home-error", new Error("Saisissez le code du salon."));
       return;
     }
-    clearError('scribbl-home-error');
+    clearError("scribbl-home-error");
     try {
-      const nextState = await request('/api/scribbl/room/join', {
+      const nextState = await request("/api/scribbl/room/join", {
         room_id: roomId,
         player_id: playerId,
         player_name: playerName,
@@ -725,7 +934,7 @@
       deliberateClose = false;
       setRoom(nextState, true);
     } catch (error) {
-      showError('scribbl-home-error', error);
+      showError("scribbl-home-error", error);
     }
   }
 
@@ -736,66 +945,262 @@
     if (socket) socket.close();
     if (leave && activeRoomId) {
       try {
-        await request('/api/scribbl/room/leave', {
+        await request("/api/scribbl/room/leave", {
           room_id: activeRoomId,
           player_id: playerId,
         });
       } catch (error) {
-        showError('scribbl-game-error', error);
+        showError("scribbl-game-error", error);
         deliberateClose = false;
         connectSocket();
         return;
       }
     }
-    activeRoomId = '';
+    activeRoomId = "";
     state = null;
-    localStorage.removeItem('scribbl_active_room_id');
-    history.replaceState(null, '', window.location.pathname);
+    localStorage.removeItem("scribbl_active_room_id");
+    history.replaceState(null, "", window.location.pathname);
     game.hidden = true;
     home.hidden = false;
     refreshDirectory();
   }
 
-  $('scribbl-create').addEventListener('click', createRoom);
-  $('scribbl-join').addEventListener('click', () => joinRoom($('scribbl-room-code').value));
-  $('scribbl-room-code').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') joinRoom(event.currentTarget.value);
+  async function toggleVoiceChat() {
+    if (!state || playerId !== state.host_player_id) return;
+    const nextEnabled = !(state.voice_chat && state.voice_chat.enabled);
+    send({ type: "voice_chat_toggle", enabled: nextEnabled });
+  }
+
+  async function joinVoiceChat() {
+    if (!state || !state.voice_chat?.enabled) return;
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showError(
+          "scribbl-game-error",
+          new Error("Le navigateur ne permet pas d’accéder au micro."),
+        );
+        return;
+      }
+      if (!voiceChatLocalStream) {
+        voiceChatLocalStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+      }
+      voiceChatJoined = true;
+      send({ type: "voice_chat_join", player_id: playerId });
+      updateVoiceChatUI();
+      connectVoicePeers();
+    } catch (error) {
+      console.error("Erreur accès micro Scribbl :", error);
+      showError(
+        "scribbl-game-error",
+        new Error(
+          "Accès au micro refusé. Autorisez le navigateur pour utiliser le chat vocal.",
+        ),
+      );
+    }
+  }
+
+  function leaveVoiceChat() {
+    stopVoiceLocalStream();
+    voiceChatJoined = false;
+    send({ type: "voice_chat_leave", player_id: playerId });
+    updateVoiceChatUI();
+  }
+
+  async function toggleVoiceMute() {
+    if (!state || !state.voice_chat?.enabled || !voiceChatJoined) return;
+    const nextMuted = !(
+      state.voice_chat.muted && state.voice_chat.muted[playerId]
+    );
+    send({ type: "voice_chat_mute_toggle", muted: nextMuted });
+  }
+
+  function stopVoiceLocalStream() {
+    if (voiceChatLocalStream) {
+      voiceChatLocalStream.getTracks().forEach((track) => track.stop());
+      voiceChatLocalStream = null;
+    }
+    Object.values(voiceChatPeerConnections).forEach((pc) => {
+      try {
+        pc.close();
+      } catch (error) {}
+    });
+    voiceChatPeerConnections = {};
+    Object.values(voiceChatRemoteAudio).forEach((audio) => {
+      try {
+        audio.remove();
+      } catch (error) {}
+    });
+    voiceChatRemoteAudio = {};
+  }
+
+  function sendVoiceSignal(targetId, signalType, payload = {}) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(
+      JSON.stringify({
+        type: "voice_chat_signal",
+        player_id: playerId,
+        target_player_id: targetId,
+        signal_type: signalType,
+        ...payload,
+      }),
+    );
+  }
+
+  async function createVoicePeerConnection(targetId) {
+    if (
+      !voiceChatLocalStream ||
+      targetId === playerId ||
+      voiceChatPeerConnections[targetId]
+    )
+      return;
+    if (!window.RTCPeerConnection) {
+      showError(
+        "scribbl-game-error",
+        new Error("WebRTC n’est pas disponible dans ce navigateur."),
+      );
+      return;
+    }
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    voiceChatPeerConnections[targetId] = pc;
+    voiceChatLocalStream
+      .getAudioTracks()
+      .forEach((track) => pc.addTrack(track, voiceChatLocalStream));
+    pc.onicecandidate = (event) => {
+      if (event.candidate)
+        sendVoiceSignal(targetId, "ice_candidate", {
+          candidate: event.candidate,
+        });
+    };
+    pc.ontrack = (event) => {
+      if (!voiceChatRemoteAudio[targetId]) {
+        const audio = document.createElement("audio");
+        audio.autoplay = true;
+        audio.playsInline = true;
+        audio.srcObject = event.streams[0];
+        voiceChatRemoteAudio[targetId] = audio;
+        document.body.appendChild(audio);
+      }
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sendVoiceSignal(targetId, "offer", { offer: pc.localDescription });
+  }
+
+  async function connectVoicePeers() {
+    if (!state?.voice_chat?.enabled || !voiceChatLocalStream) return;
+    const peers = (state.voice_chat.members || []).filter(
+      (memberId) => memberId && memberId !== playerId,
+    );
+    for (const peerId of peers) {
+      await createVoicePeerConnection(peerId);
+    }
+  }
+
+  async function handleVoiceChatSignal(msg) {
+    const senderId = msg.player_id || msg.source_player_id;
+    if (!senderId || senderId === playerId || !window.RTCPeerConnection) return;
+    let pc = voiceChatPeerConnections[senderId];
+    if (!pc) {
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      voiceChatPeerConnections[senderId] = pc;
+      if (voiceChatLocalStream) {
+        voiceChatLocalStream
+          .getAudioTracks()
+          .forEach((track) => pc.addTrack(track, voiceChatLocalStream));
+      }
+      pc.onicecandidate = (event) => {
+        if (event.candidate)
+          sendVoiceSignal(senderId, "ice_candidate", {
+            candidate: event.candidate,
+          });
+      };
+      pc.ontrack = (event) => {
+        if (!voiceChatRemoteAudio[senderId]) {
+          const audio = document.createElement("audio");
+          audio.autoplay = true;
+          audio.playsInline = true;
+          audio.srcObject = event.streams[0];
+          voiceChatRemoteAudio[senderId] = audio;
+          document.body.appendChild(audio);
+        }
+      };
+    }
+    if (msg.signal_type === "offer" && msg.offer) {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendVoiceSignal(senderId, "answer", { answer: pc.localDescription });
+    } else if (msg.signal_type === "answer" && msg.answer) {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+    } else if (msg.signal_type === "ice_candidate" && msg.candidate) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+      } catch (error) {
+        console.warn("ICE candidate ignoré Scribbl :", error);
+      }
+    }
+  }
+
+  $("scribbl-create").addEventListener("click", createRoom);
+  $("scribbl-join").addEventListener("click", () =>
+    joinRoom($("scribbl-room-code").value),
+  );
+  $("scribbl-voice-toggle").addEventListener("click", toggleVoiceChat);
+  $("scribbl-voice-join").addEventListener("click", () => {
+    const joined = (state?.voice_chat?.members || []).includes(playerId);
+    if (joined) leaveVoiceChat();
+    else joinVoiceChat();
   });
-  $('scribbl-refresh').addEventListener('click', refreshDirectory);
-  $('scribbl-start').addEventListener('click', () => send({ type: 'start' }));
-  $('scribbl-leave').addEventListener('click', () => returnHome());
-  $('scribbl-finished-leave')?.addEventListener('click', () => returnHome());
-  $('scribbl-restart').addEventListener('click', () => send({ type: 'restart' }));
-  $('scribbl-clear').addEventListener('click', () => send({ type: 'clear' }));
-  $('scribbl-eraser').addEventListener('click', (event) => {
+  $("scribbl-voice-mute").addEventListener("click", toggleVoiceMute);
+  $("scribbl-room-code").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") joinRoom(event.currentTarget.value);
+  });
+  $("scribbl-refresh").addEventListener("click", refreshDirectory);
+  $("scribbl-start").addEventListener("click", () => send({ type: "start" }));
+  $("scribbl-leave").addEventListener("click", () => returnHome());
+  $("scribbl-finished-leave")?.addEventListener("click", () => returnHome());
+  $("scribbl-restart").addEventListener("click", () =>
+    send({ type: "restart" }),
+  );
+  $("scribbl-clear").addEventListener("click", () => send({ type: "clear" }));
+  $("scribbl-eraser").addEventListener("click", (event) => {
     erasing = !erasing;
-    event.currentTarget.setAttribute('aria-pressed', String(erasing));
+    event.currentTarget.setAttribute("aria-pressed", String(erasing));
     renderPalette();
   });
-  $('scribbl-chat-form').addEventListener('submit', (event) => {
+  $("scribbl-chat-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    const text = $('scribbl-chat-input').value.trim();
+    const text = $("scribbl-chat-input").value.trim();
     if (!text) return;
-    const isGuess = state?.status === 'playing'
-      && state.phase === 'drawing'
-      && !state.is_artist;
-    if (send({ type: isGuess ? 'guess' : 'message', text })) {
-      $('scribbl-chat-input').value = '';
+    const isGuess =
+      state?.status === "playing" &&
+      state.phase === "drawing" &&
+      !state.is_artist;
+    if (send({ type: isGuess ? "guess" : "message", text })) {
+      $("scribbl-chat-input").value = "";
     }
   });
-  $('scribbl-copy').addEventListener('click', async (event) => {
+  $("scribbl-copy").addEventListener("click", async (event) => {
     const url = new URL(window.location.href);
     url.search = new URLSearchParams({ room: activeRoomId }).toString();
     try {
       await navigator.clipboard.writeText(url.href);
-      event.currentTarget.textContent = 'Lien copié !';
-      setTimeout(() => { event.currentTarget.textContent = 'Copier le lien'; }, 1500);
+      event.currentTarget.textContent = "Lien copié !";
+      setTimeout(() => {
+        event.currentTarget.textContent = "Copier le lien";
+      }, 1500);
     } catch {
-      window.prompt('Copiez ce lien pour inviter vos amis :', url.href);
+      window.prompt("Copiez ce lien pour inviter vos amis :", url.href);
     }
   });
 
-  const requestedRoom = new URLSearchParams(window.location.search).get('room');
+  const requestedRoom = new URLSearchParams(window.location.search).get("room");
   if (requestedRoom) joinRoom(requestedRoom);
   else refreshDirectory();
 })();

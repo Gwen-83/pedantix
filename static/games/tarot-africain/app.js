@@ -34,6 +34,11 @@
   let clockTimer = null;
   let clockBase = 0;
   let clockStartedAt = 0;
+  let voiceChatState = { enabled: false, members: [], muted: {} };
+  let voiceChatJoined = false;
+  let voiceChatLocalStream = null;
+  let voiceChatPeerConnections = {};
+  let voiceChatRemoteAudio = {};
   const ui = {
     turnKey: "",
     bidDraft: 0,
@@ -123,8 +128,34 @@
       }
       if (message.type === "state") {
         state = message.state;
+        voiceChatState = state?.voice_chat || {
+          enabled: false,
+          members: [],
+          muted: {},
+        };
+        voiceChatJoined = (voiceChatState.members || []).includes(playerId);
         clearError("tarot-game-error");
         render();
+      } else if (message.type === "voice_chat_state") {
+        state = {
+          ...state,
+          voice_chat: message.voice_chat || {
+            enabled: false,
+            members: [],
+            muted: {},
+          },
+        };
+        voiceChatState = state.voice_chat;
+        voiceChatJoined = (voiceChatState.members || []).includes(playerId);
+        if (!voiceChatState.enabled && voiceChatLocalStream) {
+          stopVoiceLocalStream();
+        }
+        updateVoiceChatUI();
+        if (voiceChatState.enabled && voiceChatJoined && voiceChatLocalStream) {
+          connectVoicePeers();
+        }
+      } else if (message.type === "voice_chat_signal") {
+        handleVoiceChatSignal(message);
       } else if (message.type === "left") {
         deliberateClose = true;
         connection.close();
@@ -244,7 +275,67 @@
     return element;
   }
 
+  function updateVoiceChatUI() {
+    const panel = $("tarot-voice-panel");
+    const status = $("tarot-voice-status");
+    const toggle = $("tarot-voice-toggle");
+    const join = $("tarot-voice-join");
+    const mute = $("tarot-voice-mute");
+    const membersList = $("tarot-voice-members");
+    const voice = state?.voice_chat || {
+      enabled: false,
+      members: [],
+      muted: {},
+    };
+    const multiplayer = !!state && !state.is_solo && state.player_count > 1;
+    const joined = (voice.members || []).includes(playerId);
+    const mutedValue = !!(voice.muted && voice.muted[playerId]);
+
+    panel.hidden = !multiplayer;
+    toggle.hidden = !multiplayer || playerId !== state.host_player_id;
+    toggle.textContent = voice.enabled
+      ? "Désactiver le chat vocal"
+      : "Activer le chat vocal";
+    join.hidden = !multiplayer || !voice.enabled;
+    join.textContent = joined
+      ? "Quitter le chat vocal"
+      : "Rejoindre le chat vocal";
+    mute.hidden = !multiplayer || !voice.enabled || !joined;
+    mute.textContent = mutedValue ? "Micro muet" : "Micro actif";
+    status.textContent = voice.enabled
+      ? joined
+        ? "En ligne"
+        : "Ouvert"
+      : "Fermé";
+
+    membersList.replaceChildren(
+      ...((voice.members || []).length
+        ? (voice.members || []).map((memberId) => {
+            const item = document.createElement("li");
+            item.className = "tarot-voice-member";
+            const label = document.createElement("span");
+            label.textContent = memberId === playerId ? "Vous" : memberId;
+            const badge = document.createElement("small");
+            badge.textContent =
+              voice.muted && voice.muted[memberId] ? "Muet" : "Micro OK";
+            item.append(label, badge);
+            return item;
+          })
+        : [
+            (() => {
+              const empty = document.createElement("li");
+              empty.className = "tarot-voice-member empty";
+              empty.textContent = voice.enabled
+                ? "Aucun participant actif."
+                : "Le salon vocal est fermé.";
+              return empty;
+            })(),
+          ]),
+    );
+  }
+
   function renderLobby() {
+    updateVoiceChatUI();
     $("tarot-lobby").hidden = false;
     $("tarot-play").hidden = true;
     $("tarot-phase-label").textContent = state.is_solo
@@ -786,6 +877,7 @@
   }
 
   function render() {
+    updateVoiceChatUI();
     if (!state) return;
     if (state.status === "lobby") {
       ui.turnKey = "";
@@ -998,8 +1090,197 @@
     returnHome();
   }
 
+  async function toggleVoiceChat() {
+    if (!state || playerId !== state.host_player_id) return;
+    const nextEnabled = !(state.voice_chat && state.voice_chat.enabled);
+    send({ type: "voice_chat_toggle", enabled: nextEnabled });
+  }
+
+  async function joinVoiceChat() {
+    if (!state || !state.voice_chat?.enabled) return;
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showError(
+          "tarot-game-error",
+          new Error("Le navigateur ne permet pas d’accéder au micro."),
+        );
+        return;
+      }
+      if (!voiceChatLocalStream) {
+        voiceChatLocalStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+      }
+      voiceChatJoined = true;
+      send({ type: "voice_chat_join", player_id: playerId });
+      updateVoiceChatUI();
+      connectVoicePeers();
+    } catch (error) {
+      console.error("Erreur accès micro Tarot :", error);
+      showError(
+        "tarot-game-error",
+        new Error(
+          "Accès au micro refusé. Autorisez le navigateur pour utiliser le chat vocal.",
+        ),
+      );
+    }
+  }
+
+  function leaveVoiceChat() {
+    stopVoiceLocalStream();
+    voiceChatJoined = false;
+    send({ type: "voice_chat_leave", player_id: playerId });
+    updateVoiceChatUI();
+  }
+
+  async function toggleVoiceMute() {
+    if (!state || !state.voice_chat?.enabled || !voiceChatJoined) return;
+    const nextMuted = !(
+      state.voice_chat.muted && state.voice_chat.muted[playerId]
+    );
+    send({ type: "voice_chat_mute_toggle", muted: nextMuted });
+  }
+
+  function stopVoiceLocalStream() {
+    if (voiceChatLocalStream) {
+      voiceChatLocalStream.getTracks().forEach((track) => track.stop());
+      voiceChatLocalStream = null;
+    }
+    Object.values(voiceChatPeerConnections).forEach((pc) => {
+      try {
+        pc.close();
+      } catch (error) {}
+    });
+    voiceChatPeerConnections = {};
+    Object.values(voiceChatRemoteAudio).forEach((audio) => {
+      try {
+        audio.remove();
+      } catch (error) {}
+    });
+    voiceChatRemoteAudio = {};
+  }
+
+  function sendVoiceSignal(targetId, signalType, payload = {}) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(
+      JSON.stringify({
+        type: "voice_chat_signal",
+        player_id: playerId,
+        target_player_id: targetId,
+        signal_type: signalType,
+        ...payload,
+      }),
+    );
+  }
+
+  async function createVoicePeerConnection(targetId) {
+    if (
+      !voiceChatLocalStream ||
+      targetId === playerId ||
+      voiceChatPeerConnections[targetId]
+    )
+      return;
+    if (!window.RTCPeerConnection) {
+      showError(
+        "tarot-game-error",
+        new Error("WebRTC n’est pas disponible dans ce navigateur."),
+      );
+      return;
+    }
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    voiceChatPeerConnections[targetId] = pc;
+    voiceChatLocalStream
+      .getAudioTracks()
+      .forEach((track) => pc.addTrack(track, voiceChatLocalStream));
+    pc.onicecandidate = (event) => {
+      if (event.candidate)
+        sendVoiceSignal(targetId, "ice_candidate", {
+          candidate: event.candidate,
+        });
+    };
+    pc.ontrack = (event) => {
+      if (!voiceChatRemoteAudio[targetId]) {
+        const audio = document.createElement("audio");
+        audio.autoplay = true;
+        audio.playsInline = true;
+        audio.srcObject = event.streams[0];
+        voiceChatRemoteAudio[targetId] = audio;
+        document.body.appendChild(audio);
+      }
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sendVoiceSignal(targetId, "offer", { offer: pc.localDescription });
+  }
+
+  async function connectVoicePeers() {
+    if (!state?.voice_chat?.enabled || !voiceChatLocalStream) return;
+    const peers = (state.voice_chat.members || []).filter(
+      (memberId) => memberId && memberId !== playerId,
+    );
+    for (const peerId of peers) {
+      await createVoicePeerConnection(peerId);
+    }
+  }
+
+  async function handleVoiceChatSignal(msg) {
+    const senderId = msg.player_id || msg.source_player_id;
+    if (!senderId || senderId === playerId || !window.RTCPeerConnection) return;
+    let pc = voiceChatPeerConnections[senderId];
+    if (!pc) {
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      voiceChatPeerConnections[senderId] = pc;
+      if (voiceChatLocalStream) {
+        voiceChatLocalStream
+          .getAudioTracks()
+          .forEach((track) => pc.addTrack(track, voiceChatLocalStream));
+      }
+      pc.onicecandidate = (event) => {
+        if (event.candidate)
+          sendVoiceSignal(senderId, "ice_candidate", {
+            candidate: event.candidate,
+          });
+      };
+      pc.ontrack = (event) => {
+        if (!voiceChatRemoteAudio[senderId]) {
+          const audio = document.createElement("audio");
+          audio.autoplay = true;
+          audio.playsInline = true;
+          audio.srcObject = event.streams[0];
+          voiceChatRemoteAudio[senderId] = audio;
+          document.body.appendChild(audio);
+        }
+      };
+    }
+    if (msg.signal_type === "offer" && msg.offer) {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendVoiceSignal(senderId, "answer", { answer: pc.localDescription });
+    } else if (msg.signal_type === "answer" && msg.answer) {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+    } else if (msg.signal_type === "ice_candidate" && msg.candidate) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+      } catch (error) {
+        console.warn("ICE candidate ignoré Tarot :", error);
+      }
+    }
+  }
+
   $("tarot-create").addEventListener("click", () => createRoom("multiplayer"));
   $("tarot-create-solo").addEventListener("click", () => createRoom("solo"));
+  $("tarot-voice-toggle").addEventListener("click", toggleVoiceChat);
+  $("tarot-voice-join").addEventListener("click", () => {
+    const joined = (state?.voice_chat?.members || []).includes(playerId);
+    if (joined) leaveVoiceChat();
+    else joinVoiceChat();
+  });
+  $("tarot-voice-mute").addEventListener("click", toggleVoiceMute);
   $("tarot-join").addEventListener("click", () =>
     joinRoom($("tarot-room-code").value),
   );
