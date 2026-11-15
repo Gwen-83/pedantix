@@ -85,6 +85,16 @@ class PedantixApp {
       this.playerName = "Joueur " + Math.floor(Math.random() * 899 + 100);
       localStorage.setItem("pedantix_player_name", this.playerName);
     }
+    this.voiceChatIceServers = [
+      {
+        urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"],
+      },
+      {
+        urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+    ];
 
     this.sessionId = null;
     this.seed = null;
@@ -2592,10 +2602,19 @@ class PedantixApp {
       const item = document.createElement("div");
       item.className = "voice-member-row";
       const me = memberId === this.playerId;
-      item.innerHTML = `
-        <span class="voice-member-name">${me ? "Vous" : memberId}</span>
-        <span class="voice-member-badge">${this.voiceChatState.muted && this.voiceChatState.muted[memberId] ? "Muet" : "Micro OK"}</span>
-      `;
+      const player = (this.room?.players || []).find(
+        (entry) => entry.player_id === memberId,
+      );
+      const label = document.createElement("span");
+      label.className = "voice-member-name";
+      label.textContent = me ? "Vous" : player?.name || memberId;
+      const badge = document.createElement("span");
+      badge.className = "voice-member-badge";
+      badge.textContent =
+        this.voiceChatState.muted && this.voiceChatState.muted[memberId]
+          ? "Muet"
+          : "Micro OK";
+      item.append(label, badge);
       this.dom.voiceMembersList.appendChild(item);
     });
   }
@@ -2728,7 +2747,7 @@ class PedantixApp {
       return;
     }
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: this.voiceChatIceServers,
     });
     this.voiceChatPeerConnections[targetId] = pc;
 
@@ -2777,7 +2796,7 @@ class PedantixApp {
     let pc = this.voiceChatPeerConnections[senderId];
     if (!pc) {
       pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        iceServers: this.voiceChatIceServers,
       });
       this.voiceChatPeerConnections[senderId] = pc;
       if (this.voiceChatLocalStream) {

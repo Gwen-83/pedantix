@@ -92,6 +92,20 @@ class FrontendContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("[DEVICE-TRACKER]", output.getvalue())
 
+    def test_voice_chat_clients_use_turn_servers_for_nat_traversal(self):
+        project_root = Path(__file__).resolve().parents[1]
+        voice_files = [
+            project_root / "static" / "games" / "pedantix" / "app.js",
+            project_root / "static" / "games" / "scribbl" / "app.js",
+            project_root / "static" / "games" / "tarot-africain" / "app.js",
+        ]
+
+        for voice_file in voice_files:
+            with self.subTest(file=voice_file.name):
+                source = voice_file.read_text()
+                self.assertIn("stun:stun.l.google.com:19302", source)
+                self.assertIn("turn:openrelay.metered.ca", source)
+
     def test_store_hides_unfinished_sessions_and_cumulative_play_time(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)

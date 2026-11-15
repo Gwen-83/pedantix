@@ -422,7 +422,11 @@
             const item = document.createElement("li");
             item.className = "naval-voice-member";
             const label = document.createElement("span");
-            label.textContent = memberId === playerId ? "Vous" : memberId;
+            const memberName = (state?.players || []).find(
+              (player) => player.player_id === memberId,
+            )?.name;
+            label.textContent =
+              memberId === playerId ? "Vous" : memberName || memberId;
             const badge = document.createElement("small");
             badge.textContent =
               voice.muted && voice.muted[memberId] ? "Muet" : "Micro OK";

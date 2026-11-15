@@ -59,6 +59,16 @@
   let voiceChatLocalStream = null;
   let voiceChatPeerConnections = {};
   let voiceChatRemoteAudio = {};
+  const voiceChatIceServers = [
+    {
+      urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"],
+    },
+    {
+      urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  ];
 
   $("scribbl-player-name").textContent = playerName;
   $("scribbl-brush").addEventListener("input", (event) => {
@@ -270,7 +280,11 @@
             const item = document.createElement("li");
             item.className = "scribbl-voice-member";
             const label = document.createElement("span");
-            label.textContent = memberId === playerId ? "Vous" : memberId;
+            const memberName = (state?.players || []).find(
+              (player) => player.player_id === memberId,
+            )?.name;
+            label.textContent =
+              memberId === playerId ? "Vous" : memberName || memberId;
             const badge = document.createElement("small");
             badge.textContent =
               voice.muted && voice.muted[memberId] ? "Muet" : "Micro OK";
@@ -1063,7 +1077,7 @@
       return;
     }
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: voiceChatIceServers,
     });
     voiceChatPeerConnections[targetId] = pc;
     voiceChatLocalStream
@@ -1106,7 +1120,7 @@
     let pc = voiceChatPeerConnections[senderId];
     if (!pc) {
       pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        iceServers: voiceChatIceServers,
       });
       voiceChatPeerConnections[senderId] = pc;
       if (voiceChatLocalStream) {
