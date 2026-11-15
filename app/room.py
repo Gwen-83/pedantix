@@ -109,6 +109,12 @@ class Room:
         self.last_round_results: Optional[Dict[str, Any]] = None
         self.recent_activity: List[Dict[str, Any]] = []
         self.chat_messages: List[Dict[str, Any]] = []
+        self.voice_chat: Dict[str, Any] = {
+            "enabled": False,
+            "members": [],
+            "muted": {},
+            "host_id": self.host_player_id,
+        }
         self.game_mode: str = "individual"  # "individual" or "team"
         self.team_sessions: Dict[str, GameSession] = {}
         self.assist_token = uuid.uuid4().hex
@@ -569,6 +575,75 @@ class Room:
         if len(self.chat_messages) > 100:
             self.chat_messages.pop(0)
         return msg
+
+    def _sanitize_voice_chat_members(self) -> None:
+        valid_members = []
+        for player_id in self.voice_chat.get("members", []):
+            if player_id in self.players:
+                valid_members.append(player_id)
+        self.voice_chat["members"] = valid_members
+        muted = self.voice_chat.get("muted", {})
+        self.voice_chat["muted"] = {
+            player_id: bool(muted.get(player_id, False))
+            for player_id in valid_members
+        }
+        self.voice_chat["host_id"] = self.host_player_id
+
+    def get_voice_chat_state(self) -> Dict[str, Any]:
+        self._sanitize_voice_chat_members()
+        members = list(self.voice_chat.get("members", []))
+        muted = {
+            player_id: bool(self.voice_chat.get("muted", {}).get(player_id, False))
+            for player_id in members
+        }
+        return {
+            "enabled": bool(self.voice_chat.get("enabled", False)),
+            "members": members,
+            "muted": muted,
+            "host_id": self.host_player_id,
+            "room_id": self.room_id,
+        }
+
+    def toggle_voice_chat(self, player_id: str, enabled: Optional[bool] = None) -> Dict[str, Any]:
+        if player_id != self.host_player_id:
+            return self.get_voice_chat_state()
+        target_enabled = enabled if enabled is not None else not bool(self.voice_chat.get("enabled", False))
+        self.voice_chat["enabled"] = bool(target_enabled)
+        self.voice_chat["host_id"] = self.host_player_id
+        if not self.voice_chat["enabled"]:
+            self.voice_chat["members"] = []
+            self.voice_chat["muted"] = {}
+        else:
+            self._sanitize_voice_chat_members()
+        return self.get_voice_chat_state()
+
+    def join_voice_chat(self, player_id: str) -> Dict[str, Any]:
+        if player_id not in self.players:
+            return self.get_voice_chat_state()
+        if not self.voice_chat.get("enabled", False):
+            return self.get_voice_chat_state()
+        members = self.voice_chat.setdefault("members", [])
+        if player_id not in members:
+            members.append(player_id)
+        self.voice_chat.setdefault("muted", {})[player_id] = bool(self.voice_chat["muted"].get(player_id, False))
+        return self.get_voice_chat_state()
+
+    def leave_voice_chat(self, player_id: str) -> Dict[str, Any]:
+        members = self.voice_chat.setdefault("members", [])
+        if player_id in members:
+            members.remove(player_id)
+        self.voice_chat.setdefault("muted", {}).pop(player_id, None)
+        if not self.voice_chat.get("members") and not self.voice_chat.get("enabled", False):
+            self.voice_chat["muted"] = {}
+        return self.get_voice_chat_state()
+
+    def set_voice_chat_muted(self, player_id: str, muted: bool) -> Dict[str, Any]:
+        if player_id not in self.players:
+            return self.get_voice_chat_state()
+        self.voice_chat.setdefault("muted", {})[player_id] = bool(muted)
+        if player_id not in self.voice_chat.setdefault("members", []):
+            self.join_voice_chat(player_id)
+        return self.get_voice_chat_state()
 
     def get_or_create_player(self, player_id: str, player_name: str) -> RoomPlayer:
         if player_id in self.players:
@@ -1694,6 +1769,7 @@ class Room:
             return True
 
         self.surrender_cooldowns.pop(player_id, None)
+        self.leave_voice_chat(player_id)
 
         if self.surrender_in_progress:
             self.surrender_votes.discard(player_id)

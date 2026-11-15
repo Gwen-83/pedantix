@@ -2575,6 +2575,7 @@ async def get_room_state(room_id: str, player_id: Optional[str] = None):
         "article_pageviews_90d": room.article_data.get("pageviews_90d", int(room.article_data.get("pageviews_60d", 0) * 1.5)),
         "teams": room.get_teams_data(),
         "host_player_id": room.host_player_id,
+        "voice_chat": room.get_voice_chat_state(),
         "can_start": room.can_start(),
         "countdown_end": room.countdown_end,
         "timer_30s_end": room.timer_30s_end,
@@ -2622,6 +2623,7 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
             "chat_messages": room.chat_messages,
             "status": room.status,
             "host_player_id": room.host_player_id,
+            "voice_chat": room.get_voice_chat_state(),
             "can_start": room.can_start(),
             "countdown_end": room.countdown_end,
             "timer_30s_end": room.timer_30s_end,
@@ -2683,6 +2685,50 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
                             "leaderboard": room.get_leaderboard(),
                             "activity": room.recent_activity
                         })
+                elif msg_type == "voice_chat_toggle":
+                    pid = data.get("player_id")
+                    state = room.toggle_voice_chat(pid, bool(data.get("enabled", False)))
+                    await room.broadcast({
+                        "type": "voice_chat_state",
+                        "room_id": room.room_id,
+                        "voice_chat": state,
+                    })
+                elif msg_type == "voice_chat_join":
+                    pid = data.get("player_id")
+                    if pid:
+                        state = room.join_voice_chat(pid)
+                        await room.broadcast({
+                            "type": "voice_chat_state",
+                            "room_id": room.room_id,
+                            "voice_chat": state,
+                        })
+                elif msg_type == "voice_chat_leave":
+                    pid = data.get("player_id")
+                    if pid:
+                        state = room.leave_voice_chat(pid)
+                        await room.broadcast({
+                            "type": "voice_chat_state",
+                            "room_id": room.room_id,
+                            "voice_chat": state,
+                        })
+                elif msg_type == "voice_chat_mute_toggle":
+                    pid = data.get("player_id")
+                    muted = bool(data.get("muted", False))
+                    if pid:
+                        state = room.set_voice_chat_muted(pid, muted)
+                        await room.broadcast({
+                            "type": "voice_chat_state",
+                            "room_id": room.room_id,
+                            "voice_chat": state,
+                        })
+                elif msg_type == "voice_chat_signal":
+                    target_player_id = data.get("target_player_id")
+                    if not target_player_id:
+                        continue
+                    target_ws = next((ws for ws, pid in room.ws_player_map.items() if pid == target_player_id), None)
+                    if target_ws is not None:
+                        payload = {"type": "voice_chat_signal", **{k: v for k, v in data.items() if k != "type"}}
+                        await target_ws.send_text(json.dumps(payload))
             except (json.JSONDecodeError, AttributeError, TypeError) as exc:
                 logger.warning("Message WebSocket invalide dans le salon %s: %s", room_id, exc)
 

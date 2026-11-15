@@ -7,7 +7,8 @@ if (window.top !== window.self) {
   try {
     window.top.location = window.self.location;
   } catch (e) {
-    document.documentElement.innerHTML = '<div style="color:#ef4444;padding:40px;text-align:center;font-family:sans-serif;font-size:1.5rem;font-weight:bold;">⛔ Ce site ne peut pas être exécuté dans un encart ou une iframe de superposition.</div>';
+    document.documentElement.innerHTML =
+      '<div style="color:#ef4444;padding:40px;text-align:center;font-family:sans-serif;font-size:1.5rem;font-weight:bold;">⛔ Ce site ne peut pas être exécuté dans un encart ou une iframe de superposition.</div>';
   }
 }
 
@@ -17,11 +18,19 @@ const _NATIVE_WS = window.WebSocket;
 
 // Neutralisation immédiate des Shadow DOM injectés par des extensions de triche
 try {
-  if (typeof Element !== 'undefined' && Element.prototype && Element.prototype.attachShadow) {
+  if (
+    typeof Element !== "undefined" &&
+    Element.prototype &&
+    Element.prototype.attachShadow
+  ) {
     const _origAttachShadow = Element.prototype.attachShadow;
-    Element.prototype.attachShadow = function(init) {
-      console.warn('[Anti-Cheat] Tentative de Shadow DOM interceptée et neutralisée.');
-      try { this.remove(); } catch (e) {}
+    Element.prototype.attachShadow = function (init) {
+      console.warn(
+        "[Anti-Cheat] Tentative de Shadow DOM interceptée et neutralisée.",
+      );
+      try {
+        this.remove();
+      } catch (e) {}
       return _origAttachShadow.apply(this, [init]);
     };
   }
@@ -31,42 +40,50 @@ class PedantixApp {
   constructor() {
     // Room & Player configuration
     const urlParams = new URLSearchParams(window.location.search);
-    const modeParam = urlParams.get('mode');
-    const roomParam = urlParams.get('room');
-    const assistRoomParam = urlParams.get('assist');
-    const assistTokenParam = urlParams.get('key');
+    const modeParam = urlParams.get("mode");
+    const roomParam = urlParams.get("room");
+    const assistRoomParam = urlParams.get("assist");
+    const assistTokenParam = urlParams.get("key");
 
     // Default mode is Solo unless explicitly invited to a room with ?room or requested
-    this.isSoloMode = modeParam === 'solo' || (modeParam !== 'multi' && !roomParam && localStorage.getItem('pedantix_play_mode') !== 'multi');
+    this.isSoloMode =
+      modeParam === "solo" ||
+      (modeParam !== "multi" &&
+        !roomParam &&
+        localStorage.getItem("pedantix_play_mode") !== "multi");
 
-    this.playerId = localStorage.getItem('pedantix_player_id');
+    this.playerId = localStorage.getItem("pedantix_player_id");
     if (!this.playerId) {
-      this.playerId = 'p-' + Math.random().toString(36).substring(2, 10);
-      localStorage.setItem('pedantix_player_id', this.playerId);
+      this.playerId = "p-" + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem("pedantix_player_id", this.playerId);
     }
 
     this.soloRoomId = `solo-${this.playerId}`;
-    this.isAssisting = this.isSoloMode && !!(
-      assistRoomParam &&
-      assistRoomParam.startsWith('solo-') &&
-      assistTokenParam
-    );
+    this.isAssisting =
+      this.isSoloMode &&
+      !!(
+        assistRoomParam &&
+        assistRoomParam.startsWith("solo-") &&
+        assistTokenParam
+      );
     this.assistToken = this.isAssisting ? assistTokenParam : null;
     this.assistingPlayerId = null;
-    const validRoomParam = (roomParam && !roomParam.startsWith('solo-')) ? roomParam : null;
+    const validRoomParam =
+      roomParam && !roomParam.startsWith("solo-") ? roomParam : null;
 
     if (this.isSoloMode) {
       this.roomId = this.isAssisting ? assistRoomParam : this.soloRoomId;
     } else {
-      this.roomId = validRoomParam || '';
+      this.roomId = validRoomParam || "";
     }
 
-    this.authUser = localStorage.getItem('pedantix_auth_user') || null;
-    this.authToken = localStorage.getItem('pedantix_auth_token') || null;
-    this.playerName = this.authUser || localStorage.getItem('pedantix_player_name');
+    this.authUser = localStorage.getItem("pedantix_auth_user") || null;
+    this.authToken = localStorage.getItem("pedantix_auth_token") || null;
+    this.playerName =
+      this.authUser || localStorage.getItem("pedantix_player_name");
     if (!this.playerName) {
-      this.playerName = 'Joueur ' + Math.floor(Math.random() * 899 + 100);
-      localStorage.setItem('pedantix_player_name', this.playerName);
+      this.playerName = "Joueur " + Math.floor(Math.random() * 899 + 100);
+      localStorage.setItem("pedantix_player_name", this.playerName);
     }
 
     this.sessionId = null;
@@ -85,7 +102,7 @@ class PedantixApp {
     this.isReady = false;
     this.isSpectator = false;
     this.canStart = false;
-    this.roomStatus = 'lobby'; // 'lobby', 'starting', 'playing', 'ending', 'round_over'
+    this.roomStatus = "lobby"; // 'lobby', 'starting', 'playing', 'ending', 'round_over'
     this.myScore = 0;
     this.countdownTimer = null;
     this.sprintInterval = null;
@@ -104,10 +121,10 @@ class PedantixApp {
     this.lastTrustedPaste = false;
     this.firstKeystrokeTime = 0;
 
-    this.sortMode = 'chrono'; // 'chrono' or 'alpha'
+    this.sortMode = "chrono"; // 'chrono' or 'alpha'
     this.sortAsc = true;
     this.isCollapsed = false;
-    this.filterQuery = '';
+    this.filterQuery = "";
     this.isPinned = false;
     this.previousInputs = [];
     this.prevInputIdx = -1;
@@ -124,27 +141,36 @@ class PedantixApp {
     this.selectedLeaderboardPlayerId = null;
     this.showAllLeaderboardExpanded = false;
 
-    this.soundEnabled = localStorage.getItem('pedantix_sound') !== 'false';
-    this.theme = localStorage.getItem('pedantix_theme') || 'dark-colorful';
-    this.currentDifficulty = localStorage.getItem('pedantix_difficulty') || 'moyen';
-    this.articleDifficulty = 'moyen';
+    this.soundEnabled = localStorage.getItem("pedantix_sound") !== "false";
+    this.theme = localStorage.getItem("pedantix_theme") || "dark-colorful";
+    this.currentDifficulty =
+      localStorage.getItem("pedantix_difficulty") || "moyen";
+    this.articleDifficulty = "moyen";
     this.articleLangCount = 0;
     this.articlePageviews90d = 0;
 
-    this.confetti = typeof ConfettiGenerator !== 'undefined' ? new ConfettiGenerator('confetti-canvas') : null;
+    this.confetti =
+      typeof ConfettiGenerator !== "undefined"
+        ? new ConfettiGenerator("confetti-canvas")
+        : null;
     this.audioCtx = null;
     this.pushNoticeTimeout = null;
 
     // Chat and Network State
     this.chatMessages = [];
-    this.activeSidebarTab = 'contest';
+    this.voiceChatState = { enabled: false, members: [], muted: {} };
+    this.voiceChatJoined = false;
+    this.voiceChatPeerConnections = {};
+    this.voiceChatLocalStream = null;
+    this.voiceChatRemoteAudio = {};
+    this.activeSidebarTab = "contest";
     this.unreadChatCount = 0;
     this.networkInfo = null;
-    this.activeNetMode = 'lan';
+    this.activeNetMode = "lan";
 
     // Game Mode & Teams State
-    this.gameMode = 'individual'; // 'individual' or 'team'
-    this.myTeam = 'blue';         // 'blue', 'red', 'green', 'yellow'
+    this.gameMode = "individual"; // 'individual' or 'team'
+    this.myTeam = "blue"; // 'blue', 'red', 'green', 'yellow'
     this.teamsData = null;
     this.wsRoomId = null;
     this.roomsRefreshInterval = null;
@@ -154,26 +180,32 @@ class PedantixApp {
     this.initAudio();
     this.initEventListeners();
     this.setupChat();
+    this.initVoiceChatUI();
     this.setupNetworkUI();
     this.applyTheme(this.theme);
     this.updateSoundIcon();
 
     // Setup pseudo input and fetch network IP
-    if (this.dom.playerPseudoInput) this.dom.playerPseudoInput.value = this.playerName;
-    if (this.dom.lobbyPseudoInput) this.dom.lobbyPseudoInput.value = this.playerName;
+    if (this.dom.playerPseudoInput)
+      this.dom.playerPseudoInput.value = this.playerName;
+    if (this.dom.lobbyPseudoInput)
+      this.dom.lobbyPseudoInput.value = this.playerName;
     this.fetchNetworkInfo();
 
     // Solo mode UI initialization
     if (this.isSoloMode) {
-      document.body.classList.add('solo-mode');
-      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add('active');
-      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
-      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
+      document.body.classList.add("solo-mode");
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add("active");
+      if (this.dom.btnTypeMulti)
+        this.dom.btnTypeMulti.classList.remove("active");
+      if (this.dom.soloDifficultySelector)
+        this.dom.soloDifficultySelector.style.display = "inline-flex";
     } else {
-      document.body.classList.remove('solo-mode');
-      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
-      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
-      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
+      document.body.classList.remove("solo-mode");
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove("active");
+      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add("active");
+      if (this.dom.soloDifficultySelector)
+        this.dom.soloDifficultySelector.style.display = "none";
     }
     this.updateDifficultyUI(this.currentDifficulty);
     this.refreshSoloLeaderboard();
@@ -187,349 +219,394 @@ class PedantixApp {
 
     // Check user authentication
     this.checkAuthOnLoad();
-
   }
 
   getBackendUrl() {
     if (!this.isHostedMode()) {
-      const saved = localStorage.getItem('pedantix_backend_url');
-      return saved ? saved.replace(/\/+$/, '') : '';
+      const saved = localStorage.getItem("pedantix_backend_url");
+      return saved ? saved.replace(/\/+$/, "") : "";
     }
     if (window.PEDANTIX_CONFIG && window.PEDANTIX_CONFIG.BACKEND_URL) {
-      return window.PEDANTIX_CONFIG.BACKEND_URL.replace(/\/+$/, '');
+      return window.PEDANTIX_CONFIG.BACKEND_URL.replace(/\/+$/, "");
     }
-    const saved = localStorage.getItem('pedantix_backend_url');
-    if (saved) return saved.replace(/\/+$/, '');
-    return '';
+    const saved = localStorage.getItem("pedantix_backend_url");
+    if (saved) return saved.replace(/\/+$/, "");
+    return "";
   }
 
   isHostedMode() {
     const h = window.location.hostname;
-    return !(h === 'localhost' || h === '127.0.0.1' || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h));
+    return !(
+      h === "localhost" ||
+      h === "127.0.0.1" ||
+      /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)
+    );
   }
 
   getApiUrl(endpoint) {
     const base = this.getBackendUrl();
-    const clean = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+    const clean = endpoint.startsWith("/") ? endpoint : "/" + endpoint;
     return base ? `${base}${clean}` : clean;
   }
 
   getWsUrl(path) {
     const base = this.getBackendUrl();
-    const clean = path.startsWith('/') ? path : '/' + path;
+    const clean = path.startsWith("/") ? path : "/" + path;
     if (base) {
-      const wsProtocol = base.startsWith('https:') ? 'wss:' : 'ws:';
-      const host = base.replace(/^https?:\/\//, '');
+      const wsProtocol = base.startsWith("https:") ? "wss:" : "ws:";
+      const host = base.replace(/^https?:\/\//, "");
       return `${wsProtocol}//${host}${clean}`;
     }
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${protocol}//${window.location.host}${clean}`;
   }
 
   initElements() {
     this.dom = {
       // Navbar icons
-      rulesBtn: document.getElementById('rules-button'),
-      faqBtn: document.getElementById('faq-button'),
-      themeBtn: document.getElementById('theme-button'),
-      historyBtn: document.getElementById('history-button'),
-      newGameBtn: document.getElementById('newgame-button'),
-      soundBtn: document.getElementById('sound-button'),
-      pushNotice: document.getElementById('push-notice'),
+      rulesBtn: document.getElementById("rules-button"),
+      faqBtn: document.getElementById("faq-button"),
+      themeBtn: document.getElementById("theme-button"),
+      historyBtn: document.getElementById("history-button"),
+      newGameBtn: document.getElementById("newgame-button"),
+      soundBtn: document.getElementById("sound-button"),
+      pushNotice: document.getElementById("push-notice"),
 
       // Summary sidebar (Left)
-      puzzleLabel: document.getElementById('puzzle-label'),
-      puzzleNum: document.getElementById('puzzle-num'),
-      dayMeter: document.getElementById('day-meter'),
-      progressBarFill: document.getElementById('progress-bar-fill'),
-      revealedStat: document.getElementById('revealed-stat'),
-      totalStat: document.getElementById('total-stat'),
-      pctStat: document.getElementById('pct-stat'),
-      attemptsStat: document.getElementById('attempts-stat'),
-      historyFilter: document.getElementById('history-filter'),
-      guessableTable: document.getElementById('guessable'),
-      chronoOrder: document.getElementById('chronoOrder'),
-      alphaOrder: document.getElementById('alphaOrder'),
-      collapseBtn: document.getElementById('collapse'),
-      guessesTbody: document.getElementById('guesses'),
-      btnSideNew: document.getElementById('btn-side-new'),
-      soloLeaderboardTitle: document.getElementById('pedantix-leaderboard-title'),
-      soloLeaderboard: document.getElementById('pedantix-leaderboard'),
-      sidebarDiffIndicator: document.getElementById('sidebar-diff-indicator'),
-      sidebarDiffPill: document.getElementById('sidebar-diff-pill'),
-      yesterdayBox: document.getElementById('yesterday-box'),
-      yesterdayLink: document.getElementById('yesterday-link'),
+      puzzleLabel: document.getElementById("puzzle-label"),
+      puzzleNum: document.getElementById("puzzle-num"),
+      dayMeter: document.getElementById("day-meter"),
+      progressBarFill: document.getElementById("progress-bar-fill"),
+      revealedStat: document.getElementById("revealed-stat"),
+      totalStat: document.getElementById("total-stat"),
+      pctStat: document.getElementById("pct-stat"),
+      attemptsStat: document.getElementById("attempts-stat"),
+      historyFilter: document.getElementById("history-filter"),
+      guessableTable: document.getElementById("guessable"),
+      chronoOrder: document.getElementById("chronoOrder"),
+      alphaOrder: document.getElementById("alphaOrder"),
+      collapseBtn: document.getElementById("collapse"),
+      guessesTbody: document.getElementById("guesses"),
+      btnSideNew: document.getElementById("btn-side-new"),
+      soloLeaderboardTitle: document.getElementById(
+        "pedantix-leaderboard-title",
+      ),
+      soloLeaderboard: document.getElementById("pedantix-leaderboard"),
+      sidebarDiffIndicator: document.getElementById("sidebar-diff-indicator"),
+      sidebarDiffPill: document.getElementById("sidebar-diff-pill"),
+      yesterdayBox: document.getElementById("yesterday-box"),
+      yesterdayLink: document.getElementById("yesterday-link"),
 
       // Header tabs & Room badges
-      pedantixTitle: document.getElementById('pedantix-title'),
-      btnTypeSolo: document.getElementById('btn-type-solo'),
-      btnTypeMulti: document.getElementById('btn-type-multi'),
-      soloDifficultySelector: document.getElementById('solo-difficulty-selector'),
-      btnSoloDiffChoices: document.querySelectorAll('.btn-diff-choice'),
-      difficultyBadge: document.getElementById('difficulty-badge'),
-      modeBadge: document.getElementById('mode-badge'),
-      roomCodeDisplay: document.getElementById('room-code-display'),
-      btnBrowseRooms: document.getElementById('btn-browse-rooms'),
-      btnCreateRoom: document.getElementById('btn-create-room'),
-      btnHeaderLeaveRoom: document.getElementById('btn-header-leave-room'),
-      btnHeaderInvite: document.getElementById('btn-header-invite'),
-      hostPill: document.getElementById('host-pill'),
-      wordHintTimerBadge: document.getElementById('word-hint-timer-badge'),
-      wordHintTimerVal: document.getElementById('word-hint-timer-val'),
-      navRoomsBtn: document.getElementById('nav-rooms-button'),
-      navConfigBtn: document.getElementById('nav-config-button'),
+      pedantixTitle: document.getElementById("pedantix-title"),
+      btnTypeSolo: document.getElementById("btn-type-solo"),
+      btnTypeMulti: document.getElementById("btn-type-multi"),
+      soloDifficultySelector: document.getElementById(
+        "solo-difficulty-selector",
+      ),
+      btnSoloDiffChoices: document.querySelectorAll(".btn-diff-choice"),
+      difficultyBadge: document.getElementById("difficulty-badge"),
+      modeBadge: document.getElementById("mode-badge"),
+      roomCodeDisplay: document.getElementById("room-code-display"),
+      btnBrowseRooms: document.getElementById("btn-browse-rooms"),
+      btnCreateRoom: document.getElementById("btn-create-room"),
+      btnHeaderLeaveRoom: document.getElementById("btn-header-leave-room"),
+      btnHeaderInvite: document.getElementById("btn-header-invite"),
+      hostPill: document.getElementById("host-pill"),
+      wordHintTimerBadge: document.getElementById("word-hint-timer-badge"),
+      wordHintTimerVal: document.getElementById("word-hint-timer-val"),
+      navRoomsBtn: document.getElementById("nav-rooms-button"),
+      navConfigBtn: document.getElementById("nav-config-button"),
 
       // Rooms Browser Modal
-      roomsModal: document.getElementById('rooms-modal'),
-      btnModalCreateRoom: document.getElementById('btn-modal-create-room'),
-      inputJoinCode: document.getElementById('input-join-code'),
-      btnModalJoinCode: document.getElementById('btn-modal-join-code'),
-      btnRefreshRooms: document.getElementById('btn-refresh-rooms'),
-      btnCopyCurrentLink: document.getElementById('btn-copy-current-link'),
-      roomsList: document.getElementById('rooms-list'),
-      roomsCountBadge: document.getElementById('rooms-count-badge'),
-      currentRoomNameText: document.getElementById('current-room-name-text'),
+      roomsModal: document.getElementById("rooms-modal"),
+      btnModalCreateRoom: document.getElementById("btn-modal-create-room"),
+      inputJoinCode: document.getElementById("input-join-code"),
+      btnModalJoinCode: document.getElementById("btn-modal-join-code"),
+      btnRefreshRooms: document.getElementById("btn-refresh-rooms"),
+      btnCopyCurrentLink: document.getElementById("btn-copy-current-link"),
+      roomsList: document.getElementById("rooms-list"),
+      roomsCountBadge: document.getElementById("rooms-count-badge"),
+      currentRoomNameText: document.getElementById("current-room-name-text"),
 
       // Server Settings Modal
-      serverSettingsModal: document.getElementById('server-settings-modal'),
-      inputBackendUrl: document.getElementById('input-backend-url'),
-      btnSaveBackendUrl: document.getElementById('btn-save-backend-url'),
-      serverModalStatusIndicator: document.getElementById('server-modal-status-indicator'),
-      serverModalStatusText: document.getElementById('server-modal-status-text'),
+      serverSettingsModal: document.getElementById("server-settings-modal"),
+      inputBackendUrl: document.getElementById("input-backend-url"),
+      btnSaveBackendUrl: document.getElementById("btn-save-backend-url"),
+      serverModalStatusIndicator: document.getElementById(
+        "server-modal-status-indicator",
+      ),
+      serverModalStatusText: document.getElementById(
+        "server-modal-status-text",
+      ),
 
       // 30s Sprint Banner
-      sprintTimerBanner: document.getElementById('sprint-timer-banner'),
-      sprintWinnerName: document.getElementById('sprint-winner-name'),
-      sprintCountdownNum: document.getElementById('sprint-countdown-num'),
-      sprintBarFill: document.getElementById('sprint-bar-fill'),
+      sprintTimerBanner: document.getElementById("sprint-timer-banner"),
+      sprintWinnerName: document.getElementById("sprint-winner-name"),
+      sprintCountdownNum: document.getElementById("sprint-countdown-num"),
+      sprintBarFill: document.getElementById("sprint-bar-fill"),
 
       // 5s Countdown overlay
-      countdownOverlay: document.getElementById('countdown-overlay'),
-      countdownNumber: document.getElementById('countdown-number'),
+      countdownOverlay: document.getElementById("countdown-overlay"),
+      countdownNumber: document.getElementById("countdown-number"),
+
+      // Voice chat controls
+      voiceChatSection: document.getElementById("voice-chat-section"),
+      voiceChatStatus: document.getElementById("voice-chat-status"),
+      btnVoiceToggle: document.getElementById("btn-voice-toggle"),
+      btnVoiceJoin: document.getElementById("btn-voice-join"),
+      btnVoiceMute: document.getElementById("btn-voice-mute"),
+      voiceMembersList: document.getElementById("voice-members-list"),
 
       // Lobby Modal (Waiting salon overlay)
-      lobbyModal: document.getElementById('lobby-modal'),
-      lobbyMainTitle: document.getElementById('lobby-main-title'),
-      lobbyInstructions: document.getElementById('lobby-instructions'),
-      lobbyLastRoundBox: document.getElementById('lobby-last-round-box'),
-      lobbyLastSolutionTitle: document.getElementById('lobby-last-solution-title'),
-      lobbyLastSolutionLink: document.getElementById('lobby-last-solution-link'),
-      lobbyPodiumCards: document.getElementById('lobby-podium-cards'),
-      lobbyRoomNameDisplay: document.getElementById('lobby-room-name-display'),
-      lobbyPseudoInput: document.getElementById('lobby-pseudo-input'),
-      btnLobbySavePseudo: document.getElementById('btn-lobby-save-pseudo'),
-      btnLobbyCopyLink: document.getElementById('btn-lobby-copy-link'),
-      lobbyReadyRatio: document.getElementById('lobby-ready-ratio'),
-      lobbyPlayersGrid: document.getElementById('lobby-players-grid'),
-      btnLobbyToggleReady: document.getElementById('btn-lobby-toggle-ready'),
-      lobbyReadyIcon: document.getElementById('lobby-ready-icon'),
-      lobbyReadyLabel: document.getElementById('lobby-ready-label'),
-      btnLobbyStartGame: document.getElementById('btn-lobby-start-game'),
-      btnLobbySpectator: document.getElementById('btn-lobby-spectator'),
-      btnLobbyLeaveRoom: document.getElementById('btn-lobby-leave-room'),
-      lobbySpecIcon: document.getElementById('lobby-spec-icon'),
-      lobbySpecLabel: document.getElementById('lobby-spec-label'),
-      lobbyStatusHint: document.getElementById('lobby-status-hint'),
+      lobbyModal: document.getElementById("lobby-modal"),
+      lobbyMainTitle: document.getElementById("lobby-main-title"),
+      lobbyInstructions: document.getElementById("lobby-instructions"),
+      lobbyLastRoundBox: document.getElementById("lobby-last-round-box"),
+      lobbyLastSolutionTitle: document.getElementById(
+        "lobby-last-solution-title",
+      ),
+      lobbyLastSolutionLink: document.getElementById(
+        "lobby-last-solution-link",
+      ),
+      lobbyPodiumCards: document.getElementById("lobby-podium-cards"),
+      lobbyRoomNameDisplay: document.getElementById("lobby-room-name-display"),
+      lobbyPseudoInput: document.getElementById("lobby-pseudo-input"),
+      btnLobbySavePseudo: document.getElementById("btn-lobby-save-pseudo"),
+      btnLobbyCopyLink: document.getElementById("btn-lobby-copy-link"),
+      lobbyReadyRatio: document.getElementById("lobby-ready-ratio"),
+      lobbyPlayersGrid: document.getElementById("lobby-players-grid"),
+      btnLobbyToggleReady: document.getElementById("btn-lobby-toggle-ready"),
+      lobbyReadyIcon: document.getElementById("lobby-ready-icon"),
+      lobbyReadyLabel: document.getElementById("lobby-ready-label"),
+      btnLobbyStartGame: document.getElementById("btn-lobby-start-game"),
+      btnLobbySpectator: document.getElementById("btn-lobby-spectator"),
+      btnLobbyLeaveRoom: document.getElementById("btn-lobby-leave-room"),
+      lobbySpecIcon: document.getElementById("lobby-spec-icon"),
+      lobbySpecLabel: document.getElementById("lobby-spec-label"),
+      lobbyStatusHint: document.getElementById("lobby-status-hint"),
 
       // Mode & Teams DOM elements
-      btnModeIndividual: document.getElementById('btn-mode-individual'),
-      btnModeTeam: document.getElementById('btn-mode-team'),
-      lobbyModeHint: document.getElementById('lobby-mode-hint'),
-      lobbyTeamsBox: document.getElementById('lobby-teams-box'),
-      lobbyTeamsGrid: document.getElementById('lobby-teams-grid'),
-      lobbyRosterBox: document.getElementById('lobby-roster-box'),
-      compTeamsSection: document.getElementById('comp-teams-section'),
-      compIndividualSection: document.getElementById('comp-individual-section'),
-      compTeamsConfrontation: document.getElementById('comp-teams-confrontation'),
-      sideMyTeamBadge: document.getElementById('side-my-team-badge'),
+      btnModeIndividual: document.getElementById("btn-mode-individual"),
+      btnModeTeam: document.getElementById("btn-mode-team"),
+      lobbyModeHint: document.getElementById("lobby-mode-hint"),
+      lobbyTeamsBox: document.getElementById("lobby-teams-box"),
+      lobbyTeamsGrid: document.getElementById("lobby-teams-grid"),
+      lobbyRosterBox: document.getElementById("lobby-roster-box"),
+      compTeamsSection: document.getElementById("comp-teams-section"),
+      compIndividualSection: document.getElementById("comp-individual-section"),
+      compTeamsConfrontation: document.getElementById(
+        "comp-teams-confrontation",
+      ),
+      sideMyTeamBadge: document.getElementById("side-my-team-badge"),
 
       // Lobby Difficulty DOM elements
-      lobbyDifficultyBox: document.querySelector('.lobby-difficulty-box'),
-      lobbyDifficultyHint: document.getElementById('lobby-difficulty-hint'),
-      btnLobbyDiffs: document.querySelectorAll('.btn-diff-toggle'),
+      lobbyDifficultyBox: document.querySelector(".lobby-difficulty-box"),
+      lobbyDifficultyHint: document.getElementById("lobby-difficulty-hint"),
+      btnLobbyDiffs: document.querySelectorAll(".btn-diff-toggle"),
 
       // Spectator mode banner
-      spectatorModeBanner: document.getElementById('spectator-mode-banner'),
-      btnBannerResume: document.getElementById('btn-banner-resume'),
+      spectatorModeBanner: document.getElementById("spectator-mode-banner"),
+      btnBannerResume: document.getElementById("btn-banner-resume"),
 
       // Guess form (Center)
-      form: document.getElementById('form'),
-      pinBtn: document.getElementById('pin'),
-      guessInput: document.getElementById('guess'),
-      guessLenBadge: document.getElementById('guess-len-badge'),
-      previousBtn: document.getElementById('previous'),
-      guessBtn: document.getElementById('guess-btn'),
-      errorLabel: document.getElementById('error'),
+      form: document.getElementById("form"),
+      pinBtn: document.getElementById("pin"),
+      guessInput: document.getElementById("guess"),
+      guessLenBadge: document.getElementById("guess-len-badge"),
+      previousBtn: document.getElementById("previous"),
+      guessBtn: document.getElementById("guess-btn"),
+      errorLabel: document.getElementById("error"),
 
       // Wiki container
-      wiki: document.getElementById('wiki'),
-      wikiHeading: document.getElementById('wiki-heading'),
-      wikiImg: document.getElementById('wiki-img'),
-      article: document.getElementById('article'),
+      wiki: document.getElementById("wiki"),
+      wikiHeading: document.getElementById("wiki-heading"),
+      wikiImg: document.getElementById("wiki-img"),
+      article: document.getElementById("article"),
 
       // Victory / Win box
-      successBox: document.getElementById('success'),
-      solutionDisplay: document.getElementById('solution-display'),
-      successDiffRow: document.getElementById('success-diff-row'),
-      successDiffBadge: document.getElementById('success-diff-badge'),
-      successLangVal: document.getElementById('success-lang-val'),
-      successViewsVal: document.getElementById('success-views-val'),
-      triesSpan: document.getElementById('tries'),
-      meterSpan: document.getElementById('meter'),
-      shareBtn: document.getElementById('share'),
-      solutionLink: document.getElementById('solution'),
-      seeFullPageBtn: document.getElementById('see-full-page'),
-      btnSuccessNew: document.getElementById('btn-success-new'),
+      successBox: document.getElementById("success"),
+      solutionDisplay: document.getElementById("solution-display"),
+      successDiffRow: document.getElementById("success-diff-row"),
+      successDiffBadge: document.getElementById("success-diff-badge"),
+      successLangVal: document.getElementById("success-lang-val"),
+      successViewsVal: document.getElementById("success-views-val"),
+      triesSpan: document.getElementById("tries"),
+      meterSpan: document.getElementById("meter"),
+      shareBtn: document.getElementById("share"),
+      solutionLink: document.getElementById("solution"),
+      seeFullPageBtn: document.getElementById("see-full-page"),
+      btnSuccessNew: document.getElementById("btn-success-new"),
 
       // Surrender banner
-      surrenderBanner: document.getElementById('surrender-banner'),
-      surrenderSolutionDisplay: document.getElementById('surrender-solution-display'),
-      surrenderDiffRow: document.getElementById('surrender-diff-row'),
-      surrenderDiffBadge: document.getElementById('surrender-diff-badge'),
-      surrenderLangVal: document.getElementById('surrender-lang-val'),
-      surrenderViewsVal: document.getElementById('surrender-views-val'),
-      surrenderSolutionLink: document.getElementById('surrender-solution-link'),
-      btnSurrenderNew: document.getElementById('btn-surrender-new'),
+      surrenderBanner: document.getElementById("surrender-banner"),
+      surrenderSolutionDisplay: document.getElementById(
+        "surrender-solution-display",
+      ),
+      surrenderDiffRow: document.getElementById("surrender-diff-row"),
+      surrenderDiffBadge: document.getElementById("surrender-diff-badge"),
+      surrenderLangVal: document.getElementById("surrender-lang-val"),
+      surrenderViewsVal: document.getElementById("surrender-views-val"),
+      surrenderSolutionLink: document.getElementById("surrender-solution-link"),
+      btnSurrenderNew: document.getElementById("btn-surrender-new"),
 
       // Bottom of article finished bar
-      articleFinishedBar: document.getElementById('article-finished-bar'),
-      articleFinishedWikiLink: document.getElementById('article-finished-wiki-link'),
-      btnArticleNew: document.getElementById('btn-article-new'),
+      articleFinishedBar: document.getElementById("article-finished-bar"),
+      articleFinishedWikiLink: document.getElementById(
+        "article-finished-wiki-link",
+      ),
+      btnArticleNew: document.getElementById("btn-article-new"),
 
       // Opponent Win Banner
-      opponentWinBanner: document.getElementById('opponent-win-banner'),
-      opponentWinName: document.getElementById('opponent-win-name'),
-      opponentWinTitle: document.getElementById('opponent-win-title'),
-      opponentWinTries: document.getElementById('opponent-win-tries'),
-      btnOpponentNewRound: document.getElementById('btn-opponent-new-round'),
+      opponentWinBanner: document.getElementById("opponent-win-banner"),
+      opponentWinName: document.getElementById("opponent-win-name"),
+      opponentWinTitle: document.getElementById("opponent-win-title"),
+      opponentWinTries: document.getElementById("opponent-win-tries"),
+      btnOpponentNewRound: document.getElementById("btn-opponent-new-round"),
 
       // Competition Panel (Right)
-      compStatusBadge: document.getElementById('comp-status-badge'),
-      inviteUrlInput: document.getElementById('invite-url-input'),
-      btnCopyInvite: document.getElementById('btn-copy-invite'),
-      btnCopyDrawer: document.getElementById('btn-copy-drawer'),
-      playerPseudoInput: document.getElementById('player-pseudo-input'),
-      btnSavePseudo: document.getElementById('btn-save-pseudo'),
-      myPlayerScoreBadge: document.getElementById('my-player-score-badge'),
-      sideHostPill: document.getElementById('side-host-pill'),
-      btnSideReady: document.getElementById('btn-side-ready'),
-      sideReadyIcon: document.getElementById('side-ready-icon'),
-      sideReadyText: document.getElementById('side-ready-text'),
-      btnSideStart: document.getElementById('btn-side-start'),
-      btnOpenLobby: document.getElementById('btn-open-lobby'),
-      btnSideSpectator: document.getElementById('btn-side-spectator'),
-      sideSpecIcon: document.getElementById('side-spec-icon'),
-      sideSpecText: document.getElementById('side-spec-text'),
-      playersList: document.getElementById('players-list'),
-      activityFeed: document.getElementById('activity-feed'),
-      btnNewRoundComp: document.getElementById('btn-new-round-comp'),
+      compStatusBadge: document.getElementById("comp-status-badge"),
+      inviteUrlInput: document.getElementById("invite-url-input"),
+      btnCopyInvite: document.getElementById("btn-copy-invite"),
+      btnCopyDrawer: document.getElementById("btn-copy-drawer"),
+      playerPseudoInput: document.getElementById("player-pseudo-input"),
+      btnSavePseudo: document.getElementById("btn-save-pseudo"),
+      myPlayerScoreBadge: document.getElementById("my-player-score-badge"),
+      sideHostPill: document.getElementById("side-host-pill"),
+      btnSideReady: document.getElementById("btn-side-ready"),
+      sideReadyIcon: document.getElementById("side-ready-icon"),
+      sideReadyText: document.getElementById("side-ready-text"),
+      btnSideStart: document.getElementById("btn-side-start"),
+      btnOpenLobby: document.getElementById("btn-open-lobby"),
+      btnSideSpectator: document.getElementById("btn-side-spectator"),
+      sideSpecIcon: document.getElementById("side-spec-icon"),
+      sideSpecText: document.getElementById("side-spec-text"),
+      playersList: document.getElementById("players-list"),
+      activityFeed: document.getElementById("activity-feed"),
+      btnNewRoundComp: document.getElementById("btn-new-round-comp"),
 
       // Round Over Modal
-      roundOverModal: document.getElementById('round-over-modal'),
-      roundOverWinnerTitle: document.getElementById('round-over-winner-title'),
-      roundOverSolutionText: document.getElementById('round-over-solution-text'),
-      roundOverWikiLink: document.getElementById('round-over-wiki-link'),
-      roundOverScoresList: document.getElementById('round-over-scores-list'),
-      btnRoundReady: document.getElementById('btn-round-ready'),
-      roundReadyIcon: document.getElementById('round-ready-icon'),
-      roundReadyLabel: document.getElementById('round-ready-label'),
-      btnRoundSpectator: document.getElementById('btn-round-spectator'),
-      roundSpecIcon: document.getElementById('round-spec-icon'),
-      roundSpecLabel: document.getElementById('round-spec-label'),
-      btnRoundNextGame: document.getElementById('btn-round-next-game'),
-      roundNextStatusHint: document.getElementById('round-next-status-hint'),
+      roundOverModal: document.getElementById("round-over-modal"),
+      roundOverWinnerTitle: document.getElementById("round-over-winner-title"),
+      roundOverSolutionText: document.getElementById(
+        "round-over-solution-text",
+      ),
+      roundOverWikiLink: document.getElementById("round-over-wiki-link"),
+      roundOverScoresList: document.getElementById("round-over-scores-list"),
+      btnRoundReady: document.getElementById("btn-round-ready"),
+      roundReadyIcon: document.getElementById("round-ready-icon"),
+      roundReadyLabel: document.getElementById("round-ready-label"),
+      btnRoundSpectator: document.getElementById("btn-round-spectator"),
+      roundSpecIcon: document.getElementById("round-spec-icon"),
+      roundSpecLabel: document.getElementById("round-spec-label"),
+      btnRoundNextGame: document.getElementById("btn-round-next-game"),
+      roundNextStatusHint: document.getElementById("round-next-status-hint"),
 
       // Surrender controls & modal
-      btnSurrenderRoom: document.getElementById('btn-surrender-room'),
-      btnSideSurrender: document.getElementById('btn-side-surrender'),
-      surrenderModal: document.getElementById('surrender-modal'),
-      surrenderModalTitle: document.getElementById('surrender-modal-title'),
-      surrenderPromptText: document.getElementById('surrender-prompt-text'),
-      surrenderVoteCount: document.getElementById('surrender-vote-count'),
-      surrenderActionsVoting: document.getElementById('surrender-actions-voting'),
-      surrenderActionsWaiting: document.getElementById('surrender-actions-waiting'),
-      btnSurrenderAccept: document.getElementById('btn-surrender-accept'),
-      btnSurrenderRefuse: document.getElementById('btn-surrender-refuse'),
-      btnSurrenderCancel: document.getElementById('btn-surrender-cancel'),
+      btnSurrenderRoom: document.getElementById("btn-surrender-room"),
+      btnSideSurrender: document.getElementById("btn-side-surrender"),
+      surrenderModal: document.getElementById("surrender-modal"),
+      surrenderModalTitle: document.getElementById("surrender-modal-title"),
+      surrenderPromptText: document.getElementById("surrender-prompt-text"),
+      surrenderVoteCount: document.getElementById("surrender-vote-count"),
+      surrenderActionsVoting: document.getElementById(
+        "surrender-actions-voting",
+      ),
+      surrenderActionsWaiting: document.getElementById(
+        "surrender-actions-waiting",
+      ),
+      btnSurrenderAccept: document.getElementById("btn-surrender-accept"),
+      btnSurrenderRefuse: document.getElementById("btn-surrender-refuse"),
+      btnSurrenderCancel: document.getElementById("btn-surrender-cancel"),
 
       // Modals
-      rulesModal: document.getElementById('rules-modal'),
-      faqModal: document.getElementById('faq-modal'),
-      themesModal: document.getElementById('themes-modal'),
-      statsModal: document.getElementById('stats-modal'),
-      statsUserName: document.getElementById('stats-user-name'),
-      statsUserScore: document.getElementById('stats-user-score'),
-      btnAuthLogout: document.getElementById('btn-auth-logout'),
-      btnAdminUsers: document.getElementById('btn-admin-users'),
-      adminUsersPanel: document.getElementById('admin-users-panel'),
-      adminCurrentPassword: document.getElementById('admin-current-password'),
-      btnAdminLoadUsers: document.getElementById('btn-admin-load-users'),
-      adminResetStep: document.getElementById('admin-reset-step'),
-      adminTargetUser: document.getElementById('admin-target-user'),
-      adminNewPassword: document.getElementById('admin-new-password'),
-      btnAdminResetPassword: document.getElementById('btn-admin-reset-password'),
-      adminUsersMessage: document.getElementById('admin-users-message'),
-      sPlayed: document.getElementById('s-played'),
-      sWon: document.getElementById('s-won'),
-      sWinRate: document.getElementById('s-winrate'),
-      sAvg: document.getElementById('s-avg'),
-      sBest: document.getElementById('s-best'),
-      statsFavWordsList: document.getElementById('stats-fav-words-list'),
-      statsRecentList: document.getElementById('stats-recent-list'),
-      toast: document.getElementById('toast'),
+      rulesModal: document.getElementById("rules-modal"),
+      faqModal: document.getElementById("faq-modal"),
+      themesModal: document.getElementById("themes-modal"),
+      statsModal: document.getElementById("stats-modal"),
+      statsUserName: document.getElementById("stats-user-name"),
+      statsUserScore: document.getElementById("stats-user-score"),
+      btnAuthLogout: document.getElementById("btn-auth-logout"),
+      btnAdminUsers: document.getElementById("btn-admin-users"),
+      adminUsersPanel: document.getElementById("admin-users-panel"),
+      adminCurrentPassword: document.getElementById("admin-current-password"),
+      btnAdminLoadUsers: document.getElementById("btn-admin-load-users"),
+      adminResetStep: document.getElementById("admin-reset-step"),
+      adminTargetUser: document.getElementById("admin-target-user"),
+      adminNewPassword: document.getElementById("admin-new-password"),
+      btnAdminResetPassword: document.getElementById(
+        "btn-admin-reset-password",
+      ),
+      adminUsersMessage: document.getElementById("admin-users-message"),
+      sPlayed: document.getElementById("s-played"),
+      sWon: document.getElementById("s-won"),
+      sWinRate: document.getElementById("s-winrate"),
+      sAvg: document.getElementById("s-avg"),
+      sBest: document.getElementById("s-best"),
+      statsFavWordsList: document.getElementById("stats-fav-words-list"),
+      statsRecentList: document.getElementById("stats-recent-list"),
+      toast: document.getElementById("toast"),
 
       // User Authentication Modal
-      authModal: document.getElementById('auth-modal'),
-      authModalTitle: document.getElementById('auth-modal-title'),
-      authStepUsername: document.getElementById('auth-step-username'),
-      authUsernameForm: document.getElementById('auth-username-form'),
-      authUsernameInput: document.getElementById('auth-username-input'),
-      btnAuthContinue: document.getElementById('btn-auth-continue'),
-      authStepLogin: document.getElementById('auth-step-login'),
-      authLoginForm: document.getElementById('auth-login-form'),
-      authPasswordInput: document.getElementById('auth-password-input'),
-      authLoginUsernameDisplay: document.getElementById('auth-login-username-display'),
-      btnAuthBackLogin: document.getElementById('btn-auth-back-login'),
-      authStepRegister: document.getElementById('auth-step-register'),
-      authRegisterForm: document.getElementById('auth-register-form'),
-      authNewPasswordInput: document.getElementById('auth-new-password-input'),
-      authRegisterUsernameDisplay: document.getElementById('auth-register-username-display'),
-      btnAuthBackRegister: document.getElementById('btn-auth-back-register'),
-      authErrorBox: document.getElementById('auth-error-box'),
+      authModal: document.getElementById("auth-modal"),
+      authModalTitle: document.getElementById("auth-modal-title"),
+      authStepUsername: document.getElementById("auth-step-username"),
+      authUsernameForm: document.getElementById("auth-username-form"),
+      authUsernameInput: document.getElementById("auth-username-input"),
+      btnAuthContinue: document.getElementById("btn-auth-continue"),
+      authStepLogin: document.getElementById("auth-step-login"),
+      authLoginForm: document.getElementById("auth-login-form"),
+      authPasswordInput: document.getElementById("auth-password-input"),
+      authLoginUsernameDisplay: document.getElementById(
+        "auth-login-username-display",
+      ),
+      btnAuthBackLogin: document.getElementById("btn-auth-back-login"),
+      authStepRegister: document.getElementById("auth-step-register"),
+      authRegisterForm: document.getElementById("auth-register-form"),
+      authNewPasswordInput: document.getElementById("auth-new-password-input"),
+      authRegisterUsernameDisplay: document.getElementById(
+        "auth-register-username-display",
+      ),
+      btnAuthBackRegister: document.getElementById("btn-auth-back-register"),
+      authErrorBox: document.getElementById("auth-error-box"),
 
       // Competition Sidebar Tabs & Chat
-      tabBtnContest: document.getElementById('tab-btn-contest'),
-      tabBtnChat: document.getElementById('tab-btn-chat'),
-      compTabContest: document.getElementById('comp-tab-contest'),
-      compTabChat: document.getElementById('comp-tab-chat'),
-      chatUnreadBadge: document.getElementById('chat-unread-badge'),
-      chatMessagesSidebar: document.getElementById('chat-messages-sidebar'),
-      chatInputSidebar: document.getElementById('chat-input-sidebar'),
-      chatFormSidebar: document.getElementById('chat-form-sidebar'),
-      chatQuickReactionsSidebar: document.getElementById('chat-quick-reactions-sidebar'),
+      tabBtnContest: document.getElementById("tab-btn-contest"),
+      tabBtnChat: document.getElementById("tab-btn-chat"),
+      compTabContest: document.getElementById("comp-tab-contest"),
+      compTabChat: document.getElementById("comp-tab-chat"),
+      chatUnreadBadge: document.getElementById("chat-unread-badge"),
+      chatMessagesSidebar: document.getElementById("chat-messages-sidebar"),
+      chatInputSidebar: document.getElementById("chat-input-sidebar"),
+      chatFormSidebar: document.getElementById("chat-form-sidebar"),
+      chatQuickReactionsSidebar: document.getElementById(
+        "chat-quick-reactions-sidebar",
+      ),
 
       // Lobby Chat
-      chatMessagesLobby: document.getElementById('chat-messages-lobby'),
-      chatInputLobby: document.getElementById('chat-input-lobby'),
-      chatFormLobby: document.getElementById('chat-form-lobby'),
-      chatQuickReactionsLobby: document.getElementById('chat-quick-reactions-lobby'),
+      chatMessagesLobby: document.getElementById("chat-messages-lobby"),
+      chatInputLobby: document.getElementById("chat-input-lobby"),
+      chatFormLobby: document.getElementById("chat-form-lobby"),
+      chatQuickReactionsLobby: document.getElementById(
+        "chat-quick-reactions-lobby",
+      ),
 
       // Floating Chat Toast
-      chatFloatingToast: document.getElementById('chat-floating-toast'),
-      chatToastSender: document.getElementById('chat-toast-sender'),
-      chatToastText: document.getElementById('chat-toast-text'),
-      btnChatToastClose: document.getElementById('btn-chat-toast-close'),
+      chatFloatingToast: document.getElementById("chat-floating-toast"),
+      chatToastSender: document.getElementById("chat-toast-sender"),
+      chatToastText: document.getElementById("chat-toast-text"),
+      btnChatToastClose: document.getElementById("btn-chat-toast-close"),
 
       // Network Modes & Tunnel
-      btnNetModeLan: document.getElementById('btn-net-mode-lan'),
-      btnNetModeTunnel: document.getElementById('btn-net-mode-tunnel'),
-      netLanView: document.getElementById('net-lan-view'),
-      netTunnelView: document.getElementById('net-tunnel-view'),
-      tunnelUrlInput: document.getElementById('tunnel-url-input'),
-      btnCopyTunnel: document.getElementById('btn-copy-tunnel'),
-      btnToggleTunnel: document.getElementById('btn-toggle-tunnel'),
-      tunnelBtnLabel: document.getElementById('tunnel-btn-label'),
-      localIpWarning: document.getElementById('local-ip-warning'),
+      btnNetModeLan: document.getElementById("btn-net-mode-lan"),
+      btnNetModeTunnel: document.getElementById("btn-net-mode-tunnel"),
+      netLanView: document.getElementById("net-lan-view"),
+      netTunnelView: document.getElementById("net-tunnel-view"),
+      tunnelUrlInput: document.getElementById("tunnel-url-input"),
+      btnCopyTunnel: document.getElementById("btn-copy-tunnel"),
+      btnToggleTunnel: document.getElementById("btn-toggle-tunnel"),
+      tunnelBtnLabel: document.getElementById("tunnel-btn-label"),
+      localIpWarning: document.getElementById("local-ip-warning"),
     };
   }
 
@@ -546,7 +623,7 @@ class PedantixApp {
 
   playTone(type) {
     if (!this.soundEnabled || !this.audioCtx) return;
-    if (this.audioCtx.state === 'suspended') {
+    if (this.audioCtx.state === "suspended") {
       this.audioCtx.resume();
     }
 
@@ -556,26 +633,26 @@ class PedantixApp {
     osc.connect(gain);
     gain.connect(this.audioCtx.destination);
 
-    if (type === 'click') {
-      osc.type = 'sine';
+    if (type === "click") {
+      osc.type = "sine";
       osc.frequency.setValueAtTime(520, now);
       gain.gain.setValueAtTime(0.06, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
       osc.start(now);
       osc.stop(now + 0.05);
-    } else if (type === 'beep') {
-      osc.type = 'sine';
+    } else if (type === "beep") {
+      osc.type = "sine";
       osc.frequency.setValueAtTime(880, now);
       gain.gain.setValueAtTime(0.12, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
       osc.start(now);
       osc.stop(now + 0.08);
-    } else if (type === 'go') {
+    } else if (type === "go") {
       const notes = [523.25, 659.25, 783.99, 1046.5];
       notes.forEach((freq, idx) => {
         const o = this.audioCtx.createOscillator();
         const g = this.audioCtx.createGain();
-        o.type = 'triangle';
+        o.type = "triangle";
         o.frequency.setValueAtTime(freq, now + idx * 0.06);
         g.gain.setValueAtTime(0.15, now + idx * 0.06);
         g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.25);
@@ -584,8 +661,8 @@ class PedantixApp {
         o.start(now + idx * 0.06);
         o.stop(now + idx * 0.06 + 0.25);
       });
-    } else if (type === 'match') {
-      osc.type = 'triangle';
+    } else if (type === "match") {
+      osc.type = "triangle";
       osc.frequency.setValueAtTime(523.25, now);
       osc.frequency.setValueAtTime(659.25, now + 0.08);
       osc.frequency.setValueAtTime(783.99, now + 0.16);
@@ -593,27 +670,27 @@ class PedantixApp {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
       osc.start(now);
       osc.stop(now + 0.35);
-    } else if (type === 'close') {
-      osc.type = 'sine';
+    } else if (type === "close") {
+      osc.type = "sine";
       osc.frequency.setValueAtTime(440, now);
       osc.frequency.setValueAtTime(493.88, now + 0.09);
       gain.gain.setValueAtTime(0.08, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
       osc.start(now);
       osc.stop(now + 0.22);
-    } else if (type === 'miss') {
-      osc.type = 'sine';
+    } else if (type === "miss") {
+      osc.type = "sine";
       osc.frequency.setValueAtTime(220, now);
       gain.gain.setValueAtTime(0.05, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
       osc.start(now);
       osc.stop(now + 0.12);
-    } else if (type === 'win') {
+    } else if (type === "win") {
       const notes = [523.25, 659.25, 783.99, 1046.5];
       notes.forEach((freq, idx) => {
         const o = this.audioCtx.createOscillator();
         const g = this.audioCtx.createGain();
-        o.type = 'triangle';
+        o.type = "triangle";
         o.frequency.setValueAtTime(freq, now + idx * 0.1);
         g.gain.setValueAtTime(0.15, now + idx * 0.1);
         g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.4);
@@ -622,20 +699,20 @@ class PedantixApp {
         o.start(now + idx * 0.1);
         o.stop(now + idx * 0.1 + 0.4);
       });
-    } else if (type === 'message') {
-      osc.type = 'sine';
+    } else if (type === "message") {
+      osc.type = "sine";
       osc.frequency.setValueAtTime(659.25, now);
       osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
       gain.gain.setValueAtTime(0.09, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
       osc.start(now);
       osc.stop(now + 0.16);
-    } else if (type === 'hint') {
+    } else if (type === "hint") {
       const notes = [659.25, 880, 1046.5];
       notes.forEach((freq, idx) => {
         const o = this.audioCtx.createOscillator();
         const g = this.audioCtx.createGain();
-        o.type = 'sine';
+        o.type = "sine";
         o.frequency.setValueAtTime(freq, now + idx * 0.08);
         g.gain.setValueAtTime(0.12, now + idx * 0.08);
         g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.35);
@@ -649,36 +726,51 @@ class PedantixApp {
 
   initEventListeners() {
     // Nav buttons
-    if (this.dom.rulesBtn) this.dom.rulesBtn.addEventListener('click', () => this.openModal(this.dom.rulesModal));
-    if (this.dom.faqBtn) this.dom.faqBtn.addEventListener('click', () => this.copyInviteUrl());
-    if (this.dom.navConfigBtn) this.dom.navConfigBtn.addEventListener('click', () => this.openServerSettingsModal());
-    if (this.dom.themeBtn) this.dom.themeBtn.addEventListener('click', () => this.openModal(this.dom.themesModal));
-    if (this.dom.historyBtn) this.dom.historyBtn.addEventListener('click', () => {
-      this.refreshStatsModal();
-      this.openModal(this.dom.statsModal);
-    });
+    if (this.dom.rulesBtn)
+      this.dom.rulesBtn.addEventListener("click", () =>
+        this.openModal(this.dom.rulesModal),
+      );
+    if (this.dom.faqBtn)
+      this.dom.faqBtn.addEventListener("click", () => this.copyInviteUrl());
+    if (this.dom.navConfigBtn)
+      this.dom.navConfigBtn.addEventListener("click", () =>
+        this.openServerSettingsModal(),
+      );
+    if (this.dom.themeBtn)
+      this.dom.themeBtn.addEventListener("click", () =>
+        this.openModal(this.dom.themesModal),
+      );
+    if (this.dom.historyBtn)
+      this.dom.historyBtn.addEventListener("click", () => {
+        this.refreshStatsModal();
+        this.openModal(this.dom.statsModal);
+      });
 
     // Sound toggle
-    this.dom.soundBtn.addEventListener('click', () => {
+    this.dom.soundBtn.addEventListener("click", () => {
       this.soundEnabled = !this.soundEnabled;
-      localStorage.setItem('pedantix_sound', this.soundEnabled);
+      localStorage.setItem("pedantix_sound", this.soundEnabled);
       this.updateSoundIcon();
-      this.showToast(this.soundEnabled ? 'Sons activés' : 'Sons désactivés');
-      if (this.soundEnabled) this.playTone('click');
+      this.showToast(this.soundEnabled ? "Sons activés" : "Sons désactivés");
+      if (this.soundEnabled) this.playTone("click");
     });
     // Solo vs Multiplayer toggle buttons
     if (this.dom.btnTypeSolo) {
-      this.dom.btnTypeSolo.addEventListener('click', () => this.switchPlayMode('solo'));
+      this.dom.btnTypeSolo.addEventListener("click", () =>
+        this.switchPlayMode("solo"),
+      );
     }
     if (this.dom.btnTypeMulti) {
-      this.dom.btnTypeMulti.addEventListener('click', () => this.switchPlayMode('multi'));
+      this.dom.btnTypeMulti.addEventListener("click", () =>
+        this.switchPlayMode("multi"),
+      );
     }
 
     // Solo difficulty selection buttons
     if (this.dom.btnSoloDiffChoices) {
-      this.dom.btnSoloDiffChoices.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const diff = btn.getAttribute('data-diff');
+      this.dom.btnSoloDiffChoices.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const diff = btn.getAttribute("data-diff");
           if (diff) this.setSoloDifficulty(diff);
         });
       });
@@ -686,41 +778,57 @@ class PedantixApp {
 
     // Create new party / room button
     if (this.dom.btnCreateRoom) {
-      this.dom.btnCreateRoom.addEventListener('click', () => this.createNewRoom());
+      this.dom.btnCreateRoom.addEventListener("click", () =>
+        this.createNewRoom(),
+      );
     }
     if (this.dom.btnHeaderLeaveRoom) {
-      this.dom.btnHeaderLeaveRoom.addEventListener('click', () => this.confirmLeaveRoom());
+      this.dom.btnHeaderLeaveRoom.addEventListener("click", () =>
+        this.confirmLeaveRoom(),
+      );
     }
 
     // Room browser & discovery buttons
     if (this.dom.btnBrowseRooms) {
-      this.dom.btnBrowseRooms.addEventListener('click', () => this.openRoomsBrowser());
+      this.dom.btnBrowseRooms.addEventListener("click", () =>
+        this.openRoomsBrowser(),
+      );
     }
     if (this.dom.navRoomsBtn) {
-      this.dom.navRoomsBtn.addEventListener('click', () => this.openRoomsBrowser());
+      this.dom.navRoomsBtn.addEventListener("click", () =>
+        this.openRoomsBrowser(),
+      );
     }
-    const roomBadgeEl = document.getElementById('room-badge');
+    const roomBadgeEl = document.getElementById("room-badge");
     if (roomBadgeEl) {
-      roomBadgeEl.addEventListener('click', () => this.openRoomsBrowser());
+      roomBadgeEl.addEventListener("click", () => this.openRoomsBrowser());
     }
     if (this.dom.btnModalCreateRoom) {
-      this.dom.btnModalCreateRoom.addEventListener('click', () => this.createNewRoom());
+      this.dom.btnModalCreateRoom.addEventListener("click", () =>
+        this.createNewRoom(),
+      );
     }
     if (this.dom.btnRefreshRooms) {
-      this.dom.btnRefreshRooms.addEventListener('click', () => this.fetchRoomsList());
+      this.dom.btnRefreshRooms.addEventListener("click", () =>
+        this.fetchRoomsList(),
+      );
     }
     if (this.dom.btnCopyCurrentLink) {
-      this.dom.btnCopyCurrentLink.addEventListener('click', () => this.copyInviteUrl());
+      this.dom.btnCopyCurrentLink.addEventListener("click", () =>
+        this.copyInviteUrl(),
+      );
     }
     if (this.dom.btnModalJoinCode) {
-      this.dom.btnModalJoinCode.addEventListener('click', () => {
-        const val = this.dom.inputJoinCode ? this.dom.inputJoinCode.value.trim() : '';
+      this.dom.btnModalJoinCode.addEventListener("click", () => {
+        const val = this.dom.inputJoinCode
+          ? this.dom.inputJoinCode.value.trim()
+          : "";
         if (val) this.switchRoom(val);
       });
     }
     if (this.dom.inputJoinCode) {
-      this.dom.inputJoinCode.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+      this.dom.inputJoinCode.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
           e.preventDefault();
           const val = this.dom.inputJoinCode.value.trim();
           if (val) this.switchRoom(val);
@@ -730,17 +838,21 @@ class PedantixApp {
 
     // Game mode toggle buttons
     if (this.dom.btnModeIndividual) {
-      this.dom.btnModeIndividual.addEventListener('click', () => this.switchGameMode('individual'));
+      this.dom.btnModeIndividual.addEventListener("click", () =>
+        this.switchGameMode("individual"),
+      );
     }
     if (this.dom.btnModeTeam) {
-      this.dom.btnModeTeam.addEventListener('click', () => this.switchGameMode('team'));
+      this.dom.btnModeTeam.addEventListener("click", () =>
+        this.switchGameMode("team"),
+      );
     }
 
     // Lobby difficulty toggle buttons
     if (this.dom.btnLobbyDiffs) {
-      this.dom.btnLobbyDiffs.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const diff = btn.getAttribute('data-diff');
+      this.dom.btnLobbyDiffs.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const diff = btn.getAttribute("data-diff");
           if (diff) this.setRoomDifficulty(diff);
         });
       });
@@ -748,31 +860,54 @@ class PedantixApp {
 
     // Ready toggle buttons
     const handleReadyToggle = () => this.toggleReady();
-    if (this.dom.btnLobbyToggleReady) this.dom.btnLobbyToggleReady.addEventListener('click', handleReadyToggle);
-    if (this.dom.btnSideReady) this.dom.btnSideReady.addEventListener('click', handleReadyToggle);
-    if (this.dom.btnRoundReady) this.dom.btnRoundReady.addEventListener('click', handleReadyToggle);
+    if (this.dom.btnLobbyToggleReady)
+      this.dom.btnLobbyToggleReady.addEventListener("click", handleReadyToggle);
+    if (this.dom.btnSideReady)
+      this.dom.btnSideReady.addEventListener("click", handleReadyToggle);
+    if (this.dom.btnRoundReady)
+      this.dom.btnRoundReady.addEventListener("click", handleReadyToggle);
 
     // Spectator mode toggle buttons
     const handleSpectatorToggle = () => this.toggleSpectator();
-    if (this.dom.btnSideSpectator) this.dom.btnSideSpectator.addEventListener('click', handleSpectatorToggle);
-    if (this.dom.btnLobbySpectator) this.dom.btnLobbySpectator.addEventListener('click', handleSpectatorToggle);
-    if (this.dom.btnRoundSpectator) this.dom.btnRoundSpectator.addEventListener('click', handleSpectatorToggle);
-    if (this.dom.btnBannerResume) this.dom.btnBannerResume.addEventListener('click', handleSpectatorToggle);
-    if (this.dom.btnLobbyLeaveRoom) this.dom.btnLobbyLeaveRoom.addEventListener('click', () => this.confirmLeaveRoom());
+    if (this.dom.btnSideSpectator)
+      this.dom.btnSideSpectator.addEventListener(
+        "click",
+        handleSpectatorToggle,
+      );
+    if (this.dom.btnLobbySpectator)
+      this.dom.btnLobbySpectator.addEventListener(
+        "click",
+        handleSpectatorToggle,
+      );
+    if (this.dom.btnRoundSpectator)
+      this.dom.btnRoundSpectator.addEventListener(
+        "click",
+        handleSpectatorToggle,
+      );
+    if (this.dom.btnBannerResume)
+      this.dom.btnBannerResume.addEventListener("click", handleSpectatorToggle);
+    if (this.dom.btnLobbyLeaveRoom)
+      this.dom.btnLobbyLeaveRoom.addEventListener("click", () =>
+        this.confirmLeaveRoom(),
+      );
 
     // Host Start Game buttons
     const handleStartGame = () => this.startGame();
-    if (this.dom.btnLobbyStartGame) this.dom.btnLobbyStartGame.addEventListener('click', handleStartGame);
-    if (this.dom.btnSideStart) this.dom.btnSideStart.addEventListener('click', handleStartGame);
+    if (this.dom.btnLobbyStartGame)
+      this.dom.btnLobbyStartGame.addEventListener("click", handleStartGame);
+    if (this.dom.btnSideStart)
+      this.dom.btnSideStart.addEventListener("click", handleStartGame);
 
     // Lobby copy link button
     if (this.dom.btnLobbyCopyLink) {
-      this.dom.btnLobbyCopyLink.addEventListener('click', () => this.copyInviteUrl());
+      this.dom.btnLobbyCopyLink.addEventListener("click", () =>
+        this.copyInviteUrl(),
+      );
     }
 
     // Reopen lobby button from sidebar
     if (this.dom.btnOpenLobby) {
-      this.dom.btnOpenLobby.addEventListener('click', () => {
+      this.dom.btnOpenLobby.addEventListener("click", () => {
         this.lobbyMinimized = false;
         this.openModal(this.dom.lobbyModal);
       });
@@ -780,59 +915,79 @@ class PedantixApp {
 
     // Host Launch Next Round button
     if (this.dom.btnRoundNextGame) {
-      this.dom.btnRoundNextGame.addEventListener('click', () => this.startNextRound());
+      this.dom.btnRoundNextGame.addEventListener("click", () =>
+        this.startNextRound(),
+      );
     }
 
     // "Nouvelle page" triggers
     const handleNewRoundTrigger = () => this.requestNewRound();
-    if (this.dom.newGameBtn) this.dom.newGameBtn.addEventListener('click', handleNewRoundTrigger);
-    if (this.dom.btnSideNew) this.dom.btnSideNew.addEventListener('click', handleNewRoundTrigger);
-    if (this.dom.btnNewRoundComp) this.dom.btnNewRoundComp.addEventListener('click', handleNewRoundTrigger);
-    if (this.dom.btnOpponentNewRound) this.dom.btnOpponentNewRound.addEventListener('click', handleNewRoundTrigger);
-    if (this.dom.btnSuccessNew) this.dom.btnSuccessNew.addEventListener('click', handleNewRoundTrigger);
-    if (this.dom.btnSurrenderNew) this.dom.btnSurrenderNew.addEventListener('click', handleNewRoundTrigger);
-    if (this.dom.btnArticleNew) this.dom.btnArticleNew.addEventListener('click', handleNewRoundTrigger);
+    if (this.dom.newGameBtn)
+      this.dom.newGameBtn.addEventListener("click", handleNewRoundTrigger);
+    if (this.dom.btnSideNew)
+      this.dom.btnSideNew.addEventListener("click", handleNewRoundTrigger);
+    if (this.dom.btnNewRoundComp)
+      this.dom.btnNewRoundComp.addEventListener("click", handleNewRoundTrigger);
+    if (this.dom.btnOpponentNewRound)
+      this.dom.btnOpponentNewRound.addEventListener(
+        "click",
+        handleNewRoundTrigger,
+      );
+    if (this.dom.btnSuccessNew)
+      this.dom.btnSuccessNew.addEventListener("click", handleNewRoundTrigger);
+    if (this.dom.btnSurrenderNew)
+      this.dom.btnSurrenderNew.addEventListener("click", handleNewRoundTrigger);
+    if (this.dom.btnArticleNew)
+      this.dom.btnArticleNew.addEventListener("click", handleNewRoundTrigger);
 
     // Server settings save
     if (this.dom.btnSaveBackendUrl) {
-      this.dom.btnSaveBackendUrl.addEventListener('click', () => this.saveServerSettings());
+      this.dom.btnSaveBackendUrl.addEventListener("click", () =>
+        this.saveServerSettings(),
+      );
     }
 
     // User authentication form events
     if (this.dom.authUsernameForm) {
-      this.dom.authUsernameForm.addEventListener('submit', (e) => {
+      this.dom.authUsernameForm.addEventListener("submit", (e) => {
         e.preventDefault();
         this.handleAuthUsernameSubmit();
       });
     }
     if (this.dom.authLoginForm) {
-      this.dom.authLoginForm.addEventListener('submit', (e) => {
+      this.dom.authLoginForm.addEventListener("submit", (e) => {
         e.preventDefault();
         this.handleAuthLoginSubmit();
       });
     }
     if (this.dom.authRegisterForm) {
-      this.dom.authRegisterForm.addEventListener('submit', (e) => {
+      this.dom.authRegisterForm.addEventListener("submit", (e) => {
         e.preventDefault();
         this.handleAuthRegisterSubmit();
       });
     }
     if (this.dom.btnAuthBackLogin) {
-      this.dom.btnAuthBackLogin.addEventListener('click', () => this.showAuthStep('username'));
+      this.dom.btnAuthBackLogin.addEventListener("click", () =>
+        this.showAuthStep("username"),
+      );
     }
     if (this.dom.btnAuthBackRegister) {
-      this.dom.btnAuthBackRegister.addEventListener('click', () => this.showAuthStep('username'));
+      this.dom.btnAuthBackRegister.addEventListener("click", () =>
+        this.showAuthStep("username"),
+      );
     }
     if (this.dom.btnAuthLogout) {
-      this.dom.btnAuthLogout.addEventListener('click', () => this.handleAuthLogout());
+      this.dom.btnAuthLogout.addEventListener("click", () =>
+        this.handleAuthLogout(),
+      );
     }
     if (this.dom.btnAdminUsers) {
-      this.dom.btnAdminUsers.addEventListener('click', () => {
+      this.dom.btnAdminUsers.addEventListener("click", () => {
         const panel = this.dom.adminUsersPanel;
         if (panel) {
           const isOpen = !panel.hidden;
           panel.hidden = isOpen;
-          this.dom.btnAdminUsers.setAttribute('aria-expanded', String(!isOpen));
+          this.dom.btnAdminUsers.setAttribute("aria-expanded", String(!isOpen));
           if (isOpen) {
             this.clearAdminUsersPanel();
           } else if (this.dom.adminCurrentPassword) {
@@ -842,58 +997,80 @@ class PedantixApp {
       });
     }
     if (this.dom.btnAdminLoadUsers) {
-      this.dom.btnAdminLoadUsers.addEventListener('click', () => this.loadAdminUsers());
+      this.dom.btnAdminLoadUsers.addEventListener("click", () =>
+        this.loadAdminUsers(),
+      );
     }
     if (this.dom.btnAdminResetPassword) {
-      this.dom.btnAdminResetPassword.addEventListener('click', () => this.adminResetPassword());
+      this.dom.btnAdminResetPassword.addEventListener("click", () =>
+        this.adminResetPassword(),
+      );
     }
     if (this.dom.adminTargetUser) {
-      this.dom.adminTargetUser.addEventListener('change', () => this.updateAdminResetAvailability());
+      this.dom.adminTargetUser.addEventListener("change", () =>
+        this.updateAdminResetAvailability(),
+      );
     }
     if (this.dom.adminNewPassword) {
-      this.dom.adminNewPassword.addEventListener('input', () => this.updateAdminResetAvailability());
+      this.dom.adminNewPassword.addEventListener("input", () =>
+        this.updateAdminResetAvailability(),
+      );
     }
 
     // Surrender buttons
     const handleSurrender = () => this.handleSurrenderClick();
-    if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.addEventListener('click', handleSurrender);
-    if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.addEventListener('click', handleSurrender);
-    if (this.dom.btnSurrenderAccept) this.dom.btnSurrenderAccept.addEventListener('click', () => this.voteSurrender('yes'));
-    if (this.dom.btnSurrenderRefuse) this.dom.btnSurrenderRefuse.addEventListener('click', () => this.voteSurrender('no'));
-    if (this.dom.btnSurrenderCancel) this.dom.btnSurrenderCancel.addEventListener('click', () => this.voteSurrender('cancel'));
+    if (this.dom.btnSurrenderRoom)
+      this.dom.btnSurrenderRoom.addEventListener("click", handleSurrender);
+    if (this.dom.btnSideSurrender)
+      this.dom.btnSideSurrender.addEventListener("click", handleSurrender);
+    if (this.dom.btnSurrenderAccept)
+      this.dom.btnSurrenderAccept.addEventListener("click", () =>
+        this.voteSurrender("yes"),
+      );
+    if (this.dom.btnSurrenderRefuse)
+      this.dom.btnSurrenderRefuse.addEventListener("click", () =>
+        this.voteSurrender("no"),
+      );
+    if (this.dom.btnSurrenderCancel)
+      this.dom.btnSurrenderCancel.addEventListener("click", () =>
+        this.voteSurrender("cancel"),
+      );
 
     // Theme choices
-    document.querySelectorAll('.theme-choice-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const t = btn.getAttribute('data-theme');
+    document.querySelectorAll(".theme-choice-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const t = btn.getAttribute("data-theme");
         if (t) {
           this.applyTheme(t);
           this.closeModal(this.dom.themesModal);
-          const nameEl = btn.querySelector('b');
+          const nameEl = btn.querySelector("b");
           this.showToast(`Thème activé : ${nameEl ? nameEl.textContent : t}`);
         }
       });
     });
 
     // Guess form submit
-    this.dom.form.addEventListener('submit', (e) => {
+    this.dom.form.addEventListener("submit", (e) => {
       e.preventDefault();
       this.handleGuessSubmit(e);
     });
 
     // Telemetry anti-bot: enregistre la saisie humaine réelle au clavier
-    this.dom.guessInput.addEventListener('keydown', (e) => {
+    this.dom.guessInput.addEventListener("keydown", (e) => {
       if (e.isTrusted) {
         if (!this.firstKeystrokeTime) this.firstKeystrokeTime = Date.now();
         if (e.key && e.key.length === 1) {
           this.trustedKeystrokeCount++;
-        } else if (e.key === 'Backspace') {
-          this.trustedKeystrokeCount = Math.max(0, this.trustedKeystrokeCount - 1);
+        } else if (e.key === "Backspace") {
+          this.trustedKeystrokeCount = Math.max(
+            0,
+            this.trustedKeystrokeCount - 1,
+          );
         }
       }
     });
 
-    this.dom.guessInput.addEventListener('paste', (e) => {
+    this.dom.guessInput.addEventListener("paste", (e) => {
       if (e.isTrusted) {
         this.lastTrustedPaste = true;
         if (!this.firstKeystrokeTime) this.firstKeystrokeTime = Date.now();
@@ -901,7 +1078,7 @@ class PedantixApp {
     });
 
     // Live word length indicator
-    this.dom.guessInput.addEventListener('input', (e) => {
+    this.dom.guessInput.addEventListener("input", (e) => {
       const len = e.target.value.trim().length;
       if (len === 0) {
         this.trustedKeystrokeCount = 0;
@@ -910,36 +1087,40 @@ class PedantixApp {
       }
       if (this.dom.guessLenBadge) {
         if (len > 0) {
-          this.dom.guessLenBadge.textContent = `${len} lettre${len > 1 ? 's' : ''}`;
-          this.dom.guessLenBadge.style.display = 'inline-block';
+          this.dom.guessLenBadge.textContent = `${len} lettre${len > 1 ? "s" : ""}`;
+          this.dom.guessLenBadge.style.display = "inline-block";
         } else {
-          this.dom.guessLenBadge.style.display = 'none';
+          this.dom.guessLenBadge.style.display = "none";
         }
       }
     });
 
     // Pin sticky input
-    this.dom.pinBtn.addEventListener('click', () => {
+    this.dom.pinBtn.addEventListener("click", () => {
       this.isPinned = !this.isPinned;
-      this.dom.pinBtn.textContent = this.isPinned ? '📌' : '📍';
-      const pinTitle = this.isPinned ? 'Désépingler la barre' : 'Épingler la barre';
+      this.dom.pinBtn.textContent = this.isPinned ? "📌" : "📍";
+      const pinTitle = this.isPinned
+        ? "Désépingler la barre"
+        : "Épingler la barre";
       this.dom.pinBtn.title = pinTitle;
-      this.dom.pinBtn.setAttribute('aria-label', pinTitle);
+      this.dom.pinBtn.setAttribute("aria-label", pinTitle);
       if (this.isPinned) {
-        this.dom.form.classList.add('sticky-pinned');
+        this.dom.form.classList.add("sticky-pinned");
       } else {
-        this.dom.form.classList.remove('sticky-pinned');
+        this.dom.form.classList.remove("sticky-pinned");
       }
       this.dom.guessInput.focus();
     });
 
     // Previous button recall
-    this.dom.previousBtn.addEventListener('click', () => {
+    this.dom.previousBtn.addEventListener("click", () => {
       if (this.previousInputs.length === 0) return;
       if (this.prevInputIdx === -1) {
         this.prevInputIdx = this.previousInputs.length - 1;
       } else {
-        this.prevInputIdx = (this.prevInputIdx - 1 + this.previousInputs.length) % this.previousInputs.length;
+        this.prevInputIdx =
+          (this.prevInputIdx - 1 + this.previousInputs.length) %
+          this.previousInputs.length;
       }
       this.dom.guessInput.value = this.previousInputs[this.prevInputIdx];
       this.dom.guessInput.focus();
@@ -947,7 +1128,7 @@ class PedantixApp {
 
     // Copy invite IP address
     if (this.dom.btnHeaderInvite) {
-      this.dom.btnHeaderInvite.addEventListener('click', () => {
+      this.dom.btnHeaderInvite.addEventListener("click", () => {
         if (this.isAssisting) {
           this.returnToOwnSolo(false);
         } else {
@@ -956,21 +1137,33 @@ class PedantixApp {
       });
     }
     if (this.dom.btnCopyInvite) {
-      this.dom.btnCopyInvite.addEventListener('click', () => this.copyInviteUrl());
+      this.dom.btnCopyInvite.addEventListener("click", () =>
+        this.copyInviteUrl(),
+      );
     }
     if (this.dom.btnCopyDrawer) {
-      this.dom.btnCopyDrawer.addEventListener('click', () => this.copyInviteUrl());
+      this.dom.btnCopyDrawer.addEventListener("click", () =>
+        this.copyInviteUrl(),
+      );
     }
     if (this.dom.inviteUrlInput) {
-      this.dom.inviteUrlInput.addEventListener('click', () => this.copyInviteUrl());
+      this.dom.inviteUrlInput.addEventListener("click", () =>
+        this.copyInviteUrl(),
+      );
     }
 
     // Save pseudo (synced between sidebar and lobby)
     const savePseudoAction = (rawVal) => {
-      const val = (rawVal !== undefined ? rawVal : (this.dom.playerPseudoInput ? this.dom.playerPseudoInput.value : '')).trim();
+      const val = (
+        rawVal !== undefined
+          ? rawVal
+          : this.dom.playerPseudoInput
+            ? this.dom.playerPseudoInput.value
+            : ""
+      ).trim();
       if (val && val !== this.playerName) {
         this.playerName = val;
-        localStorage.setItem('pedantix_player_name', val);
+        localStorage.setItem("pedantix_player_name", val);
         if (this.dom.playerPseudoInput) this.dom.playerPseudoInput.value = val;
         if (this.dom.lobbyPseudoInput) this.dom.lobbyPseudoInput.value = val;
         this.showToast(`Pseudo enregistré : "${val}"`);
@@ -979,22 +1172,26 @@ class PedantixApp {
     };
 
     if (this.dom.btnSavePseudo) {
-      this.dom.btnSavePseudo.addEventListener('click', () => savePseudoAction(this.dom.playerPseudoInput.value));
+      this.dom.btnSavePseudo.addEventListener("click", () =>
+        savePseudoAction(this.dom.playerPseudoInput.value),
+      );
     }
     if (this.dom.playerPseudoInput) {
-      this.dom.playerPseudoInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+      this.dom.playerPseudoInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
           e.preventDefault();
           savePseudoAction(this.dom.playerPseudoInput.value);
         }
       });
     }
     if (this.dom.btnLobbySavePseudo) {
-      this.dom.btnLobbySavePseudo.addEventListener('click', () => savePseudoAction(this.dom.lobbyPseudoInput.value));
+      this.dom.btnLobbySavePseudo.addEventListener("click", () =>
+        savePseudoAction(this.dom.lobbyPseudoInput.value),
+      );
     }
     if (this.dom.lobbyPseudoInput) {
-      this.dom.lobbyPseudoInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+      this.dom.lobbyPseudoInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
           e.preventDefault();
           savePseudoAction(this.dom.lobbyPseudoInput.value);
         }
@@ -1002,51 +1199,53 @@ class PedantixApp {
     }
 
     // Table sorting & collapsing
-    this.dom.chronoOrder.addEventListener('click', () => {
-      if (this.sortMode === 'chrono') {
+    this.dom.chronoOrder.addEventListener("click", () => {
+      if (this.sortMode === "chrono") {
         this.sortAsc = !this.sortAsc;
       } else {
-        this.sortMode = 'chrono';
+        this.sortMode = "chrono";
         this.sortAsc = true;
       }
       this.renderHistory();
     });
 
-    this.dom.alphaOrder.addEventListener('click', () => {
-      if (this.sortMode === 'alpha') {
+    this.dom.alphaOrder.addEventListener("click", () => {
+      if (this.sortMode === "alpha") {
         this.sortAsc = !this.sortAsc;
       } else {
-        this.sortMode = 'alpha';
+        this.sortMode = "alpha";
         this.sortAsc = true;
       }
       this.renderHistory();
     });
 
-    this.dom.collapseBtn.addEventListener('click', () => {
+    this.dom.collapseBtn.addEventListener("click", () => {
       this.isCollapsed = !this.isCollapsed;
-      this.dom.collapseBtn.textContent = this.isCollapsed ? '🔺' : '🔻';
+      this.dom.collapseBtn.textContent = this.isCollapsed ? "🔺" : "🔻";
       this.renderHistory();
     });
 
-    this.dom.historyFilter.addEventListener('input', (e) => {
+    this.dom.historyFilter.addEventListener("input", (e) => {
       this.filterQuery = e.target.value.trim().toLowerCase();
       this.renderHistory();
     });
 
     // Success actions
-    this.dom.shareBtn.addEventListener('click', () => this.copyShareScore());
-    this.dom.seeFullPageBtn.addEventListener('click', () => this.unmaskAllWords());
+    this.dom.shareBtn.addEventListener("click", () => this.copyShareScore());
+    this.dom.seeFullPageBtn.addEventListener("click", () =>
+      this.unmaskAllWords(),
+    );
 
     // Modal close triggers
-    document.querySelectorAll('.modal-close, [data-close]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = e.currentTarget.getAttribute('data-close');
+    document.querySelectorAll(".modal-close, [data-close]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const id = e.currentTarget.getAttribute("data-close");
         if (id) {
-          if (id === 'lobby-modal') this.lobbyMinimized = true;
-          if (id === 'stats-modal') this.clearAdminUsersPanel();
+          if (id === "lobby-modal") this.lobbyMinimized = true;
+          if (id === "stats-modal") this.clearAdminUsersPanel();
           this.closeModal(document.getElementById(id));
         } else {
-          const overlay = e.currentTarget.closest('.modal-overlay');
+          const overlay = e.currentTarget.closest(".modal-overlay");
           if (overlay) {
             if (overlay === this.dom.lobbyModal) this.lobbyMinimized = true;
             this.closeModal(overlay);
@@ -1055,8 +1254,8 @@ class PedantixApp {
       });
     });
 
-    document.querySelectorAll('.modal-overlay').forEach(overlay => {
-      overlay.addEventListener('click', (e) => {
+    document.querySelectorAll(".modal-overlay").forEach((overlay) => {
+      overlay.addEventListener("click", (e) => {
         if (e.target === overlay) {
           if (overlay === this.dom.authModal && !this.authUser) return;
           if (overlay === this.dom.lobbyModal) this.lobbyMinimized = true;
@@ -1069,35 +1268,35 @@ class PedantixApp {
 
   applyTheme(theme) {
     this.theme = theme;
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('pedantix_theme', theme);
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("pedantix_theme", theme);
 
-    document.querySelectorAll('.theme-choice-btn').forEach(btn => {
-      if (btn.getAttribute('data-theme') === theme) {
-        btn.classList.add('active');
-        btn.style.borderColor = '#f59e0b';
-        btn.style.boxShadow = '0 0 0 2px rgba(245, 158, 11, 0.4)';
+    document.querySelectorAll(".theme-choice-btn").forEach((btn) => {
+      if (btn.getAttribute("data-theme") === theme) {
+        btn.classList.add("active");
+        btn.style.borderColor = "#f59e0b";
+        btn.style.boxShadow = "0 0 0 2px rgba(245, 158, 11, 0.4)";
       } else {
-        btn.classList.remove('active');
-        btn.style.borderColor = '';
-        btn.style.boxShadow = '';
+        btn.classList.remove("active");
+        btn.style.borderColor = "";
+        btn.style.boxShadow = "";
       }
     });
   }
 
   updateSoundIcon() {
-    this.dom.soundBtn.textContent = this.soundEnabled ? '🔊' : '🔇';
+    this.dom.soundBtn.textContent = this.soundEnabled ? "🔊" : "🔇";
   }
 
   openModal(modalElem) {
     if (modalElem) {
-      const alreadyOpen = modalElem.classList.contains('active');
-      modalElem.classList.add('active');
+      const alreadyOpen = modalElem.classList.contains("active");
+      modalElem.classList.add("active");
       if (modalElem === this.dom.lobbyModal) {
         this.markChatAsRead();
       }
       if (!alreadyOpen) {
-        const inner = modalElem.querySelector('.modal');
+        const inner = modalElem.querySelector(".modal");
         if (inner) inner.scrollTop = 0;
         modalElem.scrollTop = 0;
       }
@@ -1105,7 +1304,7 @@ class PedantixApp {
   }
 
   closeModal(modalElem) {
-    if (modalElem) modalElem.classList.remove('active');
+    if (modalElem) modalElem.classList.remove("active");
     if (modalElem === this.dom.roomsModal && this.roomsRefreshInterval) {
       clearInterval(this.roomsRefreshInterval);
       this.roomsRefreshInterval = null;
@@ -1114,9 +1313,9 @@ class PedantixApp {
 
   showToast(message) {
     this.dom.toast.textContent = message;
-    this.dom.toast.classList.add('visible');
+    this.dom.toast.classList.add("visible");
     setTimeout(() => {
-      this.dom.toast.classList.remove('visible');
+      this.dom.toast.classList.remove("visible");
     }, 2800);
   }
 
@@ -1131,15 +1330,20 @@ class PedantixApp {
   }
 
   escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    if (!str) return "";
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   getHeatChannel(score) {
     const similarity = Math.max(0.001, Math.min(100, Number(score) || 0) - 30);
-    return Math.max(0, Math.min(255, Math.round(
-      255 * Math.log10(similarity) / 2,
-    )));
+    return Math.max(
+      0,
+      Math.min(255, Math.round((255 * Math.log10(similarity)) / 2)),
+    );
   }
 
   getGreyColor(score) {
@@ -1158,7 +1362,7 @@ class PedantixApp {
 
   async fetchNetworkInfo() {
     try {
-      const resp = await fetch(this.getApiUrl('/api/network-info'));
+      const resp = await fetch(this.getApiUrl("/api/network-info"));
       this.networkInfo = await resp.json();
       this.updateNetworkDisplay();
     } catch (e) {
@@ -1169,7 +1373,10 @@ class PedantixApp {
   updateNetworkDisplay() {
     if (!this.networkInfo) return;
     const data = this.networkInfo;
-    const roomParam = this.roomId !== 'default' ? `?room=${encodeURIComponent(this.roomId)}` : '';
+    const roomParam =
+      this.roomId !== "default"
+        ? `?room=${encodeURIComponent(this.roomId)}`
+        : "";
 
     if (this.isHostedMode()) {
       // 1. En ligne (Netlify) : Le site est déjà public et accessible sur Internet pour tous !
@@ -1177,21 +1384,35 @@ class PedantixApp {
       if (this.dom.inviteUrlInput) {
         this.dom.inviteUrlInput.value = hostedUrl;
       }
-      const pills = document.querySelector('.network-mode-pills');
-      if (pills) pills.style.display = 'none';
-      if (this.dom.netLanView) this.dom.netLanView.style.display = 'flex';
-      if (this.dom.netTunnelView) this.dom.netTunnelView.style.display = 'none';
-      const helper = document.querySelector('#net-lan-view .network-helper-text');
+      const pills = document.querySelector(".network-mode-pills");
+      if (pills) pills.style.display = "none";
+      if (this.dom.netLanView) this.dom.netLanView.style.display = "flex";
+      if (this.dom.netTunnelView) this.dom.netTunnelView.style.display = "none";
+      const helper = document.querySelector(
+        "#net-lan-view .network-helper-text",
+      );
       if (helper) {
-        helper.innerHTML = '<span class="helper-badge-tunnel">🌍 En ligne</span> Partagez ce lien avec vos amis, ils peuvent rejoindre depuis n\'importe où !';
+        helper.innerHTML =
+          '<span class="helper-badge-tunnel">🌍 En ligne</span> Partagez ce lien avec vos amis, ils peuvent rejoindre depuis n\'importe où !';
       }
-      if (this.dom.localIpWarning) this.dom.localIpWarning.style.display = 'none';
+      if (this.dom.localIpWarning)
+        this.dom.localIpWarning.style.display = "none";
       return;
     }
 
     // 1. LAN invite URL: NEVER fallback to 127.0.0.1 if lan_ip exists
-    const lanHost = (data.lan_ip && data.lan_ip !== '127.0.0.1') ? data.lan_ip : (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? window.location.hostname : data.lan_ip);
-    const lanPort = window.location.port ? `:${window.location.port}` : (data.port ? `:${data.port}` : '');
+    const lanHost =
+      data.lan_ip && data.lan_ip !== "127.0.0.1"
+        ? data.lan_ip
+        : window.location.hostname !== "localhost" &&
+            window.location.hostname !== "127.0.0.1"
+          ? window.location.hostname
+          : data.lan_ip;
+    const lanPort = window.location.port
+      ? `:${window.location.port}`
+      : data.port
+        ? `:${data.port}`
+        : "";
     const lanUrl = `${window.location.protocol}//${lanHost}${lanPort}/${roomParam}`;
 
     if (this.dom.inviteUrlInput) {
@@ -1203,59 +1424,79 @@ class PedantixApp {
       if (data.tunnel_url) {
         this.dom.tunnelUrlInput.value = `${data.tunnel_url}/${roomParam}`;
         if (this.dom.btnCopyTunnel) this.dom.btnCopyTunnel.disabled = false;
-        if (this.dom.tunnelBtnLabel) this.dom.tunnelBtnLabel.textContent = "Désactiver le lien Internet";
-        if (this.dom.btnToggleTunnel) this.dom.btnToggleTunnel.classList.add('tunnel-active');
+        if (this.dom.tunnelBtnLabel)
+          this.dom.tunnelBtnLabel.textContent = "Désactiver le lien Internet";
+        if (this.dom.btnToggleTunnel)
+          this.dom.btnToggleTunnel.classList.add("tunnel-active");
       } else {
         this.dom.tunnelUrlInput.value = "Lien Internet non activé";
         if (this.dom.btnCopyTunnel) this.dom.btnCopyTunnel.disabled = true;
-        if (this.dom.tunnelBtnLabel) this.dom.tunnelBtnLabel.textContent = "Activer le lien Internet (amis distants)";
-        if (this.dom.btnToggleTunnel) this.dom.btnToggleTunnel.classList.remove('tunnel-active');
+        if (this.dom.tunnelBtnLabel)
+          this.dom.tunnelBtnLabel.textContent =
+            "Activer le lien Internet (amis distants)";
+        if (this.dom.btnToggleTunnel)
+          this.dom.btnToggleTunnel.classList.remove("tunnel-active");
       }
     }
 
     // 3. Localhost warning: show if host is browsing via 127.0.0.1 or localhost
     const curHost = window.location.hostname;
     if (this.dom.localIpWarning) {
-      if (curHost === 'localhost' || curHost === '127.0.0.1') {
-        this.dom.localIpWarning.style.display = 'block';
+      if (curHost === "localhost" || curHost === "127.0.0.1") {
+        this.dom.localIpWarning.style.display = "block";
       } else {
-        this.dom.localIpWarning.style.display = 'none';
+        this.dom.localIpWarning.style.display = "none";
       }
     }
   }
 
   setupNetworkUI() {
     if (this.dom.btnNetModeLan) {
-      this.dom.btnNetModeLan.addEventListener('click', () => this.switchNetMode('lan'));
+      this.dom.btnNetModeLan.addEventListener("click", () =>
+        this.switchNetMode("lan"),
+      );
     }
     if (this.dom.btnNetModeTunnel) {
-      this.dom.btnNetModeTunnel.addEventListener('click', () => this.switchNetMode('tunnel'));
+      this.dom.btnNetModeTunnel.addEventListener("click", () =>
+        this.switchNetMode("tunnel"),
+      );
     }
     if (this.dom.btnCopyTunnel) {
-      this.dom.btnCopyTunnel.addEventListener('click', () => this.copyInviteUrl('tunnel'));
+      this.dom.btnCopyTunnel.addEventListener("click", () =>
+        this.copyInviteUrl("tunnel"),
+      );
     }
     if (this.dom.btnToggleTunnel) {
-      this.dom.btnToggleTunnel.addEventListener('click', () => this.toggleTunnel());
+      this.dom.btnToggleTunnel.addEventListener("click", () =>
+        this.toggleTunnel(),
+      );
     }
   }
 
   switchNetMode(mode) {
     this.activeNetMode = mode;
-    if (this.dom.btnNetModeLan) this.dom.btnNetModeLan.classList.toggle('active', mode === 'lan');
-    if (this.dom.btnNetModeTunnel) this.dom.btnNetModeTunnel.classList.toggle('active', mode === 'tunnel');
-    if (this.dom.netLanView) this.dom.netLanView.style.display = (mode === 'lan') ? 'flex' : 'none';
-    if (this.dom.netTunnelView) this.dom.netTunnelView.style.display = (mode === 'tunnel') ? 'flex' : 'none';
+    if (this.dom.btnNetModeLan)
+      this.dom.btnNetModeLan.classList.toggle("active", mode === "lan");
+    if (this.dom.btnNetModeTunnel)
+      this.dom.btnNetModeTunnel.classList.toggle("active", mode === "tunnel");
+    if (this.dom.netLanView)
+      this.dom.netLanView.style.display = mode === "lan" ? "flex" : "none";
+    if (this.dom.netTunnelView)
+      this.dom.netTunnelView.style.display =
+        mode === "tunnel" ? "flex" : "none";
   }
 
   async toggleTunnel() {
     if (!this.networkInfo) return;
     const isActive = !!this.networkInfo.tunnel_url;
     if (this.dom.tunnelBtnLabel) {
-      this.dom.tunnelBtnLabel.textContent = isActive ? "Arrêt en cours..." : "Démarrage du lien Internet (3s)...";
+      this.dom.tunnelBtnLabel.textContent = isActive
+        ? "Arrêt en cours..."
+        : "Démarrage du lien Internet (3s)...";
     }
     try {
-      const endpoint = isActive ? '/api/tunnel/stop' : '/api/tunnel/start';
-      const resp = await fetch(this.getApiUrl(endpoint), { method: 'POST' });
+      const endpoint = isActive ? "/api/tunnel/stop" : "/api/tunnel/start";
+      const resp = await fetch(this.getApiUrl(endpoint), { method: "POST" });
       const info = await resp.json();
       this.networkInfo.tunnel_url = info.url;
       this.networkInfo.tunnel_status = info.status;
@@ -1271,14 +1512,16 @@ class PedantixApp {
   }
 
   copyInviteUrl(forcedMode = null) {
-    let urlToCopy = '';
+    let urlToCopy = "";
 
     if (this.isSoloMode && this.isAssisting) {
       this.showToast("Vous aidez déjà sur une partie solo.");
       return;
     }
     if (this.isSoloMode && !this.assistToken) {
-      this.showToast("Le lien d'aide n'est pas encore prêt. Réessayez dans un instant.");
+      this.showToast(
+        "Le lien d'aide n'est pas encore prêt. Réessayez dans un instant.",
+      );
       return;
     }
 
@@ -1286,13 +1529,27 @@ class PedantixApp {
     if (this.isHostedMode()) {
       urlToCopy = `${window.location.origin}${window.location.pathname}`;
     } else {
-      const mode = forcedMode || this.activeNetMode || 'lan';
-      if (mode === 'tunnel' && this.networkInfo && this.networkInfo.tunnel_url) {
+      const mode = forcedMode || this.activeNetMode || "lan";
+      if (
+        mode === "tunnel" &&
+        this.networkInfo &&
+        this.networkInfo.tunnel_url
+      ) {
         urlToCopy = `${this.networkInfo.tunnel_url}${window.location.pathname}`;
-      } else if (this.networkInfo && this.networkInfo.lan_ip && this.networkInfo.lan_ip !== '127.0.0.1') {
-        const portStr = this.networkInfo.port ? `:${this.networkInfo.port}` : '';
+      } else if (
+        this.networkInfo &&
+        this.networkInfo.lan_ip &&
+        this.networkInfo.lan_ip !== "127.0.0.1"
+      ) {
+        const portStr = this.networkInfo.port
+          ? `:${this.networkInfo.port}`
+          : "";
         urlToCopy = `http://${this.networkInfo.lan_ip}${portStr}${window.location.pathname}`;
-      } else if (this.dom.inviteUrlInput && this.dom.inviteUrlInput.value && !this.dom.inviteUrlInput.value.includes('127.0.0.1')) {
+      } else if (
+        this.dom.inviteUrlInput &&
+        this.dom.inviteUrlInput.value &&
+        !this.dom.inviteUrlInput.value.includes("127.0.0.1")
+      ) {
         urlToCopy = this.dom.inviteUrlInput.value;
       } else {
         urlToCopy = `${window.location.origin}${window.location.pathname}`;
@@ -1300,74 +1557,88 @@ class PedantixApp {
     }
 
     const inviteUrl = new URL(urlToCopy);
-    inviteUrl.search = '';
-    inviteUrl.hash = '';
+    inviteUrl.search = "";
+    inviteUrl.hash = "";
     if (this.isSoloMode) {
-      inviteUrl.searchParams.set('mode', 'solo');
-      inviteUrl.searchParams.set('assist', this.roomId);
-      inviteUrl.searchParams.set('key', this.assistToken);
-    } else if (this.roomId !== 'default') {
-      inviteUrl.searchParams.set('room', this.roomId);
+      inviteUrl.searchParams.set("mode", "solo");
+      inviteUrl.searchParams.set("assist", this.roomId);
+      inviteUrl.searchParams.set("key", this.assistToken);
+    } else if (this.roomId !== "default") {
+      inviteUrl.searchParams.set("room", this.roomId);
     }
     urlToCopy = inviteUrl.toString();
 
-    navigator.clipboard.writeText(urlToCopy).then(() => {
-      const copyBtns = [
-        this.dom.btnCopyInvite,
-        this.dom.btnHeaderInvite,
-        this.dom.btnCopyDrawer,
-        this.dom.btnLobbyCopyLink,
-        this.dom.btnCopyTunnel
-      ];
-      copyBtns.forEach(btn => {
-        if (btn) btn.innerHTML = '<span>✅</span> Copié !';
+    navigator.clipboard
+      .writeText(urlToCopy)
+      .then(() => {
+        const copyBtns = [
+          this.dom.btnCopyInvite,
+          this.dom.btnHeaderInvite,
+          this.dom.btnCopyDrawer,
+          this.dom.btnLobbyCopyLink,
+          this.dom.btnCopyTunnel,
+        ];
+        copyBtns.forEach((btn) => {
+          if (btn) btn.innerHTML = "<span>✅</span> Copié !";
+        });
+        if (this.dom.faqBtn) this.dom.faqBtn.textContent = "✅";
+        const modeLabel = this.isHostedMode()
+          ? "du salon"
+          : (forcedMode || this.activeNetMode) === "tunnel"
+            ? "Internet"
+            : "Réseau Wi-Fi";
+        this.showToast(
+          `Lien ${modeLabel} copié ! Partagez-le avec vos amis 📋`,
+        );
+        setTimeout(() => {
+          if (this.dom.btnCopyInvite)
+            this.dom.btnCopyInvite.innerHTML = "<span>🔗</span> Inviter";
+          if (this.dom.btnHeaderInvite) {
+            this.dom.btnHeaderInvite.innerHTML = this.isSoloMode
+              ? this.assistingPlayerId
+                ? "<span>🤝</span> Aide en cours"
+                : "<span>🤝</span> Demander de l’aide"
+              : "<span>🔗</span> Inviter";
+          }
+          if (this.dom.btnCopyDrawer)
+            this.dom.btnCopyDrawer.innerHTML = "<span>📋</span> Copier";
+          if (this.dom.btnCopyTunnel)
+            this.dom.btnCopyTunnel.innerHTML = "<span>📋</span> Copier";
+          if (this.dom.btnLobbyCopyLink)
+            this.dom.btnLobbyCopyLink.innerHTML =
+              "<span>📋</span> Copier le lien";
+          if (this.dom.faqBtn) this.dom.faqBtn.textContent = "❓";
+        }, 2500);
+      })
+      .catch(() => {
+        prompt("Adresse à partager à vos amis :", urlToCopy);
       });
-      if (this.dom.faqBtn) this.dom.faqBtn.textContent = '✅';
-      const modeLabel = this.isHostedMode() ? 'du salon' : ((forcedMode || this.activeNetMode) === 'tunnel' ? 'Internet' : 'Réseau Wi-Fi');
-      this.showToast(`Lien ${modeLabel} copié ! Partagez-le avec vos amis 📋`);
-      setTimeout(() => {
-        if (this.dom.btnCopyInvite) this.dom.btnCopyInvite.innerHTML = '<span>🔗</span> Inviter';
-        if (this.dom.btnHeaderInvite) {
-          this.dom.btnHeaderInvite.innerHTML = this.isSoloMode
-            ? this.assistingPlayerId
-              ? '<span>🤝</span> Aide en cours'
-              : '<span>🤝</span> Demander de l’aide'
-            : '<span>🔗</span> Inviter';
-        }
-        if (this.dom.btnCopyDrawer) this.dom.btnCopyDrawer.innerHTML = '<span>📋</span> Copier';
-        if (this.dom.btnCopyTunnel) this.dom.btnCopyTunnel.innerHTML = '<span>📋</span> Copier';
-        if (this.dom.btnLobbyCopyLink) this.dom.btnLobbyCopyLink.innerHTML = '<span>📋</span> Copier le lien';
-        if (this.dom.faqBtn) this.dom.faqBtn.textContent = '❓';
-      }, 2500);
-    }).catch(() => {
-      prompt('Adresse à partager à vos amis :', urlToCopy);
-    });
   }
 
   escapeHtml(str) {
-    if (!str) return '';
+    if (!str) return "";
     return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   async leaveRoom(roomId) {
     if (!roomId) return;
     try {
       this.closeRoomWebSocket();
-      await fetch(this.getApiUrl('/api/room/leave'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch(this.getApiUrl("/api/room/leave"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: roomId,
-          player_id: this.playerId
-        })
+          player_id: this.playerId,
+        }),
       });
     } catch (e) {
-      console.warn('Erreur leaveRoom:', e);
+      console.warn("Erreur leaveRoom:", e);
     }
   }
 
@@ -1381,40 +1652,43 @@ class PedantixApp {
 
     this.isSoloMode = true;
     this.roomId = this.soloRoomId;
-    this.roomStatus = 'playing';
-    localStorage.setItem('pedantix_play_mode', 'solo');
-    localStorage.removeItem('pedantix_last_room');
+    this.roomStatus = "playing";
+    localStorage.setItem("pedantix_play_mode", "solo");
+    localStorage.removeItem("pedantix_last_room");
     const url = new URL(window.location.href);
-    url.searchParams.set('mode', 'solo');
-    url.searchParams.delete('room');
-    url.searchParams.delete('assist');
-    url.searchParams.delete('key');
-    window.history.replaceState({}, '', url.toString());
-    document.body.classList.add('solo-mode');
-    if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add('active');
-    if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
-    if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
-    this.showToast(completed
-      ? '🤝 La page a été trouvée ! Retour à votre partie solo.'
-      : 'Vous avez quitté la page de votre ami. Le lien reste réutilisable.');
+    url.searchParams.set("mode", "solo");
+    url.searchParams.delete("room");
+    url.searchParams.delete("assist");
+    url.searchParams.delete("key");
+    window.history.replaceState({}, "", url.toString());
+    document.body.classList.add("solo-mode");
+    if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add("active");
+    if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove("active");
+    if (this.dom.soloDifficultySelector)
+      this.dom.soloDifficultySelector.style.display = "inline-flex";
+    this.showToast(
+      completed
+        ? "🤝 La page a été trouvée ! Retour à votre partie solo."
+        : "Vous avez quitté la page de votre ami. Le lien reste réutilisable.",
+    );
     await this.joinRoom();
   }
 
   async confirmLeaveRoom() {
-    this.playTone('click');
+    this.playTone("click");
     if (confirm("Voulez-vous vraiment quitter ce salon ?")) {
       this.closeModal(this.dom.lobbyModal);
-      await this.switchPlayMode('solo');
+      await this.switchPlayMode("solo");
       this.showToast("Vous avez quitté le salon 👋");
     }
   }
 
   async switchRoom(newRoomId) {
-    const cleanId = (newRoomId || '').trim();
+    const cleanId = (newRoomId || "").trim();
     if (!cleanId) return;
 
     if (this.roomId && this.roomId !== cleanId) {
-      if (!this.roomId.startsWith('solo-')) {
+      if (!this.roomId.startsWith("solo-")) {
         await this.leaveRoom(this.roomId);
       } else if (this.ws) {
         this.closeRoomWebSocket();
@@ -1422,18 +1696,18 @@ class PedantixApp {
     }
 
     this.isSoloMode = false;
-    localStorage.setItem('pedantix_play_mode', 'multi');
-    localStorage.setItem('pedantix_last_room', cleanId);
+    localStorage.setItem("pedantix_play_mode", "multi");
+    localStorage.setItem("pedantix_last_room", cleanId);
     this.roomId = cleanId;
 
     const url = new URL(window.location.href);
-    url.searchParams.delete('mode');
-    url.searchParams.set('room', cleanId);
-    window.history.replaceState({}, '', url.toString());
+    url.searchParams.delete("mode");
+    url.searchParams.set("room", cleanId);
+    window.history.replaceState({}, "", url.toString());
 
-    document.body.classList.remove('solo-mode');
-    if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
-    if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
+    document.body.classList.remove("solo-mode");
+    if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove("active");
+    if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add("active");
 
     this.closeModal(this.dom.roomsModal);
     this.showToast(`Salon « ${cleanId} » rejoint 🌐`);
@@ -1442,14 +1716,19 @@ class PedantixApp {
   }
 
   async openRoomsBrowser() {
-    this.playTone('click');
+    this.playTone("click");
     if (this.dom.currentRoomNameText) {
-      this.dom.currentRoomNameText.textContent = this.isSoloMode ? '(Mode Solo)' : (this.roomId || 'Aucun salon sélectionné');
+      this.dom.currentRoomNameText.textContent = this.isSoloMode
+        ? "(Mode Solo)"
+        : this.roomId || "Aucun salon sélectionné";
     }
     this.openModal(this.dom.roomsModal);
     if (!this.roomsRefreshInterval) {
       this.roomsRefreshInterval = setInterval(() => {
-        if (this.dom.roomsModal && this.dom.roomsModal.classList.contains('active')) {
+        if (
+          this.dom.roomsModal &&
+          this.dom.roomsModal.classList.contains("active")
+        ) {
           this.fetchRoomsList(true);
         }
       }, 15000);
@@ -1461,20 +1740,23 @@ class PedantixApp {
     if (!this.dom.roomsList) return;
     const requestId = ++this.roomsFetchSequence;
     if (!silent) {
-      this.dom.roomsList.innerHTML = '<div class="rooms-loading-placeholder">Chargement des salons en ligne...</div>';
+      this.dom.roomsList.innerHTML =
+        '<div class="rooms-loading-placeholder">Chargement des salons en ligne...</div>';
     }
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/rooms'), {
-        signal: AbortSignal.timeout(8000)
+      const resp = await fetch(this.getApiUrl("/api/rooms"), {
+        signal: AbortSignal.timeout(8000),
       });
       if (!resp.ok) throw new Error(`Erreur HTTP ${resp.status}`);
       const data = await resp.json();
       if (requestId !== this.roomsFetchSequence) return;
-      const rooms = (data.rooms || []).filter(r => !r.room_id.startsWith('solo-'));
+      const rooms = (data.rooms || []).filter(
+        (r) => !r.room_id.startsWith("solo-"),
+      );
 
       if (this.dom.roomsCountBadge) {
-        this.dom.roomsCountBadge.textContent = `${rooms.length} salon${rooms.length > 1 ? 's' : ''} actif${rooms.length > 1 ? 's' : ''}`;
+        this.dom.roomsCountBadge.textContent = `${rooms.length} salon${rooms.length > 1 ? "s" : ""} actif${rooms.length > 1 ? "s" : ""}`;
       }
 
       if (rooms.length === 0) {
@@ -1487,19 +1769,20 @@ class PedantixApp {
         return;
       }
 
-      this.dom.roomsList.innerHTML = '';
-      rooms.forEach(r => {
-        const isCurrent = (!this.isSoloMode && r.room_id === this.roomId);
-        const card = document.createElement('div');
-        card.className = `room-card ${isCurrent ? 'current-active-card' : ''}`;
+      this.dom.roomsList.innerHTML = "";
+      rooms.forEach((r) => {
+        const isCurrent = !this.isSoloMode && r.room_id === this.roomId;
+        const card = document.createElement("div");
+        card.className = `room-card ${isCurrent ? "current-active-card" : ""}`;
 
-        const statusLabel = r.status === 'playing' ? 'En jeu' : 'En attente';
-        const statusClass = r.status === 'playing' ? 'playing' : 'lobby';
-        const modeLabel = r.game_mode === 'team' ? 'Par équipes' : 'Chacun pour soi';
+        const statusLabel = r.status === "playing" ? "En jeu" : "En attente";
+        const statusClass = r.status === "playing" ? "playing" : "lobby";
+        const modeLabel =
+          r.game_mode === "team" ? "Par équipes" : "Chacun pour soi";
         const reconnectingCount = r.reconnecting_players_count || 0;
         const playersLabel = reconnectingCount
           ? `${r.players_count} en ligne · ${reconnectingCount} en reconnexion`
-          : `${r.players_count} joueur${r.players_count > 1 ? 's' : ''}`;
+          : `${r.players_count} joueur${r.players_count > 1 ? "s" : ""}`;
 
         card.innerHTML = `
           <div class="room-card-header">
@@ -1509,29 +1792,35 @@ class PedantixApp {
           <div class="room-card-meta">
             <span class="room-card-player-count">${this.escapeHtml(playersLabel)}</span>
             <span class="room-card-mode">${modeLabel}</span>
-            <span class="room-card-host">Hôte : ${this.escapeHtml(r.host_name || 'Anonyme')}</span>
+            <span class="room-card-host">Hôte : ${this.escapeHtml(r.host_name || "Anonyme")}</span>
           </div>
           <div class="room-card-footer">
-            ${isCurrent
-              ? '<span class="room-card-current">Vous êtes dans ce salon</span>'
-              : `<button type="button" class="btn-join-room-card btn-join-code" data-room-id="${this.escapeHtml(r.room_id)}">Rejoindre</button>`
+            ${
+              isCurrent
+                ? '<span class="room-card-current">Vous êtes dans ce salon</span>'
+                : `<button type="button" class="btn-join-room-card btn-join-code" data-room-id="${this.escapeHtml(r.room_id)}">Rejoindre</button>`
             }
           </div>
         `;
 
         if (!isCurrent) {
-          const btn = card.querySelector('.btn-join-room-card');
+          const btn = card.querySelector(".btn-join-room-card");
           if (btn) {
-            btn.addEventListener('click', () => this.switchRoom(r.room_id));
+            btn.addEventListener("click", () => this.switchRoom(r.room_id));
           }
         }
 
         this.dom.roomsList.appendChild(card);
       });
     } catch (e) {
-      console.warn('Erreur fetchRoomsList:', e);
-      if (!silent && requestId === this.roomsFetchSequence && this.dom.roomsList) {
-        this.dom.roomsList.innerHTML = '<div class="rooms-loading-placeholder" style="color: #ef4444;">Erreur de connexion au serveur.</div>';
+      console.warn("Erreur fetchRoomsList:", e);
+      if (
+        !silent &&
+        requestId === this.roomsFetchSequence &&
+        this.dom.roomsList
+      ) {
+        this.dom.roomsList.innerHTML =
+          '<div class="rooms-loading-placeholder" style="color: #ef4444;">Erreur de connexion au serveur.</div>';
       }
     }
   }
@@ -1542,61 +1831,65 @@ class PedantixApp {
 
     const btnCreate = this.dom.btnCreateRoom;
     const btnModalCreate = this.dom.btnModalCreateRoom;
-    const oldModalText = btnModalCreate ? btnModalCreate.innerHTML : '';
+    const oldModalText = btnModalCreate ? btnModalCreate.innerHTML : "";
     if (btnCreate) {
       btnCreate.disabled = true;
-      btnCreate.classList.add('btn-loading');
+      btnCreate.classList.add("btn-loading");
     }
     if (btnModalCreate) {
       btnModalCreate.disabled = true;
-      btnModalCreate.classList.add('btn-loading');
-      btnModalCreate.innerHTML = '<span>⏳</span> Création en cours...';
+      btnModalCreate.classList.add("btn-loading");
+      btnModalCreate.innerHTML = "<span>⏳</span> Création en cours...";
     }
 
-    const roomId = (customId && customId.trim()) ? customId.trim() : `salon-${Math.floor(Math.random() * 899 + 100)}`;
+    const roomId =
+      customId && customId.trim()
+        ? customId.trim()
+        : `salon-${Math.floor(Math.random() * 899 + 100)}`;
 
     try {
-      this.showToast('Création du salon en cours... ⏳');
+      this.showToast("Création du salon en cours... ⏳");
       if (this.roomId && this.roomId !== roomId) {
-        if (!this.roomId.startsWith('solo-')) {
+        if (!this.roomId.startsWith("solo-")) {
           await this.leaveRoom(this.roomId);
         } else if (this.ws) {
           this.closeRoomWebSocket();
         }
       }
 
-      const resp = await fetch(this.getApiUrl('/api/room/create'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/create"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           host_player_id: this.playerId,
           host_name: this.playerName,
           room_id: roomId,
-          difficulty: this.currentDifficulty
-        })
+          difficulty: this.currentDifficulty,
+        }),
       });
       if (!resp.ok) {
-        throw new Error('Erreur HTTP création de salon');
+        throw new Error("Erreur HTTP création de salon");
       }
       const data = await resp.json();
 
       this.roomId = data.room_id || roomId;
       this.isSoloMode = false;
       this.lobbyMinimized = false;
-      localStorage.setItem('pedantix_play_mode', 'multi');
-      if (!this.roomId.startsWith('solo-')) {
-        localStorage.setItem('pedantix_last_room', this.roomId);
+      localStorage.setItem("pedantix_play_mode", "multi");
+      if (!this.roomId.startsWith("solo-")) {
+        localStorage.setItem("pedantix_last_room", this.roomId);
       }
 
       const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('mode');
-      newUrl.searchParams.set('room', this.roomId);
-      window.history.replaceState({}, '', newUrl.toString());
+      newUrl.searchParams.delete("mode");
+      newUrl.searchParams.set("room", this.roomId);
+      window.history.replaceState({}, "", newUrl.toString());
 
-      document.body.classList.remove('solo-mode');
-      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
-      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
-      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
+      document.body.classList.remove("solo-mode");
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove("active");
+      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add("active");
+      if (this.dom.soloDifficultySelector)
+        this.dom.soloDifficultySelector.style.display = "none";
 
       this.closeModal(this.dom.roomsModal);
       this.showToast(`Salon « ${this.roomId} » créé ! Vous êtes l'Host 👑`);
@@ -1604,26 +1897,28 @@ class PedantixApp {
       await this.joinRoom();
       return this.roomId;
     } catch (e) {
-      console.error('Erreur createMultiplayerRoom:', e);
-      this.showToast('Erreur lors de la création du salon.');
+      console.error("Erreur createMultiplayerRoom:", e);
+      this.showToast("Erreur lors de la création du salon.");
       return null;
     } finally {
       this._isCreatingRoom = false;
       if (btnCreate) {
         btnCreate.disabled = false;
-        btnCreate.classList.remove('btn-loading');
+        btnCreate.classList.remove("btn-loading");
       }
       if (btnModalCreate) {
         btnModalCreate.disabled = false;
-        btnModalCreate.classList.remove('btn-loading');
+        btnModalCreate.classList.remove("btn-loading");
         btnModalCreate.innerHTML = oldModalText;
       }
     }
   }
 
   async createNewRoom() {
-    this.playTone('click');
-    const customCode = prompt('Nom ou code du nouveau salon (laissez vide pour générer un code aléatoire) :');
+    this.playTone("click");
+    const customCode = prompt(
+      "Nom ou code du nouveau salon (laissez vide pour générer un code aléatoire) :",
+    );
     if (customCode === null) return;
     await this.createMultiplayerRoom(customCode);
   }
@@ -1635,83 +1930,96 @@ class PedantixApp {
   setupChat() {
     // Sidebar Tabs
     if (this.dom.tabBtnContest) {
-      this.dom.tabBtnContest.addEventListener('click', () => this.switchSidebarTab('contest'));
+      this.dom.tabBtnContest.addEventListener("click", () =>
+        this.switchSidebarTab("contest"),
+      );
     }
     if (this.dom.tabBtnChat) {
-      this.dom.tabBtnChat.addEventListener('click', () => this.switchSidebarTab('chat'));
+      this.dom.tabBtnChat.addEventListener("click", () =>
+        this.switchSidebarTab("chat"),
+      );
     }
 
     // Sidebar Chat form
     if (this.dom.chatFormSidebar) {
-      this.dom.chatFormSidebar.addEventListener('submit', (e) => {
+      this.dom.chatFormSidebar.addEventListener("submit", (e) => {
         e.preventDefault();
         const text = this.dom.chatInputSidebar.value;
         if (text && text.trim()) {
           this.sendChatMessage(text.trim());
-          this.dom.chatInputSidebar.value = '';
+          this.dom.chatInputSidebar.value = "";
         }
       });
     }
 
     // Lobby Chat form
     if (this.dom.chatFormLobby) {
-      this.dom.chatFormLobby.addEventListener('submit', (e) => {
+      this.dom.chatFormLobby.addEventListener("submit", (e) => {
         e.preventDefault();
         const text = this.dom.chatInputLobby.value;
         if (text && text.trim()) {
           this.sendChatMessage(text.trim());
-          this.dom.chatInputLobby.value = '';
+          this.dom.chatInputLobby.value = "";
         }
       });
     }
 
     // Quick emoji reactions (sidebar)
     if (this.dom.chatQuickReactionsSidebar) {
-      this.dom.chatQuickReactionsSidebar.querySelectorAll('.btn-chat-reaction').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const emoji = btn.dataset.emoji;
-          if (emoji) this.sendChatMessage(emoji);
+      this.dom.chatQuickReactionsSidebar
+        .querySelectorAll(".btn-chat-reaction")
+        .forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const emoji = btn.dataset.emoji;
+            if (emoji) this.sendChatMessage(emoji);
+          });
         });
-      });
     }
 
     // Quick emoji reactions (lobby)
     if (this.dom.chatQuickReactionsLobby) {
-      this.dom.chatQuickReactionsLobby.querySelectorAll('.btn-chat-reaction').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const emoji = btn.dataset.emoji;
-          if (emoji) this.sendChatMessage(emoji);
+      this.dom.chatQuickReactionsLobby
+        .querySelectorAll(".btn-chat-reaction")
+        .forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const emoji = btn.dataset.emoji;
+            if (emoji) this.sendChatMessage(emoji);
+          });
         });
-      });
     }
 
     // Floating chat toast click
     if (this.dom.chatFloatingToast) {
-      this.dom.chatFloatingToast.addEventListener('click', (e) => {
-        if (e.target.id === 'btn-chat-toast-close') {
-          this.dom.chatFloatingToast.style.display = 'none';
+      this.dom.chatFloatingToast.addEventListener("click", (e) => {
+        if (e.target.id === "btn-chat-toast-close") {
+          this.dom.chatFloatingToast.style.display = "none";
           return;
         }
-        this.switchSidebarTab('chat');
-        this.dom.chatFloatingToast.style.display = 'none';
+        this.switchSidebarTab("chat");
+        this.dom.chatFloatingToast.style.display = "none";
       });
     }
     if (this.dom.btnChatToastClose) {
-      this.dom.btnChatToastClose.addEventListener('click', (e) => {
+      this.dom.btnChatToastClose.addEventListener("click", (e) => {
         e.stopPropagation();
-        this.dom.chatFloatingToast.style.display = 'none';
+        this.dom.chatFloatingToast.style.display = "none";
       });
     }
   }
 
   switchSidebarTab(tabName) {
     this.activeSidebarTab = tabName;
-    if (this.dom.tabBtnContest) this.dom.tabBtnContest.classList.toggle('active', tabName === 'contest');
-    if (this.dom.tabBtnChat) this.dom.tabBtnChat.classList.toggle('active', tabName === 'chat');
-    if (this.dom.compTabContest) this.dom.compTabContest.style.display = (tabName === 'contest') ? 'flex' : 'none';
-    if (this.dom.compTabChat) this.dom.compTabChat.style.display = (tabName === 'chat') ? 'flex' : 'none';
+    if (this.dom.tabBtnContest)
+      this.dom.tabBtnContest.classList.toggle("active", tabName === "contest");
+    if (this.dom.tabBtnChat)
+      this.dom.tabBtnChat.classList.toggle("active", tabName === "chat");
+    if (this.dom.compTabContest)
+      this.dom.compTabContest.style.display =
+        tabName === "contest" ? "flex" : "none";
+    if (this.dom.compTabChat)
+      this.dom.compTabChat.style.display = tabName === "chat" ? "flex" : "none";
 
-    if (tabName === 'chat') {
+    if (tabName === "chat") {
       this.markChatAsRead();
       this.scrollChatToBottom();
       if (this.dom.chatInputSidebar) this.dom.chatInputSidebar.focus();
@@ -1719,37 +2027,41 @@ class PedantixApp {
   }
 
   isChatVisible() {
-    const lobbyChatVisible = this.dom.lobbyModal?.classList.contains('active');
-    const sidebarChatVisible = this.activeSidebarTab === 'chat'
-      && this.dom.compTabChat
-      && this.dom.compTabChat.style.display !== 'none';
+    const lobbyChatVisible = this.dom.lobbyModal?.classList.contains("active");
+    const sidebarChatVisible =
+      this.activeSidebarTab === "chat" &&
+      this.dom.compTabChat &&
+      this.dom.compTabChat.style.display !== "none";
     return !!(lobbyChatVisible || sidebarChatVisible);
   }
 
   markChatAsRead() {
     this.unreadChatCount = 0;
     if (this.dom.chatUnreadBadge) {
-      this.dom.chatUnreadBadge.style.display = 'none';
-      this.dom.chatUnreadBadge.textContent = '0';
+      this.dom.chatUnreadBadge.style.display = "none";
+      this.dom.chatUnreadBadge.textContent = "0";
     }
     if (this._chatToastTimeout) clearTimeout(this._chatToastTimeout);
-    if (this.dom.chatFloatingToast) this.dom.chatFloatingToast.style.display = 'none';
+    if (this.dom.chatFloatingToast)
+      this.dom.chatFloatingToast.style.display = "none";
   }
 
   updateChatUnreadBadge() {
     if (!this.dom.chatUnreadBadge) return;
-    this.dom.chatUnreadBadge.textContent = this.unreadChatCount > 9 ? '9+' : this.unreadChatCount;
-    this.dom.chatUnreadBadge.style.display = this.unreadChatCount > 0 ? 'inline-flex' : 'none';
+    this.dom.chatUnreadBadge.textContent =
+      this.unreadChatCount > 9 ? "9+" : this.unreadChatCount;
+    this.dom.chatUnreadBadge.style.display =
+      this.unreadChatCount > 0 ? "inline-flex" : "none";
   }
 
   async sendChatMessage(text) {
     if (!text || !text.trim()) return;
     const msgPayload = {
-      type: 'chat',
+      type: "chat",
       room_id: this.roomId,
       player_id: this.playerId,
-      sender_name: this.playerName || 'Joueur',
-      text: text.trim()
+      sender_name: this.playerName || "Joueur",
+      text: text.trim(),
     };
 
     // Send via WebSocket if open
@@ -1758,10 +2070,10 @@ class PedantixApp {
     } else {
       // Fallback REST endpoint
       try {
-        await fetch(this.getApiUrl('/api/room/chat'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(msgPayload)
+        await fetch(this.getApiUrl("/api/room/chat"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(msgPayload),
         });
       } catch (e) {
         console.warn("Erreur envoi chat", e);
@@ -1774,8 +2086,8 @@ class PedantixApp {
     this.chatMessages.push(msg);
 
     // Remove empty hints
-    const hints = document.querySelectorAll('.chat-empty-hint');
-    hints.forEach(el => el.remove());
+    const hints = document.querySelectorAll(".chat-empty-hint");
+    hints.forEach((el) => el.remove());
 
     const isMine = msg.player_id === this.playerId;
     const msgEl1 = this.createChatMessageElement(msg, isMine);
@@ -1791,7 +2103,7 @@ class PedantixApp {
     this.scrollChatToBottom();
 
     if (!isMine) {
-      this.playTone('message');
+      this.playTone("message");
       if (this.isChatVisible()) {
         this.markChatAsRead();
       } else {
@@ -1803,29 +2115,31 @@ class PedantixApp {
   }
 
   createChatMessageElement(msg, isMine) {
-    const row = document.createElement('div');
-    row.className = `chat-msg-row ${isMine ? 'mine' : 'theirs'}`;
+    const row = document.createElement("div");
+    row.className = `chat-msg-row ${isMine ? "mine" : "theirs"}`;
 
-    let teamTagHtml = '';
-    const playerObj = (this.leaderboard || []).find(p => p.player_id === msg.player_id);
-    const pTeam = playerObj ? playerObj.team : (msg.team || null);
-    if (this.gameMode === 'team' && pTeam) {
+    let teamTagHtml = "";
+    const playerObj = (this.leaderboard || []).find(
+      (p) => p.player_id === msg.player_id,
+    );
+    const pTeam = playerObj ? playerObj.team : msg.team || null;
+    if (this.gameMode === "team" && pTeam) {
       const teamTags = {
-        blue: { label: '🔵 Bleu', class: 'blue' },
-        red: { label: '🔴 Rouge', class: 'red' },
-        green: { label: '🟢 Vert', class: 'green' },
-        yellow: { label: '🟡 Jaune', class: 'yellow' }
+        blue: { label: "🔵 Bleu", class: "blue" },
+        red: { label: "🔴 Rouge", class: "red" },
+        green: { label: "🟢 Vert", class: "green" },
+        yellow: { label: "🟡 Jaune", class: "yellow" },
       };
       const tt = teamTags[pTeam] || teamTags.blue;
       teamTagHtml = `<span class="chat-team-tag ${tt.class}">${tt.label}</span>`;
     }
 
-    const authorLine = document.createElement('div');
-    authorLine.className = 'chat-author-line';
-    authorLine.innerHTML = `${teamTagHtml}<span class="chat-author-name">${this.escapeHtml(msg.sender_name)}</span><span class="chat-time-tag">${msg.timestamp || ''}</span>`;
+    const authorLine = document.createElement("div");
+    authorLine.className = "chat-author-line";
+    authorLine.innerHTML = `${teamTagHtml}<span class="chat-author-name">${this.escapeHtml(msg.sender_name)}</span><span class="chat-time-tag">${msg.timestamp || ""}</span>`;
 
-    const bubble = document.createElement('div');
-    bubble.className = 'chat-bubble';
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble";
     bubble.textContent = msg.text;
 
     row.appendChild(authorLine);
@@ -1836,8 +2150,9 @@ class PedantixApp {
   loadHistoricalChatMessages(messages) {
     if (!Array.isArray(messages)) return;
     this.chatMessages = [];
-    if (this.dom.chatMessagesSidebar) this.dom.chatMessagesSidebar.innerHTML = '';
-    if (this.dom.chatMessagesLobby) this.dom.chatMessagesLobby.innerHTML = '';
+    if (this.dom.chatMessagesSidebar)
+      this.dom.chatMessagesSidebar.innerHTML = "";
+    if (this.dom.chatMessagesLobby) this.dom.chatMessagesLobby.innerHTML = "";
 
     if (messages.length === 0) {
       if (this.dom.chatMessagesSidebar) {
@@ -1849,13 +2164,15 @@ class PedantixApp {
       return;
     }
 
-    messages.forEach(m => {
+    messages.forEach((m) => {
       this.chatMessages.push(m);
       const isMine = m.player_id === this.playerId;
       const el1 = this.createChatMessageElement(m, isMine);
       const el2 = this.createChatMessageElement(m, isMine);
-      if (this.dom.chatMessagesSidebar) this.dom.chatMessagesSidebar.appendChild(el1);
-      if (this.dom.chatMessagesLobby) this.dom.chatMessagesLobby.appendChild(el2);
+      if (this.dom.chatMessagesSidebar)
+        this.dom.chatMessagesSidebar.appendChild(el1);
+      if (this.dom.chatMessagesLobby)
+        this.dom.chatMessagesLobby.appendChild(el2);
     });
 
     this.scrollChatToBottom();
@@ -1863,23 +2180,26 @@ class PedantixApp {
 
   scrollChatToBottom() {
     if (this.dom.chatMessagesSidebar) {
-      this.dom.chatMessagesSidebar.scrollTop = this.dom.chatMessagesSidebar.scrollHeight;
+      this.dom.chatMessagesSidebar.scrollTop =
+        this.dom.chatMessagesSidebar.scrollHeight;
     }
     if (this.dom.chatMessagesLobby) {
-      this.dom.chatMessagesLobby.scrollTop = this.dom.chatMessagesLobby.scrollHeight;
+      this.dom.chatMessagesLobby.scrollTop =
+        this.dom.chatMessagesLobby.scrollHeight;
     }
   }
 
   showFloatingChatToast(msg) {
     if (!this.dom.chatFloatingToast) return;
-    if (this.dom.chatToastSender) this.dom.chatToastSender.textContent = msg.sender_name;
+    if (this.dom.chatToastSender)
+      this.dom.chatToastSender.textContent = msg.sender_name;
     if (this.dom.chatToastText) this.dom.chatToastText.textContent = msg.text;
-    this.dom.chatFloatingToast.style.display = 'flex';
+    this.dom.chatFloatingToast.style.display = "flex";
 
     if (this._chatToastTimeout) clearTimeout(this._chatToastTimeout);
     this._chatToastTimeout = setTimeout(() => {
       if (this.dom.chatFloatingToast) {
-        this.dom.chatFloatingToast.style.display = 'none';
+        this.dom.chatFloatingToast.style.display = "none";
       }
     }, 4500);
   }
@@ -1894,21 +2214,21 @@ class PedantixApp {
     this.prevInputIdx = -1;
     this.isWon = false;
     this.isAbandoned = false;
-    if (this.dom.successBox) this.dom.successBox.classList.remove('active');
+    if (this.dom.successBox) this.dom.successBox.classList.remove("active");
     if (this.dom.surrenderBanner) {
-      this.dom.surrenderBanner.style.display = 'none';
-      this.dom.surrenderBanner.classList.remove('active');
+      this.dom.surrenderBanner.style.display = "none";
+      this.dom.surrenderBanner.classList.remove("active");
     }
     if (this.dom.articleFinishedBar) {
-      this.dom.articleFinishedBar.style.display = 'none';
+      this.dom.articleFinishedBar.style.display = "none";
     }
     if (this.dom.form) {
-      this.dom.form.style.display = 'flex';
-      this.dom.form.style.opacity = '1';
-      this.dom.form.style.pointerEvents = 'auto';
+      this.dom.form.style.display = "flex";
+      this.dom.form.style.opacity = "1";
+      this.dom.form.style.pointerEvents = "auto";
     }
-    this.dom.errorLabel.textContent = '';
-    this.dom.wikiImg.style.display = 'none';
+    this.dom.errorLabel.textContent = "";
+    this.dom.wikiImg.style.display = "none";
     this.hideOpponentWin();
 
     if (this.dom.roomCodeDisplay) {
@@ -1916,28 +2236,31 @@ class PedantixApp {
     }
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/join'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/join"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
           player_name: this.playerName,
           difficulty: this.currentDifficulty,
-          assist_token: this.isAssisting ? this.assistToken : undefined
-        })
+          assist_token: this.isAssisting ? this.assistToken : undefined,
+        }),
       });
 
       if (!resp.ok) {
         const errorData = await resp.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Erreur de connexion');
+        throw new Error(errorData.detail || "Erreur de connexion");
       }
       const data = await resp.json();
 
       if (data.room_id) {
         this.roomId = data.room_id;
       }
-      if (data.seed !== this.seed || data.session.session_id !== this.sessionId) {
+      if (
+        data.seed !== this.seed ||
+        data.session.session_id !== this.sessionId
+      ) {
         this.resetUnmaskButton();
       }
       if (this.dom.roomCodeDisplay) {
@@ -1951,32 +2274,39 @@ class PedantixApp {
       try {
         const currentUrl = new URL(window.location.href);
         if (this.isSoloMode) {
-          localStorage.setItem('pedantix_play_mode', 'solo');
-          localStorage.removeItem('pedantix_last_room');
+          localStorage.setItem("pedantix_play_mode", "solo");
+          localStorage.removeItem("pedantix_last_room");
           if (this.isAssisting) {
-            currentUrl.searchParams.set('mode', 'solo');
-            currentUrl.searchParams.set('assist', this.roomId);
-            currentUrl.searchParams.set('key', this.assistToken);
-            currentUrl.searchParams.delete('room');
-            window.history.replaceState({}, '', currentUrl.toString());
-          } else if (currentUrl.searchParams.get('mode') !== 'solo' || currentUrl.searchParams.has('room') || currentUrl.searchParams.has('assist')) {
-            currentUrl.searchParams.set('mode', 'solo');
-            currentUrl.searchParams.delete('room');
-            currentUrl.searchParams.delete('assist');
-            currentUrl.searchParams.delete('key');
-            window.history.replaceState({}, '', currentUrl.toString());
+            currentUrl.searchParams.set("mode", "solo");
+            currentUrl.searchParams.set("assist", this.roomId);
+            currentUrl.searchParams.set("key", this.assistToken);
+            currentUrl.searchParams.delete("room");
+            window.history.replaceState({}, "", currentUrl.toString());
+          } else if (
+            currentUrl.searchParams.get("mode") !== "solo" ||
+            currentUrl.searchParams.has("room") ||
+            currentUrl.searchParams.has("assist")
+          ) {
+            currentUrl.searchParams.set("mode", "solo");
+            currentUrl.searchParams.delete("room");
+            currentUrl.searchParams.delete("assist");
+            currentUrl.searchParams.delete("key");
+            window.history.replaceState({}, "", currentUrl.toString());
           }
-        } else if (this.roomId && !this.roomId.startsWith('solo-')) {
-          localStorage.setItem('pedantix_play_mode', 'multi');
-          localStorage.setItem('pedantix_last_room', this.roomId);
-          if (currentUrl.searchParams.get('room') !== this.roomId || currentUrl.searchParams.has('mode')) {
-            currentUrl.searchParams.delete('mode');
-            currentUrl.searchParams.set('room', this.roomId);
-            window.history.replaceState({}, '', currentUrl.toString());
+        } else if (this.roomId && !this.roomId.startsWith("solo-")) {
+          localStorage.setItem("pedantix_play_mode", "multi");
+          localStorage.setItem("pedantix_last_room", this.roomId);
+          if (
+            currentUrl.searchParams.get("room") !== this.roomId ||
+            currentUrl.searchParams.has("mode")
+          ) {
+            currentUrl.searchParams.delete("mode");
+            currentUrl.searchParams.set("room", this.roomId);
+            window.history.replaceState({}, "", currentUrl.toString());
           }
         }
       } catch (e) {
-        console.warn('URL sync error:', e);
+        console.warn("URL sync error:", e);
       }
 
       this.sessionId = data.session.session_id;
@@ -1986,8 +2316,8 @@ class PedantixApp {
       this.assistingPlayerId = data.assisting_player_id || null;
       this.tokens = data.session.tokens;
       this.tokensById = {};
-      this.tokens.forEach(t => {
-        t.is_word = (t.type === 'word' || !!t.is_word);
+      this.tokens.forEach((t) => {
+        t.is_word = t.type === "word" || !!t.is_word;
         this.tokensById[t.id] = t;
       });
 
@@ -2001,19 +2331,32 @@ class PedantixApp {
       this.isSpectator = data.player ? !!data.player.is_spectator : false;
       this.myScore = data.player ? data.player.score : 0;
       this.canStart = data.can_start || false;
-      this.roomStatus = data.status || 'lobby';
+      this.roomStatus = data.status || "lobby";
       this.lastRound = data.last_round || null;
       this.isAbandoned = !!(this.lastRound && this.lastRound.abandoned);
 
-      this.gameMode = data.game_mode || 'individual';
+      this.gameMode = data.game_mode || "individual";
       if (data.player && data.player.team) this.myTeam = data.player.team;
       if (data.teams) this.teamsData = data.teams;
 
       this.currentDifficulty = data.difficulty || this.currentDifficulty;
-      this.articleDifficulty = data.article_difficulty || (data.session && data.session.difficulty) || this.currentDifficulty;
-      this.articleLangCount = data.article_lang_count || (data.session && data.session.lang_count) || 0;
-      this.articlePageviews90d = data.article_pageviews_90d || (data.session && data.session.pageviews_90d) || 0;
-      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+      this.articleDifficulty =
+        data.article_difficulty ||
+        (data.session && data.session.difficulty) ||
+        this.currentDifficulty;
+      this.articleLangCount =
+        data.article_lang_count ||
+        (data.session && data.session.lang_count) ||
+        0;
+      this.articlePageviews90d =
+        data.article_pageviews_90d ||
+        (data.session && data.session.pageviews_90d) ||
+        0;
+      this.updateDifficultyUI(
+        this.articleDifficulty,
+        this.articleLangCount,
+        this.articlePageviews90d,
+      );
 
       this.updateBadges();
       this.renderBoard();
@@ -2022,7 +2365,8 @@ class PedantixApp {
 
       if (data.leaderboard) this.updateLeaderboard(data.leaderboard);
       if (data.activity) this.updateActivity(data.activity);
-      if (data.chat_messages) this.loadHistoricalChatMessages(data.chat_messages);
+      if (data.chat_messages)
+        this.loadHistoricalChatMessages(data.chat_messages);
 
       this.updateModeUI();
       this.renderTeamsRoster();
@@ -2031,8 +2375,8 @@ class PedantixApp {
       if (this.isAbandoned) {
         const revealedTokens = Object.fromEntries(
           this.tokens
-            .filter(t => t.is_word || t.type === 'word')
-            .map(t => [String(t.id), t.text])
+            .filter((t) => t.is_word || t.type === "word")
+            .map((t) => [String(t.id), t.text]),
         );
         this.handleSurrenderPassed({
           title: this.lastRound.title,
@@ -2043,7 +2387,7 @@ class PedantixApp {
           last_round: this.lastRound,
           leaderboard: data.leaderboard,
           teams: data.teams,
-          activity: data.activity
+          activity: data.activity,
         });
       } else if (this.isWon) {
         this.handleVictory();
@@ -2053,33 +2397,53 @@ class PedantixApp {
       // Check current phase
       this.nextWordHintTime = data.next_word_hint_time || null;
 
-      if (this.roomStatus === 'starting' && data.countdown_end) {
+      if (this.roomStatus === "starting" && data.countdown_end) {
         this.stopWordHintTimer();
-        const left = Math.max(1, Math.ceil(data.countdown_end - (Date.now() / 1000)));
+        const left = Math.max(
+          1,
+          Math.ceil(data.countdown_end - Date.now() / 1000),
+        );
         this.startCountdown(left);
-      } else if (this.roomStatus === 'ending' && data.timer_30s_end) {
+      } else if (this.roomStatus === "ending" && data.timer_30s_end) {
         this.stopWordHintTimer();
-        const left = Math.max(1, Math.ceil(data.timer_30s_end - (Date.now() / 1000)));
-        this.startSprintTimer(data.first_winner_name || 'Un joueur', left, data.timer_30s_end);
-      } else if (this.roomStatus === 'playing' && this.nextWordHintTime && !this.isWon) {
+        const left = Math.max(
+          1,
+          Math.ceil(data.timer_30s_end - Date.now() / 1000),
+        );
+        this.startSprintTimer(
+          data.first_winner_name || "Un joueur",
+          left,
+          data.timer_30s_end,
+        );
+      } else if (
+        this.roomStatus === "playing" &&
+        this.nextWordHintTime &&
+        !this.isWon
+      ) {
         this.startWordHintTimer(this.nextWordHintTime);
       } else {
         this.stopWordHintTimer();
       }
-
     } catch (err) {
       console.error(err);
-      this.showToast(err.message || 'Erreur lors de la connexion au concours.');
+      this.showToast(err.message || "Erreur lors de la connexion au concours.");
     }
   }
 
   async reloadGameSession() {
     try {
-      const resp = await fetch(this.getApiUrl(`/api/room/${encodeURIComponent(this.roomId)}/state?player_id=${encodeURIComponent(this.playerId)}`));
+      const resp = await fetch(
+        this.getApiUrl(
+          `/api/room/${encodeURIComponent(this.roomId)}/state?player_id=${encodeURIComponent(this.playerId)}`,
+        ),
+      );
       if (!resp.ok) return;
       const data = await resp.json();
       if (data.session) {
-        if (data.seed !== this.seed || data.session.session_id !== this.sessionId) {
+        if (
+          data.seed !== this.seed ||
+          data.session.session_id !== this.sessionId
+        ) {
           this.resetRoundEndState();
         }
         this.sessionId = data.session.session_id;
@@ -2087,8 +2451,8 @@ class PedantixApp {
         if (data.guess_token) this.guessToken = data.guess_token;
         this.tokens = data.session.tokens || [];
         this.tokensById = {};
-        this.tokens.forEach(t => {
-          t.is_word = (t.type === 'word' || !!t.is_word);
+        this.tokens.forEach((t) => {
+          t.is_word = t.type === "word" || !!t.is_word;
           this.tokensById[t.id] = t;
         });
         this.history = data.session.history || [];
@@ -2099,10 +2463,10 @@ class PedantixApp {
         if (this.isWon) {
           this.handleVictory();
         } else {
-          this.dom.successBox.classList.remove('active');
+          this.dom.successBox.classList.remove("active");
         }
-        this.dom.errorLabel.textContent = '';
-        this.dom.wikiImg.style.display = 'none';
+        this.dom.errorLabel.textContent = "";
+        this.dom.wikiImg.style.display = "none";
         this.hideOpponentWin();
 
         if (data.game_mode) this.gameMode = data.game_mode;
@@ -2116,7 +2480,11 @@ class PedantixApp {
         this.updateModeUI();
 
         this.nextWordHintTime = data.next_word_hint_time || null;
-        if (this.roomStatus === 'playing' && this.nextWordHintTime && !this.isWon) {
+        if (
+          this.roomStatus === "playing" &&
+          this.nextWordHintTime &&
+          !this.isWon
+        ) {
           this.startWordHintTimer(this.nextWordHintTime);
         } else {
           this.stopWordHintTimer();
@@ -2124,6 +2492,331 @@ class PedantixApp {
       }
     } catch (e) {
       console.error("Erreur rechargement session de jeu:", e);
+    }
+  }
+
+  initVoiceChatUI() {
+    if (!this.dom || !this.dom.voiceChatSection) return;
+    if (this.dom.btnVoiceToggle) {
+      this.dom.btnVoiceToggle.addEventListener("click", () =>
+        this.toggleVoiceChat(),
+      );
+    }
+    if (this.dom.btnVoiceJoin) {
+      this.dom.btnVoiceJoin.addEventListener("click", () =>
+        this.toggleVoiceJoin(),
+      );
+    }
+    if (this.dom.btnVoiceMute) {
+      this.dom.btnVoiceMute.addEventListener("click", () =>
+        this.toggleVoiceMute(),
+      );
+    }
+    this.syncVoiceChatUI();
+  }
+
+  isMultiplayerRoom() {
+    return (
+      !!this.roomId && !this.roomId.startsWith("solo-") && !this.isSoloMode
+    );
+  }
+
+  applyVoiceChatState(state) {
+    if (!state || typeof state !== "object") return;
+    const members = Array.isArray(state.members) ? state.members : [];
+    this.voiceChatState = {
+      enabled: !!state.enabled,
+      members,
+      muted: state.muted || {},
+      host_id: state.host_id || (this.isHost ? this.playerId : null),
+    };
+    this.voiceChatJoined = members.includes(this.playerId);
+    if (!this.voiceChatState.enabled && this.voiceChatLocalStream) {
+      this.stopVoiceLocalStream();
+    }
+    this.syncVoiceChatUI();
+    if (
+      this.voiceChatState.enabled &&
+      this.voiceChatJoined &&
+      this.voiceChatLocalStream
+    ) {
+      this.connectVoicePeers();
+    }
+  }
+
+  syncVoiceChatUI() {
+    if (!this.dom || !this.dom.voiceChatSection) return;
+    const multiplayer = this.isMultiplayerRoom();
+    const enabled = !!this.voiceChatState.enabled;
+    const joined =
+      this.voiceChatJoined ||
+      this.voiceChatState.members.includes(this.playerId);
+    const muted = !!(
+      this.voiceChatState.muted && this.voiceChatState.muted[this.playerId]
+    );
+
+    this.dom.voiceChatSection.style.display = multiplayer ? "block" : "none";
+    this.dom.btnVoiceToggle.hidden = !multiplayer || !this.isHost;
+    this.dom.btnVoiceToggle.textContent = enabled
+      ? "Désactiver le chat vocal"
+      : "Activer le chat vocal";
+
+    this.dom.btnVoiceJoin.hidden = !multiplayer || !enabled;
+    this.dom.btnVoiceJoin.textContent = joined
+      ? "Quitter le chat vocal"
+      : "Rejoindre le chat vocal";
+    this.dom.btnVoiceMute.hidden = !multiplayer || !enabled || !joined;
+    this.dom.btnVoiceMute.textContent = muted ? "Micro muet" : "Micro actif";
+    this.dom.btnVoiceMute.disabled = !enabled || !joined;
+    this.dom.voiceChatStatus.textContent = enabled
+      ? joined
+        ? "En ligne"
+        : "Ouvert"
+      : "Fermé";
+
+    const members = [
+      ...new Set((this.voiceChatState.members || []).filter(Boolean)),
+    ];
+    if (!this.dom.voiceMembersList) return;
+    this.dom.voiceMembersList.innerHTML = "";
+    if (!members.length) {
+      const empty = document.createElement("div");
+      empty.className = "voice-member-empty";
+      empty.textContent = enabled
+        ? "Aucun participant dans le salon vocal."
+        : "Le salon vocal est fermé.";
+      this.dom.voiceMembersList.appendChild(empty);
+      return;
+    }
+    members.forEach((memberId) => {
+      const item = document.createElement("div");
+      item.className = "voice-member-row";
+      const me = memberId === this.playerId;
+      item.innerHTML = `
+        <span class="voice-member-name">${me ? "Vous" : memberId}</span>
+        <span class="voice-member-badge">${this.voiceChatState.muted && this.voiceChatState.muted[memberId] ? "Muet" : "Micro OK"}</span>
+      `;
+      this.dom.voiceMembersList.appendChild(item);
+    });
+  }
+
+  async toggleVoiceChat() {
+    if (!this.isHost || !this.ws || this.ws.readyState !== WebSocket.OPEN)
+      return;
+    const nextEnabled = !this.voiceChatState.enabled;
+    this.ws.send(
+      JSON.stringify({
+        type: "voice_chat_toggle",
+        player_id: this.playerId,
+        enabled: nextEnabled,
+      }),
+    );
+  }
+
+  async toggleVoiceJoin() {
+    if (
+      !this.isMultiplayerRoom() ||
+      !this.ws ||
+      this.ws.readyState !== WebSocket.OPEN
+    )
+      return;
+    if (!this.voiceChatState.enabled) return;
+    if (
+      this.voiceChatJoined ||
+      this.voiceChatState.members.includes(this.playerId)
+    ) {
+      this.leaveVoiceChat();
+      return;
+    }
+    await this.joinVoiceChat();
+  }
+
+  async joinVoiceChat() {
+    if (!this.isMultiplayerRoom() || !this.voiceChatState.enabled) return;
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        this.showToast(
+          "🎙️ Le navigateur ne permet pas d’accéder au micro ici.",
+        );
+        return;
+      }
+      if (!this.voiceChatLocalStream) {
+        this.voiceChatLocalStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+      }
+      this.voiceChatJoined = true;
+      this.ws.send(
+        JSON.stringify({ type: "voice_chat_join", player_id: this.playerId }),
+      );
+      this.syncVoiceChatUI();
+      this.connectVoicePeers();
+    } catch (error) {
+      console.error("Erreur accès micro:", error);
+      this.showToast(
+        "🎙️ Accès au micro refusé. Autorisez le navigateur pour utiliser le chat vocal.",
+      );
+    }
+  }
+
+  leaveVoiceChat() {
+    this.stopVoiceLocalStream();
+    this.voiceChatJoined = false;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(
+        JSON.stringify({ type: "voice_chat_leave", player_id: this.playerId }),
+      );
+    }
+    this.syncVoiceChatUI();
+  }
+
+  async toggleVoiceMute() {
+    if (!this.voiceChatState.enabled || !this.voiceChatJoined) return;
+    const nextMuted = !(
+      this.voiceChatState.muted && this.voiceChatState.muted[this.playerId]
+    );
+    this.ws.send(
+      JSON.stringify({
+        type: "voice_chat_mute_toggle",
+        player_id: this.playerId,
+        muted: nextMuted,
+      }),
+    );
+  }
+
+  stopVoiceLocalStream() {
+    if (this.voiceChatLocalStream) {
+      this.voiceChatLocalStream.getTracks().forEach((track) => track.stop());
+      this.voiceChatLocalStream = null;
+    }
+    Object.values(this.voiceChatPeerConnections).forEach((pc) => {
+      try {
+        pc.close();
+      } catch (e) {}
+    });
+    this.voiceChatPeerConnections = {};
+    Object.values(this.voiceChatRemoteAudio).forEach((audio) => {
+      try {
+        audio.remove();
+      } catch (e) {}
+    });
+    this.voiceChatRemoteAudio = {};
+  }
+
+  sendVoiceSignal(targetId, signalType, payload = {}) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(
+      JSON.stringify({
+        type: "voice_chat_signal",
+        player_id: this.playerId,
+        target_player_id: targetId,
+        signal_type: signalType,
+        ...payload,
+      }),
+    );
+  }
+
+  async createVoicePeerConnection(targetId) {
+    if (
+      !this.voiceChatLocalStream ||
+      targetId === this.playerId ||
+      this.voiceChatPeerConnections[targetId]
+    )
+      return;
+    if (!window.RTCPeerConnection) {
+      this.showToast("🎙️ WebRTC n’est pas disponible dans ce navigateur.");
+      return;
+    }
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    this.voiceChatPeerConnections[targetId] = pc;
+
+    this.voiceChatLocalStream.getAudioTracks().forEach((track) => {
+      pc.addTrack(track, this.voiceChatLocalStream);
+    });
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.sendVoiceSignal(targetId, "ice_candidate", {
+          candidate: event.candidate,
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      if (!this.voiceChatRemoteAudio[targetId]) {
+        const audio = document.createElement("audio");
+        audio.autoplay = true;
+        audio.playsInline = true;
+        audio.srcObject = event.streams[0];
+        this.voiceChatRemoteAudio[targetId] = audio;
+        document.body.appendChild(audio);
+      }
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    this.sendVoiceSignal(targetId, "offer", { offer: pc.localDescription });
+  }
+
+  async connectVoicePeers() {
+    if (!this.voiceChatState.enabled || !this.voiceChatLocalStream) return;
+    const peers = (this.voiceChatState.members || []).filter(
+      (pid) => pid && pid !== this.playerId,
+    );
+    for (const peerId of peers) {
+      await this.createVoicePeerConnection(peerId);
+    }
+  }
+
+  async handleVoiceChatSignal(msg) {
+    const senderId = msg.player_id || msg.source_player_id;
+    if (!senderId || senderId === this.playerId) return;
+    if (!window.RTCPeerConnection) return;
+    let pc = this.voiceChatPeerConnections[senderId];
+    if (!pc) {
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      this.voiceChatPeerConnections[senderId] = pc;
+      if (this.voiceChatLocalStream) {
+        this.voiceChatLocalStream.getAudioTracks().forEach((track) => {
+          pc.addTrack(track, this.voiceChatLocalStream);
+        });
+      }
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          this.sendVoiceSignal(senderId, "ice_candidate", {
+            candidate: event.candidate,
+          });
+        }
+      };
+      pc.ontrack = (event) => {
+        if (!this.voiceChatRemoteAudio[senderId]) {
+          const audio = document.createElement("audio");
+          audio.autoplay = true;
+          audio.playsInline = true;
+          audio.srcObject = event.streams[0];
+          this.voiceChatRemoteAudio[senderId] = audio;
+          document.body.appendChild(audio);
+        }
+      };
+    }
+
+    if (msg.signal_type === "offer" && msg.offer) {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      this.sendVoiceSignal(senderId, "answer", { answer: pc.localDescription });
+    } else if (msg.signal_type === "answer" && msg.answer) {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+    } else if (msg.signal_type === "ice_candidate" && msg.candidate) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+      } catch (error) {
+        console.warn("ICE candidate ignoré:", error);
+      }
     }
   }
 
@@ -2146,18 +2839,26 @@ class PedantixApp {
       try {
         socket.close();
       } catch (e) {
-        console.warn('Erreur fermeture WebSocket:', e);
+        console.warn("Erreur fermeture WebSocket:", e);
       }
     }
   }
 
   scheduleWebSocketReconnect() {
-    if (this.wsReconnectTimeout || this.wsRoomId !== this.roomId || !this.roomId) return;
+    if (
+      this.wsReconnectTimeout ||
+      this.wsRoomId !== this.roomId ||
+      !this.roomId
+    )
+      return;
     const attempt = this.wsReconnectAttempts++;
-    const delay = Math.min(1000 * (2 ** Math.min(attempt, 5)), 30000);
+    const delay = Math.min(1000 * 2 ** Math.min(attempt, 5), 30000);
     this.wsReconnectTimeout = setTimeout(() => {
       this.wsReconnectTimeout = null;
-      if (this.wsRoomId === this.roomId && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
+      if (
+        this.wsRoomId === this.roomId &&
+        (!this.ws || this.ws.readyState === WebSocket.CLOSED)
+      ) {
         this.initWebSocket();
       }
     }, delay);
@@ -2165,7 +2866,12 @@ class PedantixApp {
 
   initWebSocket() {
     // Si la socket est déjà connectée au même salon, on la conserve
-    if (this.ws && this.wsRoomId === this.roomId && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.ws &&
+      this.wsRoomId === this.roomId &&
+      (this.ws.readyState === WebSocket.OPEN ||
+        this.ws.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
 
@@ -2174,14 +2880,17 @@ class PedantixApp {
       this.wsRoomId = this.roomId;
     }
 
-    const wsUrl = this.getWsUrl(`/ws/room/${encodeURIComponent(this.roomId)}?player_id=${encodeURIComponent(this.playerId)}`);
+    const wsUrl = this.getWsUrl(
+      `/ws/room/${encodeURIComponent(this.roomId)}?player_id=${encodeURIComponent(this.playerId)}`,
+    );
 
     try {
       const socket = new WebSocket(wsUrl);
       let openedAt = 0;
       this.ws = socket;
       this.wsConnectTimeout = setTimeout(() => {
-        if (this.ws === socket && socket.readyState === WebSocket.CONNECTING) socket.close();
+        if (this.ws === socket && socket.readyState === WebSocket.CONNECTING)
+          socket.close();
       }, 10000);
 
       socket.onopen = () => {
@@ -2193,16 +2902,19 @@ class PedantixApp {
         this.wsConnectedRoomId = this.roomId;
         this.wsLastPongAt = Date.now();
         if (reconnecting) this.joinRoom();
-        socket.send(JSON.stringify({ type: 'identify', player_id: this.playerId }));
+        socket.send(
+          JSON.stringify({ type: "identify", player_id: this.playerId }),
+        );
         if (this.pingInterval) clearInterval(this.pingInterval);
         this.pingInterval = setInterval(() => {
-          if (this.ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+          if (this.ws !== socket || socket.readyState !== WebSocket.OPEN)
+            return;
           if (Date.now() - this.wsLastPongAt > 45000) {
             socket.close();
             return;
           }
           try {
-            socket.send(JSON.stringify({ type: 'ping' }));
+            socket.send(JSON.stringify({ type: "ping" }));
           } catch (e) {
             socket.close();
           }
@@ -2213,7 +2925,7 @@ class PedantixApp {
         if (this.ws !== socket) return;
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'pong') {
+          if (msg.type === "pong") {
             this.wsLastPongAt = Date.now();
             return;
           }
@@ -2227,7 +2939,8 @@ class PedantixApp {
         if (this.ws !== socket) return;
         if (this.wsConnectTimeout) clearTimeout(this.wsConnectTimeout);
         this.wsConnectTimeout = null;
-        if (openedAt && Date.now() - openedAt >= 60000) this.wsReconnectAttempts = 0;
+        if (openedAt && Date.now() - openedAt >= 60000)
+          this.wsReconnectAttempts = 0;
         if (this.pingInterval) clearInterval(this.pingInterval);
         this.pingInterval = null;
         this.ws = null;
@@ -2235,7 +2948,8 @@ class PedantixApp {
       };
 
       socket.onerror = () => {
-        if (this.ws === socket && socket.readyState !== WebSocket.CLOSED) socket.close();
+        if (this.ws === socket && socket.readyState !== WebSocket.CLOSED)
+          socket.close();
       };
     } catch (e) {
       console.warn("WebSocket non disponible", e);
@@ -2245,19 +2959,23 @@ class PedantixApp {
   }
 
   handleWebSocketMessage(msg) {
-    if (msg.type === 'github_push_notice') {
+    if (msg.type === "github_push_notice") {
       this.showPushNotice();
-
-    } else if (msg.type === 'init') {
+    } else if (msg.type === "init") {
       if (msg.game_mode) this.gameMode = msg.game_mode;
       if (msg.difficulty) this.currentDifficulty = msg.difficulty;
-      if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;
-      if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
-      if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
+      if (msg.article_difficulty)
+        this.articleDifficulty = msg.article_difficulty;
+      if (msg.article_lang_count)
+        this.articleLangCount = msg.article_lang_count;
+      if (msg.article_pageviews_90d)
+        this.articlePageviews90d = msg.article_pageviews_90d;
       if (msg.teams) this.teamsData = msg.teams;
       if (msg.leaderboard) {
         this.updateLeaderboard(msg.leaderboard);
-        const me = msg.leaderboard.find(player => player.player_id === this.playerId);
+        const me = msg.leaderboard.find(
+          (player) => player.player_id === this.playerId,
+        );
         if (me) {
           this.isReady = !!me.is_ready;
           this.isSpectator = !!me.is_spectator;
@@ -2267,63 +2985,90 @@ class PedantixApp {
       }
       if (msg.activity) this.updateActivity(msg.activity);
       if (msg.chat_messages) this.loadHistoricalChatMessages(msg.chat_messages);
+      if (msg.voice_chat) this.applyVoiceChatState(msg.voice_chat);
       this.nextWordHintTime = msg.next_word_hint_time || null;
       this.roomStatus = msg.status || this.roomStatus;
-      if (msg.host_player_id !== undefined) this.isHost = msg.host_player_id === this.playerId;
+      if (msg.host_player_id !== undefined)
+        this.isHost = msg.host_player_id === this.playerId;
       if (msg.can_start !== undefined) this.canStart = msg.can_start;
-      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+      this.updateDifficultyUI(
+        this.articleDifficulty,
+        this.articleLangCount,
+        this.articlePageviews90d,
+      );
       this.updateModeUI();
       this.syncRoomUI();
-      if (this.gameMode === 'team') {
+      if (this.gameMode === "team") {
         this.renderTeamsRoster();
         this.renderTeamConfrontation();
       }
 
-      if (msg.surrender_cooldowns && msg.surrender_cooldowns[this.playerId] > 0) {
+      if (
+        msg.surrender_cooldowns &&
+        msg.surrender_cooldowns[this.playerId] > 0
+      ) {
         this.startSurrenderCooldown(msg.surrender_cooldowns[this.playerId]);
       }
 
-      if (this.roomStatus === 'starting' && msg.countdown_end) {
-        const seconds = Math.max(1, Math.ceil(msg.countdown_end - Date.now() / 1000));
+      if (this.roomStatus === "starting" && msg.countdown_end) {
+        const seconds = Math.max(
+          1,
+          Math.ceil(msg.countdown_end - Date.now() / 1000),
+        );
         this.startCountdown(seconds, msg.countdown_end);
-      } else if (this.roomStatus === 'ending' && msg.timer_30s_end) {
-        const seconds = Math.max(1, Math.ceil(msg.timer_30s_end - Date.now() / 1000));
-        this.startSprintTimer(msg.first_winner_name || 'Un joueur', seconds, msg.timer_30s_end);
-      } else if (this.roomStatus === 'playing' && this.nextWordHintTime && !this.isWon) {
+      } else if (this.roomStatus === "ending" && msg.timer_30s_end) {
+        const seconds = Math.max(
+          1,
+          Math.ceil(msg.timer_30s_end - Date.now() / 1000),
+        );
+        this.startSprintTimer(
+          msg.first_winner_name || "Un joueur",
+          seconds,
+          msg.timer_30s_end,
+        );
+      } else if (
+        this.roomStatus === "playing" &&
+        this.nextWordHintTime &&
+        !this.isWon
+      ) {
         this.startWordHintTimer(this.nextWordHintTime);
       } else {
         this.stopWordHintTimer();
       }
-
-    } else if (msg.type === 'anti_cheat_alert') {
-      this.playTone('miss');
-      this.showToast(msg.message || 'Comportement automatisé détecté.');
+    } else if (msg.type === "anti_cheat_alert") {
+      this.playTone("miss");
+      this.showToast(msg.message || "Comportement automatisé détecté.");
       if (this.dom.activityFeed) {
-        const item = document.createElement('div');
-        item.className = 'activity-item activity-cheat-alert';
+        const item = document.createElement("div");
+        item.className = "activity-item activity-cheat-alert";
         item.innerHTML = `<span class="activity-icon">🤖</span><span class="activity-text" style="color:var(--danger, #ef4444); font-weight:600;">${this.escapeHtml(msg.message)}</span>`;
         this.dom.activityFeed.prepend(item);
       }
       if (msg.player_id === this.playerId && msg.penalty_seconds) {
         this.lockInputTemporarily(msg.penalty_seconds);
       }
-
-    } else if (msg.type === 'chat_message') {
+    } else if (msg.type === "chat_message") {
       this.handleIncomingChatMessage(msg.message);
-
-    } else if (msg.type === 'difficulty_changed') {
+    } else if (msg.type === "voice_chat_state") {
+      this.applyVoiceChatState(msg.voice_chat || msg);
+    } else if (msg.type === "voice_chat_signal") {
+      this.handleVoiceChatSignal(msg);
+    } else if (msg.type === "difficulty_changed") {
       this.currentDifficulty = msg.difficulty || this.currentDifficulty;
       this.articleDifficulty = msg.article_difficulty || this.currentDifficulty;
       this.articleLangCount = msg.article_lang_count || 0;
       this.articlePageviews90d = msg.article_pageviews_90d || 0;
       if (msg.can_start !== undefined) this.canStart = msg.can_start;
       if (msg.activity) this.updateActivity(msg.activity);
-      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+      this.updateDifficultyUI(
+        this.articleDifficulty,
+        this.articleLangCount,
+        this.articlePageviews90d,
+      );
       this.syncRoomUI();
       const diffLabel = this.getDifficultyLabel(this.currentDifficulty);
       this.showToast(`🎯 Difficulté réglée sur : ${diffLabel}`);
-
-    } else if (msg.type === 'mode_changed') {
+    } else if (msg.type === "mode_changed") {
       this.gameMode = msg.game_mode;
       if (msg.teams) this.teamsData = msg.teams;
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
@@ -2331,13 +3076,19 @@ class PedantixApp {
       if (msg.can_start !== undefined) this.canStart = msg.can_start;
       this.updateModeUI();
       this.syncRoomUI();
-      const modeLabel = this.gameMode === 'team' ? 'Par Équipes (Bleu, Rouge, Vert, Jaune)' : 'Chacun pour soi';
+      const modeLabel =
+        this.gameMode === "team"
+          ? "Par Équipes (Bleu, Rouge, Vert, Jaune)"
+          : "Chacun pour soi";
       this.showToast(`🎮 Mode : ${modeLabel}`);
-
-    } else if (msg.type === 'team_changed') {
-      const lobbyInner = this.dom.lobbyModal ? this.dom.lobbyModal.querySelector('.modal') : null;
+    } else if (msg.type === "team_changed") {
+      const lobbyInner = this.dom.lobbyModal
+        ? this.dom.lobbyModal.querySelector(".modal")
+        : null;
       const savedLobbyScroll = lobbyInner ? lobbyInner.scrollTop : 0;
-      const savedOverlayScroll = this.dom.lobbyModal ? this.dom.lobbyModal.scrollTop : 0;
+      const savedOverlayScroll = this.dom.lobbyModal
+        ? this.dom.lobbyModal.scrollTop
+        : 0;
       const savedWindowScroll = window.scrollY;
 
       if (msg.player_id === this.playerId) {
@@ -2351,14 +3102,26 @@ class PedantixApp {
       this.renderTeamConfrontation();
       this.syncRoomUI();
 
-      if (lobbyInner && savedLobbyScroll) lobbyInner.scrollTop = savedLobbyScroll;
-      if (this.dom.lobbyModal && savedOverlayScroll) this.dom.lobbyModal.scrollTop = savedOverlayScroll;
+      if (lobbyInner && savedLobbyScroll)
+        lobbyInner.scrollTop = savedLobbyScroll;
+      if (this.dom.lobbyModal && savedOverlayScroll)
+        this.dom.lobbyModal.scrollTop = savedOverlayScroll;
       if (savedWindowScroll) window.scrollTo(0, savedWindowScroll);
-
-    } else if (msg.type === 'player_joined' || msg.type === 'player_ready_changed' || msg.type === 'player_left' || msg.type === 'player_disconnected' || msg.type === 'player_connected' || msg.type === 'player_spectator_changed') {
-      const lobbyInner = this.dom.lobbyModal ? this.dom.lobbyModal.querySelector('.modal') : null;
+    } else if (
+      msg.type === "player_joined" ||
+      msg.type === "player_ready_changed" ||
+      msg.type === "player_left" ||
+      msg.type === "player_disconnected" ||
+      msg.type === "player_connected" ||
+      msg.type === "player_spectator_changed"
+    ) {
+      const lobbyInner = this.dom.lobbyModal
+        ? this.dom.lobbyModal.querySelector(".modal")
+        : null;
       const savedLobbyScroll = lobbyInner ? lobbyInner.scrollTop : 0;
-      const savedOverlayScroll = this.dom.lobbyModal ? this.dom.lobbyModal.scrollTop : 0;
+      const savedOverlayScroll = this.dom.lobbyModal
+        ? this.dom.lobbyModal.scrollTop
+        : 0;
       const savedWindowScroll = window.scrollY;
 
       const wasHost = this.isHost;
@@ -2367,7 +3130,9 @@ class PedantixApp {
       if (msg.teams) this.teamsData = msg.teams;
       if (msg.leaderboard) {
         this.updateLeaderboard(msg.leaderboard);
-        const me = msg.leaderboard.find(player => player.player_id === this.playerId);
+        const me = msg.leaderboard.find(
+          (player) => player.player_id === this.playerId,
+        );
         if (me) {
           this.isReady = !!me.is_ready;
           this.isSpectator = !!me.is_spectator;
@@ -2377,7 +3142,7 @@ class PedantixApp {
       if (msg.activity) this.updateActivity(msg.activity);
       if (msg.can_start !== undefined) this.canStart = msg.can_start;
       if (msg.host_player_id) {
-        this.isHost = (msg.host_player_id === this.playerId);
+        this.isHost = msg.host_player_id === this.playerId;
       }
       if (msg.assisting_player_id !== undefined) {
         this.assistingPlayerId = msg.assisting_player_id;
@@ -2389,55 +3154,75 @@ class PedantixApp {
           this.updateSpectatorUI();
         }
       }
-      if (msg.type === 'player_joined' && msg.player && msg.player.player_id !== this.playerId) {
+      if (
+        msg.type === "player_joined" &&
+        msg.player &&
+        msg.player.player_id !== this.playerId
+      ) {
         if (!msg.is_reconnect) {
-          this.playTone('join');
+          this.playTone("join");
           this.showToast(`👋 ${msg.player.name} a rejoint le salon !`);
         }
       }
-      if (msg.type === 'player_spectator_changed' && msg.player_id !== this.playerId && msg.player_name) {
+      if (
+        msg.type === "player_spectator_changed" &&
+        msg.player_id !== this.playerId &&
+        msg.player_name
+      ) {
         if (msg.is_spectator) {
-          this.showToast(`👁️ ${msg.player_name} est passé en mode Spectateur (en pause)`);
+          this.showToast(
+            `👁️ ${msg.player_name} est passé en mode Spectateur (en pause)`,
+          );
         } else {
           this.showToast(`🎮 ${msg.player_name} a repris sa place de joueur !`);
         }
       }
-      if (msg.type === 'player_left' && msg.player_name) {
+      if (msg.type === "player_left" && msg.player_name) {
         if (this.isHost && !wasHost) {
-          this.showToast(`👑 ${msg.player_name} a quitté le salon. Vous êtes maintenant l'Host !`);
+          this.showToast(
+            `👑 ${msg.player_name} a quitté le salon. Vous êtes maintenant l'Host !`,
+          );
         } else {
           this.showToast(`👋 ${msg.player_name} a quitté le salon.`);
         }
       }
-      if (this.gameMode === 'team') {
+      if (this.gameMode === "team") {
         this.renderTeamsRoster();
         this.renderTeamConfrontation();
       }
       this.syncRoomUI();
 
-      if (lobbyInner && savedLobbyScroll) lobbyInner.scrollTop = savedLobbyScroll;
-      if (this.dom.lobbyModal && savedOverlayScroll) this.dom.lobbyModal.scrollTop = savedOverlayScroll;
+      if (lobbyInner && savedLobbyScroll)
+        lobbyInner.scrollTop = savedLobbyScroll;
+      if (this.dom.lobbyModal && savedOverlayScroll)
+        this.dom.lobbyModal.scrollTop = savedOverlayScroll;
       if (savedWindowScroll) window.scrollTo(0, savedWindowScroll);
-
-    } else if (msg.type === 'countdown_started') {
+    } else if (msg.type === "countdown_started") {
       this.clearSurrenderCooldown();
-      this.roomStatus = 'starting';
+      this.roomStatus = "starting";
       this.stopWordHintTimer();
       if (msg.game_mode) this.gameMode = msg.game_mode;
       if (msg.difficulty) this.currentDifficulty = msg.difficulty;
-      if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;
-      if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
-      if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
-      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+      if (msg.article_difficulty)
+        this.articleDifficulty = msg.article_difficulty;
+      if (msg.article_lang_count)
+        this.articleLangCount = msg.article_lang_count;
+      if (msg.article_pageviews_90d)
+        this.articlePageviews90d = msg.article_pageviews_90d;
+      this.updateDifficultyUI(
+        this.articleDifficulty,
+        this.articleLangCount,
+        this.articlePageviews90d,
+      );
       if (msg.teams) this.teamsData = msg.teams;
       this.reloadGameSession();
       this.startCountdown(msg.seconds || 5, msg.end_time);
-
-    } else if (msg.type === 'game_started') {
-      this.roomStatus = 'playing';
+    } else if (msg.type === "game_started") {
+      this.roomStatus = "playing";
       if (this.countdownTimer) clearInterval(this.countdownTimer);
-      if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
-      if (this.gameMode === 'team') {
+      if (this.dom.countdownOverlay)
+        this.dom.countdownOverlay.style.display = "none";
+      if (this.gameMode === "team") {
         this.renderTeamConfrontation();
       }
       this.nextWordHintTime = msg.next_word_hint_time || null;
@@ -2445,15 +3230,14 @@ class PedantixApp {
         this.startWordHintTimer(this.nextWordHintTime);
       }
       this.syncRoomUI();
-      this.showToast('🚀 C\'est parti ! Trouvez le titre en premier !');
-      this.playTone('go');
+      this.showToast("🚀 C'est parti ! Trouvez le titre en premier !");
+      this.playTone("go");
       this.dom.guessInput.focus();
-
-    } else if (msg.type === 'progress_update') {
+    } else if (msg.type === "progress_update") {
       if (msg.game_mode) this.gameMode = msg.game_mode;
       if (msg.teams) {
         this.teamsData = msg.teams;
-        if (this.gameMode === 'team') this.renderTeamConfrontation();
+        if (this.gameMode === "team") this.renderTeamConfrontation();
       }
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
       if (msg.activity) this.updateActivity(msg.activity);
@@ -2461,9 +3245,11 @@ class PedantixApp {
       if (msg.cooperative_solo && msg.assisted_guess) {
         const guess = msg.assisted_guess;
         if (guess.newly_revealed) this.revealTokens(guess.newly_revealed);
-        if (guess.close_tokens) this.applyCloseTokens(guess.close_tokens, guess.word);
+        if (guess.close_tokens)
+          this.applyCloseTokens(guess.close_tokens, guess.word);
         this.history = guess.history || this.history;
-        this.revealedWordsCount = guess.revealed_words_count || this.revealedWordsCount;
+        this.revealedWordsCount =
+          guess.revealed_words_count || this.revealedWordsCount;
         this.updateDayMeter();
         this.renderHistory();
         if (guess.is_won && !this.isWon) {
@@ -2476,9 +3262,13 @@ class PedantixApp {
       }
 
       // Cooperative guess update for teammates
-      if (this.gameMode === 'team' && msg.team_guess && !msg.team_guess.redacted) {
+      if (
+        this.gameMode === "team" &&
+        msg.team_guess &&
+        !msg.team_guess.redacted
+      ) {
         const tg = msg.team_guess;
-        const isTeammate = (tg.player_id !== this.playerId);
+        const isTeammate = tg.player_id !== this.playerId;
 
         let hasNewReveals = false;
         if (tg.newly_revealed && Object.keys(tg.newly_revealed).length > 0) {
@@ -2496,91 +3286,116 @@ class PedantixApp {
 
         if (isTeammate) {
           if (hasNewReveals) {
-            this.playTone('match');
-            this.showToast(`🤝 ${tg.player_name} a trouvé "${tg.word}" (${tg.matches_count} occurrence${tg.matches_count > 1 ? 's' : ''}) !`);
-          } else if (tg.status === 'close' || teamCloseTokens.length > 0) {
-            this.playTone('close');
-            this.showToast(`🤝 Mot proche trouvé par ${tg.player_name} : "${tg.word}" (${tg.score || 50}%)`);
+            this.playTone("match");
+            this.showToast(
+              `🤝 ${tg.player_name} a trouvé "${tg.word}" (${tg.matches_count} occurrence${tg.matches_count > 1 ? "s" : ""}) !`,
+            );
+          } else if (tg.status === "close" || teamCloseTokens.length > 0) {
+            this.playTone("close");
+            this.showToast(
+              `🤝 Mot proche trouvé par ${tg.player_name} : "${tg.word}" (${tg.score || 50}%)`,
+            );
           }
-          if (tg.word && tg.word !== '••••') {
+          if (tg.word && tg.word !== "••••") {
             this.addTeammateGuessToHistory(tg);
           }
         }
       }
 
       // Check win in team mode
-      if (this.gameMode === 'team' && msg.is_game_won && !this.isWon) {
+      if (this.gameMode === "team" && msg.is_game_won && !this.isWon) {
         if (msg.team === this.myTeam) {
           this.isWon = true;
           this.handleVictory();
           this.showToast(`🏆 Victoire ! Votre équipe a trouvé le titre !`);
         } else {
           this.hideOpponentWin();
-          this.showToast(`⏱️ L'équipe adverse a trouvé le titre ! Il vous reste 30 secondes pour le trouver aussi (+1 pt) !`);
+          this.showToast(
+            `⏱️ L'équipe adverse a trouvé le titre ! Il vous reste 30 secondes pour le trouver aussi (+1 pt) !`,
+          );
         }
       }
-
-    } else if (msg.type === 'first_winner') {
-      this.roomStatus = 'ending';
+    } else if (msg.type === "first_winner") {
+      this.roomStatus = "ending";
       this.stopWordHintTimer();
       this.hideOpponentWin();
       this.startSprintTimer(msg.winner_name, msg.seconds || 30, msg.end_time);
-      this.showToast(`🏆 ${msg.winner_name} a trouvé le titre ! Il vous reste 30 secondes pour trouver (+2 pt au 2e, +1 pt au 3e) !`);
-
-    } else if (msg.type === 'round_over' || msg.type === 'round_over_to_lobby') {
-    if (this.isAssisting) {
-      this.returnToOwnSolo();
-      return;
-    }
-    this.clearSurrenderCooldown();
+      this.showToast(
+        `🏆 ${msg.winner_name} a trouvé le titre ! Il vous reste 30 secondes pour trouver (+2 pt au 2e, +1 pt au 3e) !`,
+      );
+    } else if (
+      msg.type === "round_over" ||
+      msg.type === "round_over_to_lobby"
+    ) {
+      if (this.isAssisting) {
+        this.returnToOwnSolo();
+        return;
+      }
+      this.clearSurrenderCooldown();
       this.stopWordHintTimer();
       if (this.sprintInterval) clearInterval(this.sprintInterval);
-      if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
-      this.roomStatus = 'lobby';
+      if (this.dom.sprintTimerBanner)
+        this.dom.sprintTimerBanner.style.display = "none";
+      this.roomStatus = "lobby";
       this.isReady = false;
       this.lastRound = msg.last_round || null;
       if (msg.game_mode) this.gameMode = msg.game_mode;
       if (msg.difficulty) this.currentDifficulty = msg.difficulty;
-      if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;
-      if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
-      if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
-      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+      if (msg.article_difficulty)
+        this.articleDifficulty = msg.article_difficulty;
+      if (msg.article_lang_count)
+        this.articleLangCount = msg.article_lang_count;
+      if (msg.article_pageviews_90d)
+        this.articlePageviews90d = msg.article_pageviews_90d;
+      this.updateDifficultyUI(
+        this.articleDifficulty,
+        this.articleLangCount,
+        this.articlePageviews90d,
+      );
       if (msg.teams) this.teamsData = msg.teams;
       if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
       if (msg.activity) this.updateActivity(msg.activity);
-      this.playTone('win');
-      const canJoinNextRound = (msg.promoted_player_ids || []).includes(this.playerId);
-      this.showToast(canJoinNextRound
-        ? '🎉 Manche terminée ! Vous pouvez vous préparer pour la prochaine partie.'
-        : '🎉 Manche terminée ! Les scores ont été mis à jour.');
+      this.playTone("win");
+      const canJoinNextRound = (msg.promoted_player_ids || []).includes(
+        this.playerId,
+      );
+      this.showToast(
+        canJoinNextRound
+          ? "🎉 Manche terminée ! Vous pouvez vous préparer pour la prochaine partie."
+          : "🎉 Manche terminée ! Les scores ont été mis à jour.",
+      );
       this.updateModeUI();
       this.syncRoomUI();
-
-    } else if (msg.type === 'new_round') {
+    } else if (msg.type === "new_round") {
       this.clearSurrenderCooldown();
       this.stopWordHintTimer();
-      this.roomStatus = msg.status || 'playing';
+      this.roomStatus = msg.status || "playing";
       this.nextWordHintTime = msg.next_word_hint_time || null;
       this.hideOpponentWin();
       this.resetUnmaskButton();
       this.closeModal(this.dom.roundOverModal);
-      this.dom.successBox.classList.remove('active');
+      this.dom.successBox.classList.remove("active");
       if (msg.difficulty) this.currentDifficulty = msg.difficulty;
-      if (msg.article_difficulty) this.articleDifficulty = msg.article_difficulty;
-      if (msg.article_lang_count) this.articleLangCount = msg.article_lang_count;
-      if (msg.article_pageviews_90d) this.articlePageviews90d = msg.article_pageviews_90d;
-      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+      if (msg.article_difficulty)
+        this.articleDifficulty = msg.article_difficulty;
+      if (msg.article_lang_count)
+        this.articleLangCount = msg.article_lang_count;
+      if (msg.article_pageviews_90d)
+        this.articlePageviews90d = msg.article_pageviews_90d;
+      this.updateDifficultyUI(
+        this.articleDifficulty,
+        this.articleLangCount,
+        this.articlePageviews90d,
+      );
       if (this.nextWordHintTime) this.startWordHintTimer(this.nextWordHintTime);
-      this.showToast('🎲 Nouvelle partie lancée !');
+      this.showToast("🎲 Nouvelle partie lancée !");
       if (!this.isSoloMode || !this.sessionId || this.seed !== msg.seed) {
         this.joinRoom();
       }
-
-    } else if (msg.type === 'word_hint_unavailable') {
+    } else if (msg.type === "word_hint_unavailable") {
       this.nextWordHintTime = null;
       this.stopWordHintTimer();
-
-    } else if (msg.type === 'word_hint') {
+    } else if (msg.type === "word_hint") {
       const token = this.tokensById[msg.token_id];
       if (token && !token.revealed) {
         token.hint_revealed = true;
@@ -2590,47 +3405,55 @@ class PedantixApp {
         const el = document.getElementById(`token-${msg.token_id}`);
         if (el) {
           this.renderTokenContent(token, el);
-          el.classList.add('hint-pulse');
-          setTimeout(() => el.classList.remove('hint-pulse'), 1200);
+          el.classList.add("hint-pulse");
+          setTimeout(() => el.classList.remove("hint-pulse"), 1200);
         }
       }
       this.nextWordHintTime = msg.next_word_hint_time || null;
 
-      this.playTone('hint');
-      this.showToast(msg.message || `💡 Indice : le mot « ${msg.word || ''} » a été dévoilé !`);
+      this.playTone("hint");
+      this.showToast(
+        msg.message ||
+          `💡 Indice : le mot « ${msg.word || ""} » a été dévoilé !`,
+      );
 
-      if (this.roomStatus === 'playing' && !this.isWon && this.nextWordHintTime) {
+      if (
+        this.roomStatus === "playing" &&
+        !this.isWon &&
+        this.nextWordHintTime
+      ) {
         this.startWordHintTimer(this.nextWordHintTime);
       } else {
         this.stopWordHintTimer();
       }
-
-    } else if (msg.type === 'article_unmasked') {
+    } else if (msg.type === "article_unmasked") {
       this.applyUnmaskedTokens(msg.tokens);
       this.markUnmaskButtonComplete();
       if (msg.player_id !== this.playerId) {
-        this.showToast(`👁️ ${msg.player_name || 'Un joueur'} a démasqué l'article pour tout le monde.`);
+        this.showToast(
+          `👁️ ${msg.player_name || "Un joueur"} a démasqué l'article pour tout le monde.`,
+        );
       }
-
-    } else if (msg.type === 'surrender_update') {
+    } else if (msg.type === "surrender_update") {
       if (msg.activity) this.updateActivity(msg.activity);
       this.showSurrenderModal(msg);
-
-    } else if (msg.type === 'surrender_rejected') {
+    } else if (msg.type === "surrender_rejected") {
       this.closeModal(this.dom.surrenderModal);
       if (msg.activity) this.updateActivity(msg.activity);
-      this.playTone('error');
-      this.showToast(`❌ L'abandon a été refusé par ${msg.refuser_name || 'un joueur'}. La partie continue !`);
+      this.playTone("error");
+      this.showToast(
+        `❌ L'abandon a été refusé par ${msg.refuser_name || "un joueur"}. La partie continue !`,
+      );
       if (msg.initiator_id && msg.initiator_id === this.playerId) {
         this.startSurrenderCooldown(msg.cooldown_seconds || 30);
       }
-
-    } else if (msg.type === 'surrender_cancelled') {
+    } else if (msg.type === "surrender_cancelled") {
       this.closeModal(this.dom.surrenderModal);
       if (msg.activity) this.updateActivity(msg.activity);
-      this.showToast(`↩️ ${msg.initiator_name || 'L\'initiateur'} a annulé la demande d'abandon.`);
-
-    } else if (msg.type === 'surrender_passed') {
+      this.showToast(
+        `↩️ ${msg.initiator_name || "L'initiateur"} a annulé la demande d'abandon.`,
+      );
+    } else if (msg.type === "surrender_passed") {
       this.clearSurrenderCooldown();
       if (this.isAssisting) {
         this.returnToOwnSolo();
@@ -2645,20 +3468,24 @@ class PedantixApp {
   // =========================================================================
 
   async toggleReady() {
-    this.playTone('click');
-    const lobbyInner = this.dom.lobbyModal ? this.dom.lobbyModal.querySelector('.modal') : null;
+    this.playTone("click");
+    const lobbyInner = this.dom.lobbyModal
+      ? this.dom.lobbyModal.querySelector(".modal")
+      : null;
     const savedLobbyScroll = lobbyInner ? lobbyInner.scrollTop : 0;
-    const savedOverlayScroll = this.dom.lobbyModal ? this.dom.lobbyModal.scrollTop : 0;
+    const savedOverlayScroll = this.dom.lobbyModal
+      ? this.dom.lobbyModal.scrollTop
+      : 0;
     const savedWindowScroll = window.scrollY;
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/ready'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/ready"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
-          player_id: this.playerId
-        })
+          player_id: this.playerId,
+        }),
       });
       const data = await resp.json();
       this.isReady = data.is_ready;
@@ -2666,32 +3493,38 @@ class PedantixApp {
       if (data.leaderboard) this.updateLeaderboard(data.leaderboard);
       this.syncRoomUI();
 
-      if (lobbyInner && savedLobbyScroll) lobbyInner.scrollTop = savedLobbyScroll;
-      if (this.dom.lobbyModal && savedOverlayScroll) this.dom.lobbyModal.scrollTop = savedOverlayScroll;
+      if (lobbyInner && savedLobbyScroll)
+        lobbyInner.scrollTop = savedLobbyScroll;
+      if (this.dom.lobbyModal && savedOverlayScroll)
+        this.dom.lobbyModal.scrollTop = savedOverlayScroll;
       if (savedWindowScroll) window.scrollTo(0, savedWindowScroll);
     } catch (e) {
       console.error(e);
-      this.showToast('Erreur lors du changement de statut prêt.');
+      this.showToast("Erreur lors du changement de statut prêt.");
     }
   }
 
   async toggleSpectator() {
-    this.playTone('click');
+    this.playTone("click");
     const newSpecVal = !this.isSpectator;
-    const lobbyInner = this.dom.lobbyModal ? this.dom.lobbyModal.querySelector('.modal') : null;
+    const lobbyInner = this.dom.lobbyModal
+      ? this.dom.lobbyModal.querySelector(".modal")
+      : null;
     const savedLobbyScroll = lobbyInner ? lobbyInner.scrollTop : 0;
-    const savedOverlayScroll = this.dom.lobbyModal ? this.dom.lobbyModal.scrollTop : 0;
+    const savedOverlayScroll = this.dom.lobbyModal
+      ? this.dom.lobbyModal.scrollTop
+      : 0;
     const savedWindowScroll = window.scrollY;
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/spectator'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/spectator"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          is_spectator: newSpecVal
-        })
+          is_spectator: newSpecVal,
+        }),
       });
       const data = await resp.json();
       if (resp.ok) {
@@ -2702,91 +3535,133 @@ class PedantixApp {
         this.updateSpectatorUI();
         this.syncRoomUI();
         if (this.isSpectator) {
-          this.showToast('👁️ Mode Spectateur activé : vous êtes en pause.');
+          this.showToast("👁️ Mode Spectateur activé : vous êtes en pause.");
         } else {
-          this.showToast('🎮 De retour en jeu ! Vous pouvez proposer des mots.');
+          this.showToast(
+            "🎮 De retour en jeu ! Vous pouvez proposer des mots.",
+          );
         }
       } else {
-        this.showToast(data.detail || 'Erreur lors du passage en mode spectateur.');
+        this.showToast(
+          data.detail || "Erreur lors du passage en mode spectateur.",
+        );
       }
 
-      if (lobbyInner && savedLobbyScroll) lobbyInner.scrollTop = savedLobbyScroll;
-      if (this.dom.lobbyModal && savedOverlayScroll) this.dom.lobbyModal.scrollTop = savedOverlayScroll;
+      if (lobbyInner && savedLobbyScroll)
+        lobbyInner.scrollTop = savedLobbyScroll;
+      if (this.dom.lobbyModal && savedOverlayScroll)
+        this.dom.lobbyModal.scrollTop = savedOverlayScroll;
       if (savedWindowScroll) window.scrollTo(0, savedWindowScroll);
     } catch (e) {
-      console.error('toggleSpectator error:', e);
-      this.showToast('Erreur lors du changement de mode.');
+      console.error("toggleSpectator error:", e);
+      this.showToast("Erreur lors du changement de mode.");
     }
   }
 
   updateSpectatorUI() {
     if (this.isSoloMode) {
-      if (this.dom.btnSideSpectator) this.dom.btnSideSpectator.style.display = 'none';
-      if (this.dom.spectatorModeBanner) this.dom.spectatorModeBanner.style.display = 'none';
+      if (this.dom.btnSideSpectator)
+        this.dom.btnSideSpectator.style.display = "none";
+      if (this.dom.spectatorModeBanner)
+        this.dom.spectatorModeBanner.style.display = "none";
       return;
     }
 
     if (this.dom.btnSideSpectator) {
-      this.dom.btnSideSpectator.style.display = 'inline-flex';
-      this.dom.btnSideSpectator.classList.toggle('is-spectator-active', this.isSpectator);
-      if (this.dom.sideSpecIcon) this.dom.sideSpecIcon.textContent = this.isSpectator ? '🎮' : '👁️';
-      if (this.dom.sideSpecText) this.dom.sideSpecText.textContent = this.isSpectator ? 'Reprendre la partie' : 'Pause Spectateur';
-      this.dom.btnSideSpectator.title = this.isSpectator ? 'Reprendre votre place de joueur actif' : 'Passer en spectateur pour faire une pause';
+      this.dom.btnSideSpectator.style.display = "inline-flex";
+      this.dom.btnSideSpectator.classList.toggle(
+        "is-spectator-active",
+        this.isSpectator,
+      );
+      if (this.dom.sideSpecIcon)
+        this.dom.sideSpecIcon.textContent = this.isSpectator ? "🎮" : "👁️";
+      if (this.dom.sideSpecText)
+        this.dom.sideSpecText.textContent = this.isSpectator
+          ? "Reprendre la partie"
+          : "Pause Spectateur";
+      this.dom.btnSideSpectator.title = this.isSpectator
+        ? "Reprendre votre place de joueur actif"
+        : "Passer en spectateur pour faire une pause";
     }
 
     if (this.dom.btnLobbySpectator) {
-      this.dom.btnLobbySpectator.classList.toggle('is-spectator-active', this.isSpectator);
-      if (this.dom.lobbySpecIcon) this.dom.lobbySpecIcon.textContent = this.isSpectator ? '🎮' : '👁️';
-      if (this.dom.lobbySpecLabel) this.dom.lobbySpecLabel.textContent = this.isSpectator ? 'Reprendre ma place' : 'Mode Spectateur (Pause)';
-      this.dom.btnLobbySpectator.title = this.isSpectator ? 'Reprendre votre place de joueur actif' : 'Passer en spectateur pour faire une pause';
+      this.dom.btnLobbySpectator.classList.toggle(
+        "is-spectator-active",
+        this.isSpectator,
+      );
+      if (this.dom.lobbySpecIcon)
+        this.dom.lobbySpecIcon.textContent = this.isSpectator ? "🎮" : "👁️";
+      if (this.dom.lobbySpecLabel)
+        this.dom.lobbySpecLabel.textContent = this.isSpectator
+          ? "Reprendre ma place"
+          : "Mode Spectateur (Pause)";
+      this.dom.btnLobbySpectator.title = this.isSpectator
+        ? "Reprendre votre place de joueur actif"
+        : "Passer en spectateur pour faire une pause";
     }
 
     if (this.dom.btnRoundSpectator) {
-      this.dom.btnRoundSpectator.classList.toggle('is-spectator-active', this.isSpectator);
-      if (this.dom.roundSpecIcon) this.dom.roundSpecIcon.textContent = this.isSpectator ? '🎮' : '👁️';
-      if (this.dom.roundSpecLabel) this.dom.roundSpecLabel.textContent = this.isSpectator ? 'Reprendre ma place' : 'Mode Spectateur (Pause)';
-      this.dom.btnRoundSpectator.title = this.isSpectator ? 'Reprendre votre place de joueur actif' : 'Passer en spectateur pour faire une pause';
+      this.dom.btnRoundSpectator.classList.toggle(
+        "is-spectator-active",
+        this.isSpectator,
+      );
+      if (this.dom.roundSpecIcon)
+        this.dom.roundSpecIcon.textContent = this.isSpectator ? "🎮" : "👁️";
+      if (this.dom.roundSpecLabel)
+        this.dom.roundSpecLabel.textContent = this.isSpectator
+          ? "Reprendre ma place"
+          : "Mode Spectateur (Pause)";
+      this.dom.btnRoundSpectator.title = this.isSpectator
+        ? "Reprendre votre place de joueur actif"
+        : "Passer en spectateur pour faire une pause";
     }
 
     // Banner visibility
     if (this.dom.spectatorModeBanner) {
-      const showBanner = this.isSpectator && (this.roomStatus === 'playing' || this.roomStatus === 'ending');
-      this.dom.spectatorModeBanner.style.display = showBanner ? 'flex' : 'none';
+      const showBanner =
+        this.isSpectator &&
+        (this.roomStatus === "playing" || this.roomStatus === "ending");
+      this.dom.spectatorModeBanner.style.display = showBanner ? "flex" : "none";
     }
 
     // Inputs disabled / enabled state
     if (this.isSpectator) {
       if (this.dom.guessInput) {
-        this.dom.guessInput.placeholder = '👁️ Mode Spectateur (en pause)...';
+        this.dom.guessInput.placeholder = "👁️ Mode Spectateur (en pause)...";
       }
-      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
-      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
+      if (this.dom.btnSideSurrender)
+        this.dom.btnSideSurrender.style.display = "none";
+      if (this.dom.btnSurrenderRoom)
+        this.dom.btnSurrenderRoom.style.display = "none";
     } else if (this.dom.guessInput) {
-      this.dom.guessInput.placeholder = 'Entrez un mot...';
+      this.dom.guessInput.placeholder = "Entrez un mot...";
     }
     this.updateGuessInputAvailability();
   }
 
   updateGuessInputAvailability() {
-    const canGuess = !this.isInputLocked
-      && !this.isGuessSubmitting
-      && !this.isSpectator
-      && !this.isWon
-      && (this.isSoloMode || this.roomStatus === 'playing' || this.roomStatus === 'ending');
+    const canGuess =
+      !this.isInputLocked &&
+      !this.isGuessSubmitting &&
+      !this.isSpectator &&
+      !this.isWon &&
+      (this.isSoloMode ||
+        this.roomStatus === "playing" ||
+        this.roomStatus === "ending");
     if (this.dom.guessInput) this.dom.guessInput.disabled = !canGuess;
     if (this.dom.guessBtn) this.dom.guessBtn.disabled = !canGuess;
   }
 
   async startGame() {
-    this.playTone('click');
+    this.playTone("click");
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/start'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/start"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
-          player_id: this.playerId
-        })
+          player_id: this.playerId,
+        }),
       });
       const data = await resp.json();
       if (data.error) {
@@ -2794,25 +3669,27 @@ class PedantixApp {
       }
     } catch (e) {
       console.error(e);
-      this.showToast('Erreur lors du démarrage de la partie.');
+      this.showToast("Erreur lors du démarrage de la partie.");
     }
   }
 
   async startNextRound() {
-    this.playTone('click');
+    this.playTone("click");
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/next-round'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/next-round"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          difficulty: this.currentDifficulty
-        })
+          difficulty: this.currentDifficulty,
+        }),
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        this.showToast(data.detail || data.error || 'Erreur lors du lancement de la manche.');
+        this.showToast(
+          data.detail || data.error || "Erreur lors du lancement de la manche.",
+        );
       } else if (data.error) {
         this.showToast(data.error);
       } else {
@@ -2821,57 +3698,62 @@ class PedantixApp {
           this.stopWordHintTimer();
           this.hideOpponentWin();
           this.closeModal(this.dom.roundOverModal);
-          if (this.dom.successBox) this.dom.successBox.classList.remove('active');
+          if (this.dom.successBox)
+            this.dom.successBox.classList.remove("active");
           if (this.dom.surrenderBanner) {
-            this.dom.surrenderBanner.style.display = 'none';
-            this.dom.surrenderBanner.classList.remove('active');
+            this.dom.surrenderBanner.style.display = "none";
+            this.dom.surrenderBanner.classList.remove("active");
           }
           if (this.dom.articleFinishedBar) {
-            this.dom.articleFinishedBar.style.display = 'none';
+            this.dom.articleFinishedBar.style.display = "none";
           }
-          this.showToast('🎲 Nouvelle page chargée !');
+          this.showToast("🎲 Nouvelle page chargée !");
           await this.joinRoom();
         }
       }
     } catch (e) {
       console.error(e);
-      this.showToast('Erreur lors du lancement de la manche suivante.');
+      this.showToast("Erreur lors du lancement de la manche suivante.");
     }
   }
 
   async requestNewRound() {
     if (this.isAssisting) {
-      this.showToast("Vous aidez sur la page du propriétaire et ne pouvez pas la remplacer.");
+      this.showToast(
+        "Vous aidez sur la page du propriétaire et ne pouvez pas la remplacer.",
+      );
       return;
     }
     // If in multiplayer and host, start next round directly; else join/request
     if (this.isHost || this.isSoloMode) {
       return this.startNextRound();
     }
-    this.showToast('Seul l\'Host peut lancer une nouvelle manche.');
+    this.showToast("Seul l'Host peut lancer une nouvelle manche.");
   }
 
   startCountdown(seconds, endTime) {
     if (this.countdownTimer) clearInterval(this.countdownTimer);
-    if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'flex';
+    if (this.dom.countdownOverlay)
+      this.dom.countdownOverlay.style.display = "flex";
     this.closeModal(this.dom.lobbyModal);
 
     let remaining = seconds || 5;
     this.dom.countdownNumber.textContent = remaining;
-    this.playTone('beep');
+    this.playTone("beep");
 
     this.countdownTimer = setInterval(() => {
       remaining -= 1;
       if (remaining > 0) {
         this.dom.countdownNumber.textContent = remaining;
-        this.playTone('beep');
+        this.playTone("beep");
       } else if (remaining === 0) {
-        this.dom.countdownNumber.textContent = 'GO !';
-        this.playTone('go');
+        this.dom.countdownNumber.textContent = "GO !";
+        this.playTone("go");
       } else {
         clearInterval(this.countdownTimer);
-        if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
-        this.roomStatus = 'playing';
+        if (this.dom.countdownOverlay)
+          this.dom.countdownOverlay.style.display = "none";
+        this.roomStatus = "playing";
         this.syncRoomUI();
         this.dom.guessInput.focus();
       }
@@ -2880,50 +3762,65 @@ class PedantixApp {
 
   startSprintTimer(winnerName, seconds, endTime) {
     if (this.sprintInterval) clearInterval(this.sprintInterval);
-    this.roomStatus = 'ending';
-    if (this.dom.sprintWinnerName) this.dom.sprintWinnerName.textContent = winnerName;
-    if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'block';
+    this.roomStatus = "ending";
+    if (this.dom.sprintWinnerName)
+      this.dom.sprintWinnerName.textContent = winnerName;
+    if (this.dom.sprintTimerBanner)
+      this.dom.sprintTimerBanner.style.display = "block";
 
     const totalSec = seconds || 30;
     let remaining = totalSec;
-    if (this.dom.sprintCountdownNum) this.dom.sprintCountdownNum.textContent = remaining;
-    if (this.dom.sprintBarFill) this.dom.sprintBarFill.style.width = '100%';
+    if (this.dom.sprintCountdownNum)
+      this.dom.sprintCountdownNum.textContent = remaining;
+    if (this.dom.sprintBarFill) this.dom.sprintBarFill.style.width = "100%";
 
     const startMs = Date.now();
-    const endMs = endTime ? (endTime * 1000) : (startMs + totalSec * 1000);
+    const endMs = endTime ? endTime * 1000 : startMs + totalSec * 1000;
 
     this.sprintInterval = setInterval(() => {
       const now = Date.now();
       const leftMs = Math.max(0, endMs - now);
       const leftSec = Math.ceil(leftMs / 1000);
-      if (this.dom.sprintCountdownNum) this.dom.sprintCountdownNum.textContent = leftSec;
+      if (this.dom.sprintCountdownNum)
+        this.dom.sprintCountdownNum.textContent = leftSec;
 
-      const pct = Math.max(0, Math.min(100, (leftMs / (totalSec * 1000)) * 100));
-      if (this.dom.sprintBarFill) this.dom.sprintBarFill.style.width = `${pct}%`;
+      const pct = Math.max(
+        0,
+        Math.min(100, (leftMs / (totalSec * 1000)) * 100),
+      );
+      if (this.dom.sprintBarFill)
+        this.dom.sprintBarFill.style.width = `${pct}%`;
 
-      if (leftSec <= 5 && leftSec > 0 && Math.floor(leftMs / 1000) !== remaining) {
-        this.playTone('beep');
+      if (
+        leftSec <= 5 &&
+        leftSec > 0 &&
+        Math.floor(leftMs / 1000) !== remaining
+      ) {
+        this.playTone("beep");
       }
       remaining = leftSec;
 
       if (leftMs <= 0) {
         clearInterval(this.sprintInterval);
-        if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
+        if (this.dom.sprintTimerBanner)
+          this.dom.sprintTimerBanner.style.display = "none";
       }
     }, 150);
   }
 
   startWordHintTimer(targetEpoch) {
     this.stopWordHintTimer();
-    if (!targetEpoch || this.roomStatus !== 'playing' || this.isWon) {
-      if (this.dom.wordHintTimerBadge) this.dom.wordHintTimerBadge.style.display = 'none';
+    if (!targetEpoch || this.roomStatus !== "playing" || this.isWon) {
+      if (this.dom.wordHintTimerBadge)
+        this.dom.wordHintTimerBadge.style.display = "none";
       return;
     }
 
-    if (this.dom.wordHintTimerBadge) this.dom.wordHintTimerBadge.style.display = 'inline-flex';
+    if (this.dom.wordHintTimerBadge)
+      this.dom.wordHintTimerBadge.style.display = "inline-flex";
 
     const update = () => {
-      if (this.roomStatus !== 'playing' || this.isWon) {
+      if (this.roomStatus !== "playing" || this.isWon) {
         this.stopWordHintTimer();
         return;
       }
@@ -2931,15 +3828,15 @@ class PedantixApp {
       const left = Math.max(0, Math.ceil(targetEpoch - now));
       const mins = Math.floor(left / 60);
       const secs = left % 60;
-      const formatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+      const formatted = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
       if (this.dom.wordHintTimerVal) {
         this.dom.wordHintTimerVal.textContent = formatted;
       }
       if (this.dom.wordHintTimerBadge) {
         if (left <= 30 && left > 0) {
-          this.dom.wordHintTimerBadge.classList.add('hint-urgent');
+          this.dom.wordHintTimerBadge.classList.add("hint-urgent");
         } else {
-          this.dom.wordHintTimerBadge.classList.remove('hint-urgent');
+          this.dom.wordHintTimerBadge.classList.remove("hint-urgent");
         }
       }
     };
@@ -2954,38 +3851,42 @@ class PedantixApp {
       this.wordHintInterval = null;
     }
     if (this.dom.wordHintTimerBadge) {
-      this.dom.wordHintTimerBadge.style.display = 'none';
-      this.dom.wordHintTimerBadge.classList.remove('hint-urgent');
+      this.dom.wordHintTimerBadge.style.display = "none";
+      this.dom.wordHintTimerBadge.classList.remove("hint-urgent");
     }
   }
 
   showRoundOverModal(msg) {
-    this.playTone('win');
+    this.playTone("win");
     if (this.dom.roundOverWinnerTitle) {
       if (msg.abandoned || (msg.last_round && msg.last_round.abandoned)) {
-        this.dom.roundOverWinnerTitle.textContent = "Partie abandonnée à l'unanimité (0 point)";
+        this.dom.roundOverWinnerTitle.textContent =
+          "Partie abandonnée à l'unanimité (0 point)";
       } else {
-        this.dom.roundOverWinnerTitle.textContent = `${msg.winner_name || 'Un joueur'} a remporté la manche !`;
+        this.dom.roundOverWinnerTitle.textContent = `${msg.winner_name || "Un joueur"} a remporté la manche !`;
       }
     }
 
     const sol = msg.solution || {};
-    const solTitle = sol.title || msg.title || '...';
-    if (this.dom.roundOverSolutionText) this.dom.roundOverSolutionText.textContent = solTitle;
+    const solTitle = sol.title || msg.title || "...";
+    if (this.dom.roundOverSolutionText)
+      this.dom.roundOverSolutionText.textContent = solTitle;
     if (this.dom.roundOverWikiLink) {
-      this.dom.roundOverWikiLink.href = sol.url || `https://fr.wikipedia.org/wiki/${encodeURIComponent(solTitle)}`;
+      this.dom.roundOverWikiLink.href =
+        sol.url ||
+        `https://fr.wikipedia.org/wiki/${encodeURIComponent(solTitle)}`;
     }
 
     // Populate scoreboard
     if (this.dom.roundOverScoresList) {
-      this.dom.roundOverScoresList.innerHTML = '';
+      this.dom.roundOverScoresList.innerHTML = "";
       const list = this.leaderboard || [];
       list.forEach((p, idx) => {
-        const row = document.createElement('div');
-        row.className = `score-row-item ${p.name === msg.winner_name ? 'winner-row' : ''}`;
+        const row = document.createElement("div");
+        row.className = `score-row-item ${p.name === msg.winner_name ? "winner-row" : ""}`;
         row.innerHTML = `
-          <span><b>${idx + 1}. ${this.escapeHtml(p.name)}</b> ${p.player_id === this.playerId ? '(Vous)' : ''}</span>
-          <span style="font-weight: 800; color: #fbbf24;">🏆 ${p.score} pt${p.score > 1 ? 's' : ''}</span>
+          <span><b>${idx + 1}. ${this.escapeHtml(p.name)}</b> ${p.player_id === this.playerId ? "(Vous)" : ""}</span>
+          <span style="font-weight: 800; color: #fbbf24;">🏆 ${p.score} pt${p.score > 1 ? "s" : ""}</span>
         `;
         this.dom.roundOverScoresList.appendChild(row);
       });
@@ -2998,135 +3899,187 @@ class PedantixApp {
 
   syncRoomUI() {
     // 1. Room Code and Host Badges
-    if (this.dom.roomCodeDisplay) this.dom.roomCodeDisplay.textContent = this.roomId;
-    if (this.dom.lobbyRoomNameDisplay) this.dom.lobbyRoomNameDisplay.textContent = this.roomId;
-    if (this.dom.hostPill) this.dom.hostPill.style.display = this.isHost ? 'inline-block' : 'none';
-    if (this.dom.sideHostPill) this.dom.sideHostPill.style.display = this.isHost ? 'inline-block' : 'none';
+    if (this.dom.roomCodeDisplay)
+      this.dom.roomCodeDisplay.textContent = this.roomId;
+    if (this.dom.lobbyRoomNameDisplay)
+      this.dom.lobbyRoomNameDisplay.textContent = this.roomId;
+    if (this.dom.hostPill)
+      this.dom.hostPill.style.display = this.isHost ? "inline-block" : "none";
+    if (this.dom.sideHostPill)
+      this.dom.sideHostPill.style.display = this.isHost
+        ? "inline-block"
+        : "none";
     if (this.dom.btnHeaderInvite) {
-      this.dom.btnHeaderInvite.style.display = '';
+      this.dom.btnHeaderInvite.style.display = "";
       this.dom.btnHeaderInvite.innerHTML = this.isAssisting
-        ? '<span>↩️</span> Quitter l’aide'
+        ? "<span>↩️</span> Quitter l’aide"
         : this.isSoloMode
-        ? this.assistingPlayerId
-          ? '<span>🤝</span> Aide en cours'
-          : '<span>🤝</span> Demander de l’aide'
-        : '<span>🔗</span> Inviter';
-      this.dom.btnHeaderInvite.disabled = !this.isAssisting && this.isSoloMode && !!this.assistingPlayerId;
+          ? this.assistingPlayerId
+            ? "<span>🤝</span> Aide en cours"
+            : "<span>🤝</span> Demander de l’aide"
+          : "<span>🔗</span> Inviter";
+      this.dom.btnHeaderInvite.disabled =
+        !this.isAssisting && this.isSoloMode && !!this.assistingPlayerId;
       this.dom.btnHeaderInvite.title = this.isAssisting
-        ? 'Quitter la page de votre ami et revenir à votre partie solo'
+        ? "Quitter la page de votre ami et revenir à votre partie solo"
         : this.isSoloMode
-        ? this.assistingPlayerId
-          ? 'Un joueur aide actuellement sur cette page'
-          : 'Partager cette page solo pour demander de l’aide'
-        : 'Copier le lien d’invitation pour vos amis';
+          ? this.assistingPlayerId
+            ? "Un joueur aide actuellement sur cette page"
+            : "Partager cette page solo pour demander de l’aide"
+          : "Copier le lien d’invitation pour vos amis";
     }
     if (this.dom.myPlayerScoreBadge) {
-      this.dom.myPlayerScoreBadge.textContent = `${this.myScore} pt${this.myScore > 1 ? 's' : ''}`;
+      this.dom.myPlayerScoreBadge.textContent = `${this.myScore} pt${this.myScore > 1 ? "s" : ""}`;
     }
 
     // Solo difficulty buttons state
     if (this.dom.btnSoloDiffChoices) {
-      this.dom.btnSoloDiffChoices.forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-diff') === this.currentDifficulty);
+      this.dom.btnSoloDiffChoices.forEach((btn) => {
+        btn.classList.toggle(
+          "active",
+          btn.getAttribute("data-diff") === this.currentDifficulty,
+        );
         btn.disabled = this.isAssisting || !!this.assistingPlayerId;
       });
     }
 
     // 2. Ready status on buttons
-    let readyLabel = this.isReady ? 'Je suis prêt ! ✓' : 'Cliquer pour être prêt';
-    let readyIcon = this.isReady ? '🟢' : '⏳';
+    let readyLabel = this.isReady
+      ? "Je suis prêt ! ✓"
+      : "Cliquer pour être prêt";
+    let readyIcon = this.isReady ? "🟢" : "⏳";
     if (this.isSpectator) {
-      readyLabel = 'En pause (Spectateur) 👁️';
-      readyIcon = '👁️';
+      readyLabel = "En pause (Spectateur) 👁️";
+      readyIcon = "👁️";
     }
 
     if (this.dom.btnLobbyToggleReady) {
-      this.dom.btnLobbyToggleReady.className = `btn-lobby-ready ${this.isReady ? 'is-ready' : ''}`;
-      if (this.dom.lobbyReadyIcon) this.dom.lobbyReadyIcon.textContent = readyIcon;
-      if (this.dom.lobbyReadyLabel) this.dom.lobbyReadyLabel.textContent = readyLabel;
+      this.dom.btnLobbyToggleReady.className = `btn-lobby-ready ${this.isReady ? "is-ready" : ""}`;
+      if (this.dom.lobbyReadyIcon)
+        this.dom.lobbyReadyIcon.textContent = readyIcon;
+      if (this.dom.lobbyReadyLabel)
+        this.dom.lobbyReadyLabel.textContent = readyLabel;
     }
 
     if (this.dom.btnSideReady) {
-      this.dom.btnSideReady.className = `btn-side-ready ${this.isReady ? 'is-ready' : ''}`;
-      if (this.dom.sideReadyIcon) this.dom.sideReadyIcon.textContent = readyIcon;
-      if (this.dom.sideReadyText) this.dom.sideReadyText.textContent = readyLabel;
+      this.dom.btnSideReady.className = `btn-side-ready ${this.isReady ? "is-ready" : ""}`;
+      if (this.dom.sideReadyIcon)
+        this.dom.sideReadyIcon.textContent = readyIcon;
+      if (this.dom.sideReadyText)
+        this.dom.sideReadyText.textContent = readyLabel;
     }
 
     if (this.dom.btnRoundReady) {
-      this.dom.btnRoundReady.className = `btn-lobby-ready ${this.isReady ? 'is-ready' : ''}`;
-      if (this.dom.roundReadyIcon) this.dom.roundReadyIcon.textContent = readyIcon;
-      if (this.dom.roundReadyLabel) this.dom.roundReadyLabel.textContent = readyLabel;
+      this.dom.btnRoundReady.className = `btn-lobby-ready ${this.isReady ? "is-ready" : ""}`;
+      if (this.dom.roundReadyIcon)
+        this.dom.roundReadyIcon.textContent = readyIcon;
+      if (this.dom.roundReadyLabel)
+        this.dom.roundReadyLabel.textContent = readyLabel;
     }
 
     // 3. Phase-specific view toggling
     if (this.isSoloMode) {
-      if (this.dom.btnHeaderLeaveRoom) this.dom.btnHeaderLeaveRoom.style.display = 'none';
-      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
+      if (this.dom.btnHeaderLeaveRoom)
+        this.dom.btnHeaderLeaveRoom.style.display = "none";
+      if (this.dom.soloDifficultySelector)
+        this.dom.soloDifficultySelector.style.display = "inline-flex";
       this.closeModal(this.dom.lobbyModal);
-      if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
-      if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
-      if (this.dom.wiki) this.dom.wiki.style.opacity = '1';
-      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = 'inline-flex';
+      if (this.dom.countdownOverlay)
+        this.dom.countdownOverlay.style.display = "none";
+      if (this.dom.sprintTimerBanner)
+        this.dom.sprintTimerBanner.style.display = "none";
+      if (this.dom.wiki) this.dom.wiki.style.opacity = "1";
+      if (this.dom.btnSideNew)
+        this.dom.btnSideNew.style.display = "inline-flex";
       if (!this.isWon && !this.isAbandoned) {
         if (this.dom.form) {
-          this.dom.form.style.display = 'flex';
-          this.dom.form.style.opacity = '1';
-          this.dom.form.style.pointerEvents = 'auto';
+          this.dom.form.style.display = "flex";
+          this.dom.form.style.opacity = "1";
+          this.dom.form.style.pointerEvents = "auto";
         }
-        if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'inline-flex';
-        if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'flex';
+        if (this.dom.btnSurrenderRoom)
+          this.dom.btnSurrenderRoom.style.display = "inline-flex";
+        if (this.dom.btnSideSurrender)
+          this.dom.btnSideSurrender.style.display = "flex";
       } else {
         if (this.dom.form) {
-          this.dom.form.style.display = 'none';
+          this.dom.form.style.display = "none";
         }
-        if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
-        if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
+        if (this.dom.btnSurrenderRoom)
+          this.dom.btnSurrenderRoom.style.display = "none";
+        if (this.dom.btnSideSurrender)
+          this.dom.btnSideSurrender.style.display = "none";
       }
       return;
     }
 
     if (this.dom.btnHeaderLeaveRoom) {
-      this.dom.btnHeaderLeaveRoom.style.display = (this.roomId && !this.roomId.startsWith('solo-')) ? 'inline-flex' : 'none';
+      this.dom.btnHeaderLeaveRoom.style.display =
+        this.roomId && !this.roomId.startsWith("solo-")
+          ? "inline-flex"
+          : "none";
     }
-    if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
+    if (this.dom.soloDifficultySelector)
+      this.dom.soloDifficultySelector.style.display = "none";
 
-    if (this.roomStatus === 'lobby') {
-      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
-      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
-      if (!this.lobbyMinimized && !this.dom.lobbyModal.classList.contains('active')) {
-        if (!this.dom.roundOverModal || !this.dom.roundOverModal.classList.contains('active')) {
+    if (this.roomStatus === "lobby") {
+      if (this.dom.btnSurrenderRoom)
+        this.dom.btnSurrenderRoom.style.display = "none";
+      if (this.dom.btnSideSurrender)
+        this.dom.btnSideSurrender.style.display = "none";
+      if (
+        !this.lobbyMinimized &&
+        !this.dom.lobbyModal.classList.contains("active")
+      ) {
+        if (
+          !this.dom.roundOverModal ||
+          !this.dom.roundOverModal.classList.contains("active")
+        ) {
           this.openModal(this.dom.lobbyModal);
         }
       }
-      if (this.dom.lobbyModal.classList.contains('active')) {
+      if (this.dom.lobbyModal.classList.contains("active")) {
         this.closeModal(this.dom.roundOverModal);
       }
-      if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
-      if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
+      if (this.dom.countdownOverlay)
+        this.dom.countdownOverlay.style.display = "none";
+      if (this.dom.sprintTimerBanner)
+        this.dom.sprintTimerBanner.style.display = "none";
 
       if (this.dom.form) {
-        this.dom.form.style.opacity = '0.3';
-        this.dom.form.style.pointerEvents = 'none';
+        this.dom.form.style.opacity = "0.3";
+        this.dom.form.style.pointerEvents = "none";
       }
-      if (this.dom.wiki) this.dom.wiki.style.opacity = '0.3';
+      if (this.dom.wiki) this.dom.wiki.style.opacity = "0.3";
 
       // Right sidebar controls (only accessible if modal minimized)
       if (this.dom.btnSideStart) {
-        this.dom.btnSideStart.style.display = this.isHost ? 'inline-flex' : 'none';
+        this.dom.btnSideStart.style.display = this.isHost
+          ? "inline-flex"
+          : "none";
         this.dom.btnSideStart.disabled = !this.canStart;
       }
-      if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = 'inline-flex';
-      if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = 'inline-flex';
-      if (this.dom.btnNewRoundComp) this.dom.btnNewRoundComp.style.display = 'none';
-      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = 'none';
-      if (this.dom.btnOpponentNewRound) this.dom.btnOpponentNewRound.style.display = 'none';
+      if (this.dom.btnSideReady)
+        this.dom.btnSideReady.style.display = "inline-flex";
+      if (this.dom.btnOpenLobby)
+        this.dom.btnOpenLobby.style.display = "inline-flex";
+      if (this.dom.btnNewRoundComp)
+        this.dom.btnNewRoundComp.style.display = "none";
+      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = "none";
+      if (this.dom.btnOpponentNewRound)
+        this.dom.btnOpponentNewRound.style.display = "none";
 
       // Update previous round recap in lobby modal if available
       if (this.lastRound && this.lastRound.abandoned) {
-        if (this.dom.lobbyLastRoundBox) this.dom.lobbyLastRoundBox.style.display = 'block';
-        if (this.dom.lobbyLastSolutionTitle) this.dom.lobbyLastSolutionTitle.textContent = this.lastRound.title || '...';
+        if (this.dom.lobbyLastRoundBox)
+          this.dom.lobbyLastRoundBox.style.display = "block";
+        if (this.dom.lobbyLastSolutionTitle)
+          this.dom.lobbyLastSolutionTitle.textContent =
+            this.lastRound.title || "...";
         if (this.dom.lobbyLastSolutionLink) {
-          this.dom.lobbyLastSolutionLink.href = this.lastRound.url || `https://fr.wikipedia.org/wiki/${encodeURIComponent(this.lastRound.title || '')}`;
+          this.dom.lobbyLastSolutionLink.href =
+            this.lastRound.url ||
+            `https://fr.wikipedia.org/wiki/${encodeURIComponent(this.lastRound.title || "")}`;
         }
         if (this.dom.lobbyPodiumCards) {
           this.dom.lobbyPodiumCards.innerHTML = `
@@ -3135,29 +4088,42 @@ class PedantixApp {
             </div>
           `;
         }
-        if (this.dom.lobbyMainTitle) this.dom.lobbyMainTitle.textContent = 'Partie abandonnée ! Prêt pour la suivante ?';
+        if (this.dom.lobbyMainTitle)
+          this.dom.lobbyMainTitle.textContent =
+            "Partie abandonnée ! Prêt pour la suivante ?";
         if (this.dom.lobbyInstructions) {
-          this.dom.lobbyInstructions.innerHTML = 'Indiquez que vous êtes <b>prêt</b> pour la manche suivante. L\'Host pourra relancer une partie dès que tout le monde est prêt.';
+          this.dom.lobbyInstructions.innerHTML =
+            "Indiquez que vous êtes <b>prêt</b> pour la manche suivante. L'Host pourra relancer une partie dès que tout le monde est prêt.";
         }
         if (this.dom.btnLobbyStartGame) {
-          this.dom.btnLobbyStartGame.innerHTML = '<span>🎲</span> Relancer une partie';
+          this.dom.btnLobbyStartGame.innerHTML =
+            "<span>🎲</span> Relancer une partie";
         }
-      } else if (this.lastRound && this.lastRound.podium && this.lastRound.podium.length > 0) {
-        if (this.dom.lobbyLastRoundBox) this.dom.lobbyLastRoundBox.style.display = 'block';
-        if (this.dom.lobbyLastSolutionTitle) this.dom.lobbyLastSolutionTitle.textContent = this.lastRound.title || '...';
+      } else if (
+        this.lastRound &&
+        this.lastRound.podium &&
+        this.lastRound.podium.length > 0
+      ) {
+        if (this.dom.lobbyLastRoundBox)
+          this.dom.lobbyLastRoundBox.style.display = "block";
+        if (this.dom.lobbyLastSolutionTitle)
+          this.dom.lobbyLastSolutionTitle.textContent =
+            this.lastRound.title || "...";
         if (this.dom.lobbyLastSolutionLink) {
-          this.dom.lobbyLastSolutionLink.href = this.lastRound.url || `https://fr.wikipedia.org/wiki/${encodeURIComponent(this.lastRound.title || '')}`;
+          this.dom.lobbyLastSolutionLink.href =
+            this.lastRound.url ||
+            `https://fr.wikipedia.org/wiki/${encodeURIComponent(this.lastRound.title || "")}`;
         }
         if (this.dom.lobbyPodiumCards) {
-          this.dom.lobbyPodiumCards.innerHTML = '';
-          const medals = ['🥇 1er', '🥈 2ème', '🥉 3ème'];
-          this.lastRound.podium.forEach(item => {
-            const card = document.createElement('div');
+          this.dom.lobbyPodiumCards.innerHTML = "";
+          const medals = ["🥇 1er", "🥈 2ème", "🥉 3ème"];
+          this.lastRound.podium.forEach((item) => {
+            const card = document.createElement("div");
             card.className = `podium-card rank-${item.rank}`;
             card.innerHTML = `
               <div class="podium-card-top">
                 <span>${medals[item.rank - 1] || `${item.rank}e`}</span>
-                <span class="podium-card-points">+${item.points} pt${item.points > 1 ? 's' : ''}</span>
+                <span class="podium-card-points">+${item.points} pt${item.points > 1 ? "s" : ""}</span>
               </div>
               <div class="podium-card-name" title="${this.escapeHtml(item.name)}">${this.escapeHtml(item.name)}</div>
               <div style="font-size: 0.78rem; opacity: 0.75;">${item.attempts} coups (Total: ${item.score} pt)</div>
@@ -3165,27 +4131,38 @@ class PedantixApp {
             this.dom.lobbyPodiumCards.appendChild(card);
           });
         }
-        if (this.dom.lobbyMainTitle) this.dom.lobbyMainTitle.textContent = 'Manche terminée ! Prêt pour la suivante ?';
+        if (this.dom.lobbyMainTitle)
+          this.dom.lobbyMainTitle.textContent =
+            "Manche terminée ! Prêt pour la suivante ?";
         if (this.dom.lobbyInstructions) {
-          this.dom.lobbyInstructions.innerHTML = 'Indiquez que vous êtes <b>prêt</b> pour la manche suivante. L\'Host pourra relancer une partie dès que tout le monde est prêt.';
+          this.dom.lobbyInstructions.innerHTML =
+            "Indiquez que vous êtes <b>prêt</b> pour la manche suivante. L'Host pourra relancer une partie dès que tout le monde est prêt.";
         }
         if (this.dom.btnLobbyStartGame) {
-          this.dom.btnLobbyStartGame.innerHTML = '<span>🎲</span> Relancer une partie';
+          this.dom.btnLobbyStartGame.innerHTML =
+            "<span>🎲</span> Relancer une partie";
         }
       } else {
-        if (this.dom.lobbyLastRoundBox) this.dom.lobbyLastRoundBox.style.display = 'none';
-        if (this.dom.lobbyMainTitle) this.dom.lobbyMainTitle.textContent = 'Préparez-vous pour le Concours !';
+        if (this.dom.lobbyLastRoundBox)
+          this.dom.lobbyLastRoundBox.style.display = "none";
+        if (this.dom.lobbyMainTitle)
+          this.dom.lobbyMainTitle.textContent =
+            "Préparez-vous pour le Concours !";
         if (this.dom.lobbyInstructions) {
-          this.dom.lobbyInstructions.innerHTML = 'Chaque joueur doit cliquer sur <b>« Je suis prêt »</b>. L\'Host pourra lancer la partie dès que tout le monde est prêt.';
+          this.dom.lobbyInstructions.innerHTML =
+            "Chaque joueur doit cliquer sur <b>« Je suis prêt »</b>. L'Host pourra lancer la partie dès que tout le monde est prêt.";
         }
         if (this.dom.btnLobbyStartGame) {
-          this.dom.btnLobbyStartGame.innerHTML = '<span>🚀</span> Démarrer la partie';
+          this.dom.btnLobbyStartGame.innerHTML =
+            "<span>🚀</span> Démarrer la partie";
         }
       }
 
       // Host controls in lobby modal
       if (this.dom.btnLobbyStartGame) {
-        this.dom.btnLobbyStartGame.style.display = this.isHost ? 'inline-flex' : 'none';
+        this.dom.btnLobbyStartGame.style.display = this.isHost
+          ? "inline-flex"
+          : "none";
         this.dom.btnLobbyStartGame.disabled = !this.canStart;
       }
 
@@ -3203,9 +4180,9 @@ class PedantixApp {
 
       // Sync lobby difficulty options
       if (this.dom.btnLobbyDiffs) {
-        this.dom.btnLobbyDiffs.forEach(btn => {
-          const diff = btn.getAttribute('data-diff');
-          btn.classList.toggle('active', diff === this.currentDifficulty);
+        this.dom.btnLobbyDiffs.forEach((btn) => {
+          const diff = btn.getAttribute("data-diff");
+          btn.classList.toggle("active", diff === this.currentDifficulty);
           btn.disabled = !this.isHost;
         });
       }
@@ -3214,67 +4191,81 @@ class PedantixApp {
           ? "(Configurable par vous 👑)"
           : "(Choisi par l'Host 👑)";
       }
-
-    } else if (this.roomStatus === 'starting') {
+    } else if (this.roomStatus === "starting") {
       this.closeModal(this.dom.lobbyModal);
       this.closeModal(this.dom.roundOverModal);
-      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'none';
-      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'none';
-      if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = 'none';
-      if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = 'none';
-      if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = 'none';
-      if (this.dom.btnNewRoundComp) this.dom.btnNewRoundComp.style.display = 'none';
-      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = 'none';
-      if (this.dom.btnOpponentNewRound) this.dom.btnOpponentNewRound.style.display = 'none';
-      if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'flex';
+      if (this.dom.btnSurrenderRoom)
+        this.dom.btnSurrenderRoom.style.display = "none";
+      if (this.dom.btnSideSurrender)
+        this.dom.btnSideSurrender.style.display = "none";
+      if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = "none";
+      if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = "none";
+      if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = "none";
+      if (this.dom.btnNewRoundComp)
+        this.dom.btnNewRoundComp.style.display = "none";
+      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = "none";
+      if (this.dom.btnOpponentNewRound)
+        this.dom.btnOpponentNewRound.style.display = "none";
+      if (this.dom.countdownOverlay)
+        this.dom.countdownOverlay.style.display = "flex";
       if (this.dom.form) {
-        this.dom.form.style.opacity = '0.3';
-        this.dom.form.style.pointerEvents = 'none';
+        this.dom.form.style.opacity = "0.3";
+        this.dom.form.style.pointerEvents = "none";
       }
-
-    } else if (this.roomStatus === 'playing') {
+    } else if (this.roomStatus === "playing") {
       this.closeModal(this.dom.lobbyModal);
       this.closeModal(this.dom.roundOverModal);
-      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'inline-flex';
-      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'flex';
+      if (this.dom.btnSurrenderRoom)
+        this.dom.btnSurrenderRoom.style.display = "inline-flex";
+      if (this.dom.btnSideSurrender)
+        this.dom.btnSideSurrender.style.display = "flex";
       if (this.surrenderCooldownRemaining > 0) {
         this._applyCooldownToSurrenderButtons();
       }
-      if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = 'none';
-      if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = 'none';
-      if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = 'none';
-      if (this.dom.btnNewRoundComp) this.dom.btnNewRoundComp.style.display = 'none';
-      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = 'none';
-      if (this.dom.btnOpponentNewRound) this.dom.btnOpponentNewRound.style.display = 'none';
-      if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
-      if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
+      if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = "none";
+      if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = "none";
+      if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = "none";
+      if (this.dom.btnNewRoundComp)
+        this.dom.btnNewRoundComp.style.display = "none";
+      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = "none";
+      if (this.dom.btnOpponentNewRound)
+        this.dom.btnOpponentNewRound.style.display = "none";
+      if (this.dom.countdownOverlay)
+        this.dom.countdownOverlay.style.display = "none";
+      if (this.dom.sprintTimerBanner)
+        this.dom.sprintTimerBanner.style.display = "none";
       if (this.dom.form) {
-        this.dom.form.style.opacity = '1';
-        this.dom.form.style.pointerEvents = 'auto';
+        this.dom.form.style.opacity = "1";
+        this.dom.form.style.pointerEvents = "auto";
       }
-      if (this.dom.wiki) this.dom.wiki.style.opacity = '1';
-
-    } else if (this.roomStatus === 'ending') {
+      if (this.dom.wiki) this.dom.wiki.style.opacity = "1";
+    } else if (this.roomStatus === "ending") {
       this.closeModal(this.dom.lobbyModal);
       this.closeModal(this.dom.roundOverModal);
-      if (this.dom.btnSurrenderRoom) this.dom.btnSurrenderRoom.style.display = 'inline-flex';
-      if (this.dom.btnSideSurrender) this.dom.btnSideSurrender.style.display = 'flex';
+      if (this.dom.btnSurrenderRoom)
+        this.dom.btnSurrenderRoom.style.display = "inline-flex";
+      if (this.dom.btnSideSurrender)
+        this.dom.btnSideSurrender.style.display = "flex";
       if (this.surrenderCooldownRemaining > 0) {
         this._applyCooldownToSurrenderButtons();
       }
-      if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = 'none';
-      if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = 'none';
-      if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = 'none';
-      if (this.dom.btnNewRoundComp) this.dom.btnNewRoundComp.style.display = 'none';
-      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = 'none';
-      if (this.dom.btnOpponentNewRound) this.dom.btnOpponentNewRound.style.display = 'none';
-      if (this.dom.countdownOverlay) this.dom.countdownOverlay.style.display = 'none';
+      if (this.dom.btnOpenLobby) this.dom.btnOpenLobby.style.display = "none";
+      if (this.dom.btnSideStart) this.dom.btnSideStart.style.display = "none";
+      if (this.dom.btnSideReady) this.dom.btnSideReady.style.display = "none";
+      if (this.dom.btnNewRoundComp)
+        this.dom.btnNewRoundComp.style.display = "none";
+      if (this.dom.btnSideNew) this.dom.btnSideNew.style.display = "none";
+      if (this.dom.btnOpponentNewRound)
+        this.dom.btnOpponentNewRound.style.display = "none";
+      if (this.dom.countdownOverlay)
+        this.dom.countdownOverlay.style.display = "none";
       if (this.dom.form) {
-        this.dom.form.style.opacity = '1';
-        this.dom.form.style.pointerEvents = 'auto';
+        this.dom.form.style.opacity = "1";
+        this.dom.form.style.pointerEvents = "auto";
       }
-      if (this.dom.wiki) this.dom.wiki.style.opacity = '1';
-      if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'block';
+      if (this.dom.wiki) this.dom.wiki.style.opacity = "1";
+      if (this.dom.sprintTimerBanner)
+        this.dom.sprintTimerBanner.style.display = "block";
     }
 
     this.updateModeUI();
@@ -3282,57 +4273,60 @@ class PedantixApp {
   }
 
   async switchPlayMode(mode) {
-    const isSolo = mode === 'solo';
+    const isSolo = mode === "solo";
     if (isSolo === this.isSoloMode) {
       if (!isSolo && !this.roomId) this.openRoomsBrowser();
       return;
     }
-    this.playTone('click');
+    this.playTone("click");
 
     const previousRoomId = this.roomId;
     this.isSoloMode = isSolo;
-    localStorage.setItem('pedantix_play_mode', mode);
+    localStorage.setItem("pedantix_play_mode", mode);
 
     const url = new URL(window.location.href);
     if (this.isSoloMode) {
       // Leave previous multiplayer room cleanly
-      if (previousRoomId && !previousRoomId.startsWith('solo-')) {
+      if (previousRoomId && !previousRoomId.startsWith("solo-")) {
         await this.leaveRoom(previousRoomId);
       }
-      url.searchParams.set('mode', 'solo');
-      url.searchParams.delete('room');
-      document.body.classList.add('solo-mode');
-      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add('active');
-      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.remove('active');
-      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'inline-flex';
+      url.searchParams.set("mode", "solo");
+      url.searchParams.delete("room");
+      document.body.classList.add("solo-mode");
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.add("active");
+      if (this.dom.btnTypeMulti)
+        this.dom.btnTypeMulti.classList.remove("active");
+      if (this.dom.soloDifficultySelector)
+        this.dom.soloDifficultySelector.style.display = "inline-flex";
       this.roomId = `solo-${this.playerId}`;
       this.closeModal(this.dom.lobbyModal);
       this.closeModal(this.dom.roomsModal);
-      this.showToast('🎯 Mode Solo activé');
-      window.history.replaceState({}, '', url.toString());
+      this.showToast("🎯 Mode Solo activé");
+      window.history.replaceState({}, "", url.toString());
       this.joinRoom();
     } else {
       // Switching to multiplayer:
-      if (previousRoomId && previousRoomId.startsWith('solo-') && this.ws) {
+      if (previousRoomId && previousRoomId.startsWith("solo-") && this.ws) {
         this.closeRoomWebSocket();
       }
 
-      document.body.classList.remove('solo-mode');
-      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove('active');
-      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add('active');
-      if (this.dom.soloDifficultySelector) this.dom.soloDifficultySelector.style.display = 'none';
+      document.body.classList.remove("solo-mode");
+      if (this.dom.btnTypeSolo) this.dom.btnTypeSolo.classList.remove("active");
+      if (this.dom.btnTypeMulti) this.dom.btnTypeMulti.classList.add("active");
+      if (this.dom.soloDifficultySelector)
+        this.dom.soloDifficultySelector.style.display = "none";
 
-      const currentParam = url.searchParams.get('room');
-      if (currentParam && !currentParam.startsWith('solo-')) {
+      const currentParam = url.searchParams.get("room");
+      if (currentParam && !currentParam.startsWith("solo-")) {
         this.roomId = currentParam;
-        this.showToast('🌐 Mode Multijoueur activé');
-        window.history.replaceState({}, '', url.toString());
+        this.showToast("🌐 Mode Multijoueur activé");
+        window.history.replaceState({}, "", url.toString());
         await this.joinRoom();
       } else {
-        this.roomId = '';
-        url.searchParams.delete('room');
-        url.searchParams.delete('mode');
-        window.history.replaceState({}, '', url.toString());
+        this.roomId = "";
+        url.searchParams.delete("room");
+        url.searchParams.delete("mode");
+        window.history.replaceState({}, "", url.toString());
         this.openRoomsBrowser();
       }
     }
@@ -3343,20 +4337,22 @@ class PedantixApp {
       this.showToast("Seul l'Host 👑 peut changer le mode de jeu.");
       return;
     }
-    if (this.roomStatus !== 'lobby') {
-      this.showToast("Le mode ne peut être modifié que dans le salon d'attente.");
+    if (this.roomStatus !== "lobby") {
+      this.showToast(
+        "Le mode ne peut être modifié que dans le salon d'attente.",
+      );
       return;
     }
-    this.playTone('click');
+    this.playTone("click");
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/mode'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/mode"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          game_mode: mode
-        })
+          game_mode: mode,
+        }),
       });
       const data = await resp.json();
       if (data.error) {
@@ -3368,7 +4364,8 @@ class PedantixApp {
       this.canStart = data.can_start;
       this.updateModeUI();
       this.syncRoomUI();
-      const modeLabel = mode === 'team' ? 'Par Équipes (Rouge vs Bleu)' : 'Chacun pour soi';
+      const modeLabel =
+        mode === "team" ? "Par Équipes (Rouge vs Bleu)" : "Chacun pour soi";
       this.showToast(`🎮 Mode : ${modeLabel}`);
     } catch (e) {
       console.error(e);
@@ -3378,16 +4375,16 @@ class PedantixApp {
 
   async chooseTeam(team) {
     if (this.myTeam === team) return;
-    this.playTone('click');
+    this.playTone("click");
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/team'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/team"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          team: team
-        })
+          team: team,
+        }),
       });
       const data = await resp.json();
       if (data.error) {
@@ -3401,10 +4398,10 @@ class PedantixApp {
       this.renderTeamConfrontation();
       this.syncRoomUI();
       const teamNameMap = {
-        blue: 'Bleue 🔵',
-        red: 'Rouge 🔴',
-        green: 'Verte 🟢',
-        yellow: 'Jaune 🟡'
+        blue: "Bleue 🔵",
+        red: "Rouge 🔴",
+        green: "Verte 🟢",
+        yellow: "Jaune 🟡",
       };
       const teamName = teamNameMap[team] || team;
       this.showToast(`👕 Vous avez rejoint l'Équipe ${teamName}`);
@@ -3415,30 +4412,32 @@ class PedantixApp {
   }
 
   updateModeUI() {
-    const isTeam = this.gameMode === 'team';
+    const isTeam = this.gameMode === "team";
     if (this.dom.btnModeIndividual) {
-      this.dom.btnModeIndividual.classList.toggle('active', !isTeam);
+      this.dom.btnModeIndividual.classList.toggle("active", !isTeam);
       this.dom.btnModeIndividual.disabled = !this.isHost;
     }
     if (this.dom.btnModeTeam) {
-      this.dom.btnModeTeam.classList.toggle('active', isTeam);
+      this.dom.btnModeTeam.classList.toggle("active", isTeam);
       this.dom.btnModeTeam.disabled = !this.isHost;
     }
     if (this.dom.lobbyModeHint) {
-      this.dom.lobbyModeHint.textContent = this.isHost ? "(Configuré par vous 👑)" : "(Configuré par l'Host 👑)";
+      this.dom.lobbyModeHint.textContent = this.isHost
+        ? "(Configuré par vous 👑)"
+        : "(Configuré par l'Host 👑)";
     }
 
     if (this.dom.lobbyTeamsBox) {
-      this.dom.lobbyTeamsBox.style.display = isTeam ? 'flex' : 'none';
+      this.dom.lobbyTeamsBox.style.display = isTeam ? "flex" : "none";
     }
     if (this.dom.lobbyRosterBox) {
-      this.dom.lobbyRosterBox.style.display = isTeam ? 'none' : 'flex';
+      this.dom.lobbyRosterBox.style.display = isTeam ? "none" : "flex";
     }
     if (this.dom.compTeamsSection) {
-      this.dom.compTeamsSection.style.display = isTeam ? 'flex' : 'none';
+      this.dom.compTeamsSection.style.display = isTeam ? "flex" : "none";
     }
     if (this.dom.compIndividualSection) {
-      this.dom.compIndividualSection.style.display = isTeam ? 'none' : 'flex';
+      this.dom.compIndividualSection.style.display = isTeam ? "none" : "flex";
     }
 
     if (isTeam) {
@@ -3452,41 +4451,52 @@ class PedantixApp {
   // =========================================================================
 
   formatNumber(n) {
-    if (n === null || n === undefined || isNaN(n)) return '--';
-    return Number(n).toLocaleString('fr-FR');
+    if (n === null || n === undefined || isNaN(n)) return "--";
+    return Number(n).toLocaleString("fr-FR");
   }
 
   getDifficultyLabel(diff) {
     switch (diff) {
-      case 'facile': return 'Facile';
-      case 'difficile': return 'Difficile';
-      case 'moyen':
-      default: return 'Moyen';
+      case "facile":
+        return "Facile";
+      case "difficile":
+        return "Difficile";
+      case "moyen":
+      default:
+        return "Moyen";
     }
   }
 
   getDifficultyBadgeText(diff) {
     switch (diff) {
-      case 'facile': return '🟢 Facile';
-      case 'difficile': return '🔴 Difficile';
-      case 'moyen':
-      default: return '🟡 Moyen';
+      case "facile":
+        return "🟢 Facile";
+      case "difficile":
+        return "🔴 Difficile";
+      case "moyen":
+      default:
+        return "🟡 Moyen";
     }
   }
 
   updateDifficultyUI(diff, langCount = null, pageviews90d = null) {
-    if (!diff) diff = this.currentDifficulty || 'moyen';
+    if (!diff) diff = this.currentDifficulty || "moyen";
     const badgeText = this.getDifficultyBadgeText(diff);
 
-    if (langCount !== null && langCount !== undefined) this.articleLangCount = langCount;
-    if (pageviews90d !== null && pageviews90d !== undefined) this.articlePageviews90d = pageviews90d;
+    if (langCount !== null && langCount !== undefined)
+      this.articleLangCount = langCount;
+    if (pageviews90d !== null && pageviews90d !== undefined)
+      this.articlePageviews90d = pageviews90d;
 
     // 1. Header difficulty badge
     if (this.dom.difficultyBadge) {
       this.dom.difficultyBadge.textContent = badgeText;
       this.dom.difficultyBadge.className = `difficulty-badge diff-${diff} difficulty-${diff}`;
-      this.dom.difficultyBadge.title = `Difficulté de la page : ${this.getDifficultyLabel(diff)}` +
-        (this.articleLangCount ? ` (${this.articleLangCount} langues, ${this.formatNumber(this.articlePageviews90d)} vues 90j)` : '');
+      this.dom.difficultyBadge.title =
+        `Difficulté de la page : ${this.getDifficultyLabel(diff)}` +
+        (this.articleLangCount
+          ? ` (${this.articleLangCount} langues, ${this.formatNumber(this.articlePageviews90d)} vues 90j)`
+          : "");
     }
 
     // 2. Sidebar difficulty indicator
@@ -3497,25 +4507,34 @@ class PedantixApp {
 
     // 3. Solo selector buttons active state
     if (this.dom.btnSoloDiffChoices) {
-      this.dom.btnSoloDiffChoices.forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-diff') === this.currentDifficulty);
+      this.dom.btnSoloDiffChoices.forEach((btn) => {
+        btn.classList.toggle(
+          "active",
+          btn.getAttribute("data-diff") === this.currentDifficulty,
+        );
       });
     }
 
     // 4. Lobby selector buttons active state
     if (this.dom.btnLobbyDiffs) {
-      const isLobby = this.roomStatus === 'lobby';
-      this.dom.btnLobbyDiffs.forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-diff') === this.currentDifficulty);
+      const isLobby = this.roomStatus === "lobby";
+      this.dom.btnLobbyDiffs.forEach((btn) => {
+        btn.classList.toggle(
+          "active",
+          btn.getAttribute("data-diff") === this.currentDifficulty,
+        );
         btn.disabled = !this.isHost || !isLobby;
       });
     }
 
     if (this.dom.lobbyDifficultyHint) {
-      if (this.roomStatus !== 'lobby') {
-        this.dom.lobbyDifficultyHint.textContent = "(Verrouillé pendant la partie)";
+      if (this.roomStatus !== "lobby") {
+        this.dom.lobbyDifficultyHint.textContent =
+          "(Verrouillé pendant la partie)";
       } else {
-        this.dom.lobbyDifficultyHint.textContent = this.isHost ? "(Configuré par vous 👑)" : "(Choisi par l'Host 👑)";
+        this.dom.lobbyDifficultyHint.textContent = this.isHost
+          ? "(Configuré par vous 👑)"
+          : "(Choisi par l'Host 👑)";
       }
     }
 
@@ -3525,10 +4544,14 @@ class PedantixApp {
       this.dom.successDiffBadge.textContent = badgeText;
     }
     if (this.dom.successLangVal) {
-      this.dom.successLangVal.textContent = this.articleLangCount ? this.articleLangCount : '--';
+      this.dom.successLangVal.textContent = this.articleLangCount
+        ? this.articleLangCount
+        : "--";
     }
     if (this.dom.successViewsVal) {
-      this.dom.successViewsVal.textContent = this.articlePageviews90d ? this.formatNumber(this.articlePageviews90d) : '--';
+      this.dom.successViewsVal.textContent = this.articlePageviews90d
+        ? this.formatNumber(this.articlePageviews90d)
+        : "--";
     }
 
     // 6. Surrender diff row stats
@@ -3537,10 +4560,14 @@ class PedantixApp {
       this.dom.surrenderDiffBadge.textContent = badgeText;
     }
     if (this.dom.surrenderLangVal) {
-      this.dom.surrenderLangVal.textContent = this.articleLangCount ? this.articleLangCount : '--';
+      this.dom.surrenderLangVal.textContent = this.articleLangCount
+        ? this.articleLangCount
+        : "--";
     }
     if (this.dom.surrenderViewsVal) {
-      this.dom.surrenderViewsVal.textContent = this.articlePageviews90d ? this.formatNumber(this.articlePageviews90d) : '--';
+      this.dom.surrenderViewsVal.textContent = this.articlePageviews90d
+        ? this.formatNumber(this.articlePageviews90d)
+        : "--";
     }
   }
 
@@ -3552,31 +4579,31 @@ class PedantixApp {
     this.previousInputs = [];
     this.prevInputIdx = -1;
     this.isWon = false;
-    if (this.dom.successBox) this.dom.successBox.classList.remove('active');
+    if (this.dom.successBox) this.dom.successBox.classList.remove("active");
     if (this.dom.surrenderBanner) {
-      this.dom.surrenderBanner.style.display = 'none';
-      this.dom.surrenderBanner.classList.remove('active');
+      this.dom.surrenderBanner.style.display = "none";
+      this.dom.surrenderBanner.classList.remove("active");
     }
     if (this.dom.articleFinishedBar) {
-      this.dom.articleFinishedBar.style.display = 'none';
+      this.dom.articleFinishedBar.style.display = "none";
     }
     if (this.dom.roundOverModal) {
       this.closeModal(this.dom.roundOverModal);
     }
     if (this.dom.form) {
-      this.dom.form.style.display = 'flex';
-      this.dom.form.style.opacity = '1';
-      this.dom.form.style.pointerEvents = 'auto';
+      this.dom.form.style.display = "flex";
+      this.dom.form.style.opacity = "1";
+      this.dom.form.style.pointerEvents = "auto";
     }
     if (this.dom.guessInput) {
-      this.dom.guessInput.value = '';
+      this.dom.guessInput.value = "";
       this.dom.guessInput.disabled = false;
     }
     if (this.dom.guessBtn) {
       this.dom.guessBtn.disabled = false;
     }
-    this.dom.errorLabel.textContent = '';
-    this.dom.wikiImg.style.display = 'none';
+    this.dom.errorLabel.textContent = "";
+    this.dom.wikiImg.style.display = "none";
     this.hideOpponentWin();
 
     this.sessionId = data.session.session_id;
@@ -3584,8 +4611,8 @@ class PedantixApp {
     if (data.guess_token) this.guessToken = data.guess_token;
     this.tokens = data.session.tokens || [];
     this.tokensById = {};
-    this.tokens.forEach(t => {
-      t.is_word = (t.type === 'word' || !!t.is_word);
+    this.tokens.forEach((t) => {
+      t.is_word = t.type === "word" || !!t.is_word;
       this.tokensById[t.id] = t;
     });
 
@@ -3595,10 +4622,21 @@ class PedantixApp {
     this.solution = data.session.solution || null;
 
     this.currentDifficulty = data.difficulty || this.currentDifficulty;
-    this.articleDifficulty = data.article_difficulty || (data.session && data.session.difficulty) || this.currentDifficulty;
-    this.articleLangCount = data.article_lang_count || (data.session && data.session.lang_count) || 0;
-    this.articlePageviews90d = data.article_pageviews_90d || (data.session && data.session.pageviews_90d) || 0;
-    this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
+    this.articleDifficulty =
+      data.article_difficulty ||
+      (data.session && data.session.difficulty) ||
+      this.currentDifficulty;
+    this.articleLangCount =
+      data.article_lang_count || (data.session && data.session.lang_count) || 0;
+    this.articlePageviews90d =
+      data.article_pageviews_90d ||
+      (data.session && data.session.pageviews_90d) ||
+      0;
+    this.updateDifficultyUI(
+      this.articleDifficulty,
+      this.articleLangCount,
+      this.articlePageviews90d,
+    );
 
     this.nextWordHintTime = data.next_word_hint_time || null;
 
@@ -3623,73 +4661,87 @@ class PedantixApp {
     this.lastRound = null;
     this.solution = null;
 
-    if (this.dom.successBox) this.dom.successBox.classList.remove('active');
+    if (this.dom.successBox) this.dom.successBox.classList.remove("active");
     if (this.dom.surrenderBanner) {
-      this.dom.surrenderBanner.style.display = 'none';
-      this.dom.surrenderBanner.classList.remove('active');
+      this.dom.surrenderBanner.style.display = "none";
+      this.dom.surrenderBanner.classList.remove("active");
     }
     if (this.dom.articleFinishedBar) {
-      this.dom.articleFinishedBar.style.display = 'none';
+      this.dom.articleFinishedBar.style.display = "none";
     }
     if (this.dom.roundOverModal) this.closeModal(this.dom.roundOverModal);
     if (this.dom.surrenderModal) this.closeModal(this.dom.surrenderModal);
-    if (this.dom.solutionDisplay) this.dom.solutionDisplay.textContent = '...';
-    if (this.dom.surrenderSolutionDisplay) this.dom.surrenderSolutionDisplay.textContent = '...';
-    if (this.dom.solutionLink) this.dom.solutionLink.href = '#';
-    if (this.dom.surrenderSolutionLink) this.dom.surrenderSolutionLink.href = '#';
-    if (this.dom.articleFinishedWikiLink) this.dom.articleFinishedWikiLink.href = '#';
+    if (this.dom.solutionDisplay) this.dom.solutionDisplay.textContent = "...";
+    if (this.dom.surrenderSolutionDisplay)
+      this.dom.surrenderSolutionDisplay.textContent = "...";
+    if (this.dom.solutionLink) this.dom.solutionLink.href = "#";
+    if (this.dom.surrenderSolutionLink)
+      this.dom.surrenderSolutionLink.href = "#";
+    if (this.dom.articleFinishedWikiLink)
+      this.dom.articleFinishedWikiLink.href = "#";
   }
 
   async setSoloDifficulty(diff) {
-    if (!['facile', 'moyen', 'difficile'].includes(diff)) return;
+    if (!["facile", "moyen", "difficile"].includes(diff)) return;
     if (!this.isSoloMode) return;
     if (this.isLoadingSoloDiff) return;
 
-    this.playTone('click');
+    this.playTone("click");
     this.isLoadingSoloDiff = true;
     this.currentDifficulty = diff;
-    localStorage.setItem('pedantix_difficulty', diff);
+    localStorage.setItem("pedantix_difficulty", diff);
 
     if (this.dom.btnSoloDiffChoices) {
-      this.dom.btnSoloDiffChoices.forEach(b => {
+      this.dom.btnSoloDiffChoices.forEach((b) => {
         b.disabled = true;
-        b.classList.toggle('active', b.getAttribute('data-diff') === diff);
+        b.classList.toggle("active", b.getAttribute("data-diff") === diff);
       });
     }
 
-    this.showToast(`🎯 Chargement d'une nouvelle page (${this.getDifficultyLabel(diff)})...`);
+    this.showToast(
+      `🎯 Chargement d'une nouvelle page (${this.getDifficultyLabel(diff)})...`,
+    );
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/difficulty'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/difficulty"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          difficulty: diff
-        })
+          difficulty: diff,
+        }),
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || data.error) {
-        this.showToast(data.detail || data.error || 'Erreur lors du changement de difficulté.');
+        this.showToast(
+          data.detail ||
+            data.error ||
+            "Erreur lors du changement de difficulté.",
+        );
       } else {
         if (data.session) {
           this.applyNewGameSession(data);
         } else {
           await this.joinRoom();
         }
-        this.showToast(`🎲 Nouvelle page chargée en niveau ${this.getDifficultyLabel(diff)} !`);
+        this.showToast(
+          `🎲 Nouvelle page chargée en niveau ${this.getDifficultyLabel(diff)} !`,
+        );
       }
     } catch (e) {
       console.error(e);
-      this.showToast('Erreur de connexion au serveur.');
+      this.showToast("Erreur de connexion au serveur.");
     } finally {
       this.isLoadingSoloDiff = false;
       this.refreshSoloLeaderboard();
       if (this.dom.btnSoloDiffChoices) {
-        this.dom.btnSoloDiffChoices.forEach(b => {
+        this.dom.btnSoloDiffChoices.forEach((b) => {
           b.disabled = false;
-          b.classList.toggle('active', b.getAttribute('data-diff') === this.currentDifficulty);
+          b.classList.toggle(
+            "active",
+            b.getAttribute("data-diff") === this.currentDifficulty,
+          );
         });
       }
     }
@@ -3697,33 +4749,36 @@ class PedantixApp {
 
   async refreshSoloLeaderboard() {
     if (!this.dom.soloLeaderboard || !this.dom.soloLeaderboardTitle) return;
-    const labels = { facile: 'Facile', moyen: 'Moyen', difficile: 'Difficile' };
+    const labels = { facile: "Facile", moyen: "Moyen", difficile: "Difficile" };
     const difficulty = this.currentDifficulty;
     this.dom.soloLeaderboardTitle.textContent = `Meilleurs scores · ${labels[difficulty] || difficulty}`;
     try {
-      const response = await fetch(this.getApiUrl(
-        `/api/game-leaderboard?game_id=pedantix&difficulty=${encodeURIComponent(difficulty)}`
-      ));
+      const response = await fetch(
+        this.getApiUrl(
+          `/api/game-leaderboard?game_id=pedantix&difficulty=${encodeURIComponent(difficulty)}`,
+        ),
+      );
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || 'Impossible de charger le classement.');
+      if (!response.ok)
+        throw new Error(data.detail || "Impossible de charger le classement.");
       this.dom.soloLeaderboard.replaceChildren();
       if (!data.records?.length) {
-        const empty = document.createElement('li');
-        empty.textContent = 'Aucune partie gagnée pour le moment.';
+        const empty = document.createElement("li");
+        empty.textContent = "Aucune partie gagnée pour le moment.";
         this.dom.soloLeaderboard.appendChild(empty);
         return;
       }
       data.records.forEach((record) => {
-        const item = document.createElement('li');
+        const item = document.createElement("li");
         item.append(document.createTextNode(record.player_name));
-        const detail = document.createElement('span');
+        const detail = document.createElement("span");
         detail.textContent = `${record.attempts} coups · ${this.formatLeaderboardTime(record.duration_seconds)}`;
         item.appendChild(detail);
         this.dom.soloLeaderboard.appendChild(item);
       });
     } catch (error) {
       this.dom.soloLeaderboard.replaceChildren();
-      const item = document.createElement('li');
+      const item = document.createElement("li");
       item.textContent = `Classement indisponible : ${error.message}`;
       this.dom.soloLeaderboard.appendChild(item);
     }
@@ -3731,14 +4786,16 @@ class PedantixApp {
 
   formatLeaderboardTime(seconds) {
     const minutes = Math.floor(seconds / 60);
-    return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+    return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
   }
 
   async setRoomDifficulty(diff) {
-    if (!['facile', 'moyen', 'difficile'].includes(diff)) return;
+    if (!["facile", "moyen", "difficile"].includes(diff)) return;
     if (this.isSoloMode) return;
-    if (this.roomStatus !== 'lobby') {
-      this.showToast("La difficulté ne peut pas être modifiée en cours de partie.");
+    if (this.roomStatus !== "lobby") {
+      this.showToast(
+        "La difficulté ne peut pas être modifiée en cours de partie.",
+      );
       return;
     }
     if (!this.isHost) {
@@ -3746,83 +4803,119 @@ class PedantixApp {
       return;
     }
     if (this.currentDifficulty === diff) return;
-    this.playTone('click');
+    this.playTone("click");
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/difficulty'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/difficulty"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          difficulty: diff
-        })
+          difficulty: diff,
+        }),
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || data.error) {
-        this.showToast(data.detail || data.error || 'Erreur lors du changement de difficulté.');
+        this.showToast(
+          data.detail ||
+            data.error ||
+            "Erreur lors du changement de difficulté.",
+        );
         return;
       }
       this.currentDifficulty = diff;
       this.articleDifficulty = data.article_difficulty || diff;
       this.articleLangCount = data.article_lang_count || 0;
       this.articlePageviews90d = data.article_pageviews_90d || 0;
-      this.updateDifficultyUI(this.articleDifficulty, this.articleLangCount, this.articlePageviews90d);
-      this.showToast(`🎯 Difficulté du salon réglée sur : ${this.getDifficultyLabel(diff)}`);
+      this.updateDifficultyUI(
+        this.articleDifficulty,
+        this.articleLangCount,
+        this.articlePageviews90d,
+      );
+      this.showToast(
+        `🎯 Difficulté du salon réglée sur : ${this.getDifficultyLabel(diff)}`,
+      );
     } catch (e) {
       console.error(e);
-      this.showToast('Erreur de connexion au serveur.');
+      this.showToast("Erreur de connexion au serveur.");
     }
   }
 
   renderTeamsRoster() {
     if (!this.dom.lobbyTeamsGrid || !this.teamsData) return;
-    this.dom.lobbyTeamsGrid.innerHTML = '';
+    this.dom.lobbyTeamsGrid.innerHTML = "";
 
     const teams = [
-      { key: 'blue', name: 'Équipe Bleue', icon: '🔵', colorClass: 'blue', data: this.teamsData.blue || {} },
-      { key: 'red', name: 'Équipe Rouge', icon: '🔴', colorClass: 'red', data: this.teamsData.red || {} },
-      { key: 'green', name: 'Équipe Verte', icon: '🟢', colorClass: 'green', data: this.teamsData.green || {} },
-      { key: 'yellow', name: 'Équipe Jaune', icon: '🟡', colorClass: 'yellow', data: this.teamsData.yellow || {} }
+      {
+        key: "blue",
+        name: "Équipe Bleue",
+        icon: "🔵",
+        colorClass: "blue",
+        data: this.teamsData.blue || {},
+      },
+      {
+        key: "red",
+        name: "Équipe Rouge",
+        icon: "🔴",
+        colorClass: "red",
+        data: this.teamsData.red || {},
+      },
+      {
+        key: "green",
+        name: "Équipe Verte",
+        icon: "🟢",
+        colorClass: "green",
+        data: this.teamsData.green || {},
+      },
+      {
+        key: "yellow",
+        name: "Équipe Jaune",
+        icon: "🟡",
+        colorClass: "yellow",
+        data: this.teamsData.yellow || {},
+      },
     ];
 
     const teamLabelMap = {
-      blue: 'Bleus 🔵',
-      red: 'Rouges 🔴',
-      green: 'Verts 🟢',
-      yellow: 'Jaunes 🟡'
+      blue: "Bleus 🔵",
+      red: "Rouges 🔴",
+      green: "Verts 🟢",
+      yellow: "Jaunes 🟡",
     };
 
-    teams.forEach(t => {
+    teams.forEach((t) => {
       const players = t.data.players || [];
       const isMyTeam = this.myTeam === t.key;
-      const card = document.createElement('div');
+      const card = document.createElement("div");
       card.className = `lobby-team-card team-${t.colorClass}`;
 
-      let playersHtml = '';
+      let playersHtml = "";
       if (players.length === 0) {
         playersHtml = `<div class="team-empty-hint">Aucun joueur pour l'instant</div>`;
       } else {
-        players.forEach(p => {
+        players.forEach((p) => {
           const isMe = p.player_id === this.playerId;
-          const hostIcon = p.is_host ? '👑 ' : '';
+          const hostIcon = p.is_host ? "👑 " : "";
           playersHtml += `
-            <div class="team-player-item ${isMe ? 'is-me' : ''}">
+            <div class="team-player-item ${isMe ? "is-me" : ""}">
               <div class="team-player-name-wrap">
                 <span>${hostIcon}</span>
                 <span class="team-player-name" title="${this.escapeHtml(p.name)}">${this.escapeHtml(p.name)}</span>
-                ${isMe ? '<span class="player-you-tag">Vous</span>' : ''}
+                ${isMe ? '<span class="player-you-tag">Vous</span>' : ""}
               </div>
               <div class="team-player-status">
                 <span style="color: #fbbf24; margin-right: 4px;">🏆 ${p.score || 0}</span>
-                <span>${p.is_ready ? '🟢' : '⏳'}</span>
+                <span>${p.is_ready ? "🟢" : "⏳"}</span>
               </div>
             </div>
           `;
         });
       }
 
-      const btnJoinText = isMyTeam ? `Votre équipe ✓` : `Rejoindre les ${teamLabelMap[t.key] || t.name}`;
-      const btnDisabled = isMyTeam ? 'disabled' : '';
+      const btnJoinText = isMyTeam
+        ? `Votre équipe ✓`
+        : `Rejoindre les ${teamLabelMap[t.key] || t.name}`;
+      const btnDisabled = isMyTeam ? "disabled" : "";
 
       card.innerHTML = `
         <div class="team-card-header">
@@ -3830,19 +4923,19 @@ class PedantixApp {
             <span>${t.icon}</span>
             <span>${t.name}</span>
           </div>
-          <span class="team-count-pill">${players.length} joueur${players.length > 1 ? 's' : ''}</span>
+          <span class="team-count-pill">${players.length} joueur${players.length > 1 ? "s" : ""}</span>
         </div>
         <div class="team-roster-list">
           ${playersHtml}
         </div>
-        <button type="button" class="btn-join-team ${t.colorClass} ${isMyTeam ? 'current-team' : ''}" data-team="${t.key}" ${btnDisabled}>
+        <button type="button" class="btn-join-team ${t.colorClass} ${isMyTeam ? "current-team" : ""}" data-team="${t.key}" ${btnDisabled}>
           ${btnJoinText}
         </button>
       `;
 
-      const joinBtn = card.querySelector('.btn-join-team');
+      const joinBtn = card.querySelector(".btn-join-team");
       if (joinBtn && !isMyTeam) {
-        joinBtn.addEventListener('click', () => this.chooseTeam(t.key));
+        joinBtn.addEventListener("click", () => this.chooseTeam(t.key));
       }
 
       this.dom.lobbyTeamsGrid.appendChild(card);
@@ -3853,47 +4946,88 @@ class PedantixApp {
     if (!this.dom.compTeamsConfrontation || !this.teamsData) return;
 
     const teamList = [
-      { key: 'blue', name: 'Équipe Bleue', short: 'Bleu', icon: '🔵', color: '#60a5fa', fillClass: 'team-bar-fill-blue', data: this.teamsData.blue || {} },
-      { key: 'red', name: 'Équipe Rouge', short: 'Rouge', icon: '🔴', color: '#f87171', fillClass: 'team-bar-fill-red', data: this.teamsData.red || {} },
-      { key: 'green', name: 'Équipe Verte', short: 'Vert', icon: '🟢', color: '#34d399', fillClass: 'team-bar-fill-green', data: this.teamsData.green || {} },
-      { key: 'yellow', name: 'Équipe Jaune', short: 'Jaune', icon: '🟡', color: '#facc15', fillClass: 'team-bar-fill-yellow', data: this.teamsData.yellow || {} }
+      {
+        key: "blue",
+        name: "Équipe Bleue",
+        short: "Bleu",
+        icon: "🔵",
+        color: "#60a5fa",
+        fillClass: "team-bar-fill-blue",
+        data: this.teamsData.blue || {},
+      },
+      {
+        key: "red",
+        name: "Équipe Rouge",
+        short: "Rouge",
+        icon: "🔴",
+        color: "#f87171",
+        fillClass: "team-bar-fill-red",
+        data: this.teamsData.red || {},
+      },
+      {
+        key: "green",
+        name: "Équipe Verte",
+        short: "Vert",
+        icon: "🟢",
+        color: "#34d399",
+        fillClass: "team-bar-fill-green",
+        data: this.teamsData.green || {},
+      },
+      {
+        key: "yellow",
+        name: "Équipe Jaune",
+        short: "Jaune",
+        icon: "🟡",
+        color: "#facc15",
+        fillClass: "team-bar-fill-yellow",
+        data: this.teamsData.yellow || {},
+      },
     ];
 
-    const myTeamMeta = teamList.find(t => t.key === this.myTeam) || teamList[0];
+    const myTeamMeta =
+      teamList.find((t) => t.key === this.myTeam) || teamList[0];
     if (this.dom.sideMyTeamBadge) {
       this.dom.sideMyTeamBadge.className = `team-my-indicator ${this.myTeam}`;
       this.dom.sideMyTeamBadge.textContent = `${myTeamMeta.icon} ${myTeamMeta.name}`;
     }
 
     // Determine active teams (teams with players or at least 2 teams by default)
-    let activeTeams = teamList.filter(t => (t.data.players && t.data.players.length > 0));
+    let activeTeams = teamList.filter(
+      (t) => t.data.players && t.data.players.length > 0,
+    );
     if (activeTeams.length === 0) {
       activeTeams = teamList.slice(0, 2);
     }
 
-    const vsLabelsHtml = activeTeams.map(t => {
-      const pct = t.data.pct || 0;
-      return `<span style="color: ${t.color}; font-weight: 800;">${t.icon} ${t.short} (${pct}%)</span>`;
-    }).join('<span class="team-vs-divider">VS</span>');
+    const vsLabelsHtml = activeTeams
+      .map((t) => {
+        const pct = t.data.pct || 0;
+        return `<span style="color: ${t.color}; font-weight: 800;">${t.icon} ${t.short} (${pct}%)</span>`;
+      })
+      .join('<span class="team-vs-divider">VS</span>');
 
-    const barsHtml = activeTeams.map(t => {
-      const pct = Math.max(2, t.data.pct || 0);
-      return `
+    const barsHtml = activeTeams
+      .map((t) => {
+        const pct = Math.max(2, t.data.pct || 0);
+        return `
         <div style="flex: 1; height: 8px; background: rgba(0, 0, 0, 0.5); border-radius: 9999px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08);">
           <div class="${t.fillClass}" style="width: ${pct}%; height: 100%;"></div>
         </div>
       `;
-    }).join('<div style="width: 4px;"></div>');
+      })
+      .join('<div style="width: 4px;"></div>');
 
-    const cardsHtml = activeTeams.map(t => {
-      const isMyTeam = this.myTeam === t.key;
-      const pct = t.data.pct || 0;
-      const players = t.data.players || [];
-      const playersText = players.map(p => this.escapeHtml(p.name)).join(', ') || 'Aucun';
-      return `
-        <div class="team-side-card ${t.key} ${isMyTeam ? 'is-my-team' : ''}">
+    const cardsHtml = activeTeams
+      .map((t) => {
+        const isMyTeam = this.myTeam === t.key;
+        const pct = t.data.pct || 0;
+        const players = t.data.players || [];
+        const playersText =
+          players.map((p) => this.escapeHtml(p.name)).join(", ") || "Aucun";
+        return `
+        <div class="team-side-card ${t.key} ${isMyTeam ? "is-my-team" : ""}">
           <div class="team-side-top">
-            <span class="team-side-title ${t.key}">${t.icon} ${t.short} ${isMyTeam ? '★' : ''}</span>
+            <span class="team-side-title ${t.key}">${t.icon} ${t.short} ${isMyTeam ? "★" : ""}</span>
             <span class="team-side-pct" style="color: ${t.color};">${pct}%</span>
           </div>
           <div style="height: 4px; background: rgba(0, 0, 0, 0.3); border-radius: 9999px; overflow: hidden; margin: 3px 0 5px 0;">
@@ -3903,12 +5037,13 @@ class PedantixApp {
             <span><b>${t.data.attempts || 0}</b> coups</span>
             <span><b>${t.data.revealed_words_count || 0}</b> mots</span>
           </div>
-          <div class="team-side-members" title="${players.map(p => p.name).join(', ')}">
+          <div class="team-side-members" title="${players.map((p) => p.name).join(", ")}">
             👥 ${playersText}
           </div>
         </div>
       `;
-    }).join('');
+      })
+      .join("");
 
     this.dom.compTeamsConfrontation.innerHTML = `
       <div class="teams-versus-bar-wrap">
@@ -3938,22 +5073,29 @@ class PedantixApp {
       }
       const el = document.getElementById(`token-${tid}`);
       if (el) {
-        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
-        el.style.backgroundColor = '';
-        el.style.borderColor = '';
-        el.style.color = '';
-        el.title = '';
+        el.classList.remove(
+          "showing-len",
+          "close-heat",
+          "close-heat-grey",
+          "heat-flash",
+          "hint-word",
+          "hint-pulse",
+        );
+        el.style.backgroundColor = "";
+        el.style.borderColor = "";
+        el.style.color = "";
+        el.title = "";
         delete el.dataset.heat;
         delete el.dataset.word;
-        el.classList.add('revealed', 'just-revealed');
+        el.classList.add("revealed", "just-revealed");
         el.textContent = text;
       }
     });
   }
 
-  applyCloseTokens(closeTokens, fallbackWord = '') {
+  applyCloseTokens(closeTokens, fallbackWord = "") {
     if (!closeTokens || closeTokens.length === 0) return;
-    closeTokens.forEach(item => {
+    closeTokens.forEach((item) => {
       const score = Number(item.score || 50);
       if (score < 48) return;
       const closeWord = item.word || fallbackWord;
@@ -3972,25 +5114,25 @@ class PedantixApp {
         token.heat = score;
         token.close_word = closeWord;
       }
-      if (!el || el.classList.contains('revealed')) return;
+      if (!el || el.classList.contains("revealed")) return;
 
       el.dataset.heat = score;
       el.dataset.word = closeWord;
       el.innerHTML = `&nbsp;${this.escapeHtml(closeWord)}&nbsp;`;
-      el.classList.remove('close-heat');
-      el.classList.add('close-heat-grey', 'heat-flash');
-      el.style.backgroundColor = '#222222';
+      el.classList.remove("close-heat");
+      el.classList.add("close-heat-grey", "heat-flash");
+      el.style.backgroundColor = "#222222";
       el.title = `Proximité : ${score}% (proche de « ${closeWord} »)`;
 
       const grey = this.getGreyColor(score);
       el.style.color = this.getFlashColor(score);
       setTimeout(() => {
         if (
-          Number(el.dataset.heat) === score
-          && !el.classList.contains('revealed')
-          && !el.classList.contains('showing-len')
+          Number(el.dataset.heat) === score &&
+          !el.classList.contains("revealed") &&
+          !el.classList.contains("showing-len")
         ) {
-          el.classList.remove('heat-flash');
+          el.classList.remove("heat-flash");
           el.style.color = grey;
         }
       }, 1200);
@@ -3999,58 +5141,60 @@ class PedantixApp {
 
   addTeammateGuessToHistory(tg) {
     if (!tg || !tg.word) return;
-    const exists = this.history.some(h => h.word.toLowerCase() === tg.word.toLowerCase());
+    const exists = this.history.some(
+      (h) => h.word.toLowerCase() === tg.word.toLowerCase(),
+    );
     if (exists) return;
     this.history.unshift({
-      attempt: tg.attempt_number || (this.history.length + 1),
+      attempt: tg.attempt_number || this.history.length + 1,
       word: tg.word,
       status: tg.status,
       count: tg.matches_count || 0,
       score: tg.score || 0,
-      guessed_by: tg.player_name
+      guessed_by: tg.player_name,
     });
     this.renderHistory();
     this.updateDayMeter();
   }
 
   renderPlayerCard(p, idx, isMe) {
-    const medals = ['🥇', '🥈', '🥉'];
-    const rankDisplay = p.is_spectator ? '👁️' : (medals[idx] || `#${idx + 1}`);
-    let statusHtml = '';
+    const medals = ["🥇", "🥈", "🥉"];
+    const rankDisplay = p.is_spectator ? "👁️" : medals[idx] || `#${idx + 1}`;
+    let statusHtml = "";
     if (p.is_spectator) {
       statusHtml = `<span class="player-status-tag status-spectator">👁️ Spectateur</span>`;
     } else if (p.is_won) {
       statusHtml = `<span class="player-status-tag status-win">🏆 Gagné !</span>`;
-    } else if (p.last_status === 'close') {
-      const scoreStr = p.last_score ? ` (${p.last_score}%)` : '';
+    } else if (p.last_status === "close") {
+      const scoreStr = p.last_score ? ` (${p.last_score}%)` : "";
       statusHtml = `<span class="player-status-tag status-hot">🔥 Proche${scoreStr}</span>`;
-    } else if (p.last_status === 'match') {
+    } else if (p.last_status === "match") {
       statusHtml = `<span class="player-status-tag status-match">🟩 Trouvé (+${p.last_count})</span>`;
     } else {
-      statusHtml = `<span class="player-status-tag ${p.is_ready ? 'status-ready' : 'status-wait'}">${p.is_ready ? '🟢 Prêt' : '⏳ En attente'}</span>`;
+      statusHtml = `<span class="player-status-tag ${p.is_ready ? "status-ready" : "status-wait"}">${p.is_ready ? "🟢 Prêt" : "⏳ En attente"}</span>`;
     }
 
-    const card = document.createElement('div');
-    card.className = `comp-player-card ${isMe ? 'is-me' : ''} ${p.is_won ? 'is-winner' : ''} ${p.is_spectator ? 'is-spectator' : ''}`;
+    const card = document.createElement("div");
+    card.className = `comp-player-card ${isMe ? "is-me" : ""} ${p.is_won ? "is-winner" : ""} ${p.is_spectator ? "is-spectator" : ""}`;
     card.innerHTML = `
       <div class="comp-player-top">
         <div class="comp-player-left">
           <span class="comp-rank-badge">${rankDisplay}</span>
           <span class="comp-player-name" title="${this.escapeHtml(p.name)}">${this.escapeHtml(p.name)}</span>
-          ${p.is_host ? '<span class="host-icon-mini" title="Host">👑</span>' : ''}
-          ${isMe ? '<span class="player-you-tag">Vous</span>' : ''}
-          ${p.is_spectator ? '<span class="spectator-tag" style="font-size:0.68rem;padding:0.1rem 0.4rem;background:rgba(168,85,247,0.18);color:#c084fc;border:1px solid rgba(168,85,247,0.35);border-radius:6px;font-weight:700;">👁️ En pause</span>' : ''}
+          ${p.is_host ? '<span class="host-icon-mini" title="Host">👑</span>' : ""}
+          ${isMe ? '<span class="player-you-tag">Vous</span>' : ""}
+          ${p.is_spectator ? '<span class="spectator-tag" style="font-size:0.68rem;padding:0.1rem 0.4rem;background:rgba(168,85,247,0.18);color:#c084fc;border:1px solid rgba(168,85,247,0.35);border-radius:6px;font-weight:700;">👁️ En pause</span>' : ""}
         </div>
         <div class="comp-player-right">
           <span class="comp-player-score-tag" title="Score persistant en BDD">🏆 ${p.score || 0}</span>
-          <span class="comp-pct-number">${p.is_spectator ? 'Pause' : `${p.pct}%`}</span>
+          <span class="comp-pct-number">${p.is_spectator ? "Pause" : `${p.pct}%`}</span>
         </div>
       </div>
       <div class="comp-prog-bar">
         <div class="comp-prog-fill" style="width: ${p.is_spectator ? 0 : p.pct}%;"></div>
       </div>
       <div class="comp-player-bottom">
-        <span class="comp-sub-stats"><b>${p.attempts}</b> coup${p.attempts > 1 ? 's' : ''} • <b>${p.revealed_words_count || 0}</b> mot${(p.revealed_words_count || 0) > 1 ? 's' : ''}</span>
+        <span class="comp-sub-stats"><b>${p.attempts}</b> coup${p.attempts > 1 ? "s" : ""} • <b>${p.revealed_words_count || 0}</b> mot${(p.revealed_words_count || 0) > 1 ? "s" : ""}</span>
         ${statusHtml}
       </div>
     `;
@@ -4061,7 +5205,7 @@ class PedantixApp {
     if (!players || !Array.isArray(players)) return;
     this.leaderboard = players;
 
-    const me = players.find(p => p.player_id === this.playerId);
+    const me = players.find((p) => p.player_id === this.playerId);
     if (me) {
       this.isHost = me.is_host;
       this.isReady = me.is_ready;
@@ -4070,29 +5214,33 @@ class PedantixApp {
       this.updateSpectatorUI();
     }
 
-    const activePlayers = players.filter(p => !p.is_spectator);
-    const readyCount = activePlayers.filter(p => p.is_ready).length;
+    const activePlayers = players.filter((p) => !p.is_spectator);
+    const readyCount = activePlayers.filter((p) => p.is_ready).length;
     const totalCount = activePlayers.length;
     this.canStart = totalCount > 0 && readyCount === totalCount;
 
-    const connectedCount = players.filter(p => p.connected !== false).length;
-    this.dom.compStatusBadge.textContent = `🟢 ${connectedCount} joueur${connectedCount > 1 ? 's' : ''} en ligne`;
+    const connectedCount = players.filter((p) => p.connected !== false).length;
+    this.dom.compStatusBadge.textContent = `🟢 ${connectedCount} joueur${connectedCount > 1 ? "s" : ""} en ligne`;
 
     // 1. Update Lobby Grid
     if (this.dom.lobbyReadyRatio) {
-      const specCount = players.filter(p => p.is_spectator).length;
-      const specText = specCount > 0 ? ` (${specCount} en pause 👁️)` : '';
-      this.dom.lobbyReadyRatio.textContent = `${readyCount}/${totalCount} prêt${readyCount > 1 ? 's' : ''}${specText}`;
+      const specCount = players.filter((p) => p.is_spectator).length;
+      const specText = specCount > 0 ? ` (${specCount} en pause 👁️)` : "";
+      this.dom.lobbyReadyRatio.textContent = `${readyCount}/${totalCount} prêt${readyCount > 1 ? "s" : ""}${specText}`;
     }
 
     if (this.dom.lobbyPlayersGrid) {
-      this.dom.lobbyPlayersGrid.innerHTML = '';
-      players.forEach(p => {
+      this.dom.lobbyPlayersGrid.innerHTML = "";
+      players.forEach((p) => {
         const isMe = p.player_id === this.playerId;
-        const card = document.createElement('div');
-        const stateClass = p.is_spectator ? 'state-spec' : (p.is_ready ? 'is-ready' : '');
-        card.className = `lobby-player-card ${isMe ? 'is-me' : ''} ${stateClass}`;
-        const avatarIcon = p.is_spectator ? '👁️' : (p.is_host ? '👑' : '👤');
+        const card = document.createElement("div");
+        const stateClass = p.is_spectator
+          ? "state-spec"
+          : p.is_ready
+            ? "is-ready"
+            : "";
+        card.className = `lobby-player-card ${isMe ? "is-me" : ""} ${stateClass}`;
+        const avatarIcon = p.is_spectator ? "👁️" : p.is_host ? "👑" : "👤";
         card.innerHTML = `
           <div class="lobby-card-avatar-wrap">
             <span class="lobby-avatar-icon">${avatarIcon}</span>
@@ -4100,15 +5248,15 @@ class PedantixApp {
           <div class="lobby-card-info">
             <div class="lobby-card-name-row">
               <span class="lobby-card-name" title="${this.escapeHtml(p.name)}">${this.escapeHtml(p.name)}</span>
-              ${isMe ? '<span class="player-you-tag">Vous</span>' : ''}
-              ${p.is_host ? '<span class="host-pill" style="font-size:0.68rem;padding:0.1rem 0.45rem;">👑 Host</span>' : ''}
+              ${isMe ? '<span class="player-you-tag">Vous</span>' : ""}
+              ${p.is_host ? '<span class="host-pill" style="font-size:0.68rem;padding:0.1rem 0.45rem;">👑 Host</span>' : ""}
             </div>
             <div class="lobby-card-score">
-              ⭐ <b>${p.score || 0}</b> point${(p.score || 0) > 1 ? 's' : ''}
+              ⭐ <b>${p.score || 0}</b> point${(p.score || 0) > 1 ? "s" : ""}
             </div>
           </div>
-          <div class="lobby-card-state ${p.is_spectator ? 'state-spec' : (p.is_ready ? 'state-ready' : 'state-wait')}">
-            ${p.is_spectator ? '👁️ Spectateur' : (p.is_ready ? '🟢 Prêt' : '⏳ En attente')}
+          <div class="lobby-card-state ${p.is_spectator ? "state-spec" : p.is_ready ? "state-ready" : "state-wait"}">
+            ${p.is_spectator ? "👁️ Spectateur" : p.is_ready ? "🟢 Prêt" : "⏳ En attente"}
           </div>
         `;
         this.dom.lobbyPlayersGrid.appendChild(card);
@@ -4117,7 +5265,7 @@ class PedantixApp {
 
     // 2. Update Sidebar Leaderboard
     if (this.dom.playersList) {
-      this.dom.playersList.innerHTML = '';
+      this.dom.playersList.innerHTML = "";
 
       if (players.length <= 25) {
         // Mode direct : affiche tous les joueurs si 25 joueurs ou moins
@@ -4128,25 +5276,33 @@ class PedantixApp {
         });
       } else {
         // Mode menu déroulant : menu déroulant avec tous les joueurs si plus de 25 joueurs
-        const container = document.createElement('div');
-        container.className = 'comp-dropdown-leaderboard-container';
+        const container = document.createElement("div");
+        container.className = "comp-dropdown-leaderboard-container";
 
         // Sélection par défaut : le joueur local ou le 1er au classement
-        if (!this.selectedLeaderboardPlayerId || !players.some(p => p.player_id === this.selectedLeaderboardPlayerId)) {
-          const mePlayer = players.find(p => p.player_id === this.playerId);
-          this.selectedLeaderboardPlayerId = mePlayer ? mePlayer.player_id : players[0].player_id;
+        if (
+          !this.selectedLeaderboardPlayerId ||
+          !players.some((p) => p.player_id === this.selectedLeaderboardPlayerId)
+        ) {
+          const mePlayer = players.find((p) => p.player_id === this.playerId);
+          this.selectedLeaderboardPlayerId = mePlayer
+            ? mePlayer.player_id
+            : players[0].player_id;
         }
 
-        const medals = ['🥇', '🥈', '🥉'];
-        let optionsHtml = '';
+        const medals = ["🥇", "🥈", "🥉"];
+        let optionsHtml = "";
         players.forEach((p, idx) => {
           const isMe = p.player_id === this.playerId;
-          const rankDisplay = p.is_spectator ? '👁️' : (medals[idx] || `#${idx + 1}`);
-          const meTag = isMe ? ' (Vous)' : '';
-          const winTag = p.is_won ? ' • 🏆 GAGNÉ' : '';
-          const specTag = p.is_spectator ? ' • 👁️ SPECTATEUR' : '';
+          const rankDisplay = p.is_spectator
+            ? "👁️"
+            : medals[idx] || `#${idx + 1}`;
+          const meTag = isMe ? " (Vous)" : "";
+          const winTag = p.is_won ? " • 🏆 GAGNÉ" : "";
+          const specTag = p.is_spectator ? " • 👁️ SPECTATEUR" : "";
           const label = `${rankDisplay} ${p.name}${meTag} — ${p.pct}% (${p.attempts} c., 🏆 ${p.score || 0})${winTag}${specTag}`;
-          const isSelected = p.player_id === this.selectedLeaderboardPlayerId ? 'selected' : '';
+          const isSelected =
+            p.player_id === this.selectedLeaderboardPlayerId ? "selected" : "";
           optionsHtml += `<option value="${p.player_id}" ${isSelected}>${this.escapeHtml(label)}</option>`;
         });
 
@@ -4165,55 +5321,91 @@ class PedantixApp {
           </div>
           <div id="comp-dropdown-player-view" class="comp-dropdown-player-view"></div>
           <button type="button" class="btn-toggle-dropdown-all" id="btn-toggle-dropdown-all">
-            <span class="toggle-icon">${this.showAllLeaderboardExpanded ? '▲' : '📜'}</span>
-            <span class="toggle-text">${this.showAllLeaderboardExpanded ? 'Replier le classement' : 'Dérouler la liste complète'}</span>
+            <span class="toggle-icon">${this.showAllLeaderboardExpanded ? "▲" : "📜"}</span>
+            <span class="toggle-text">${this.showAllLeaderboardExpanded ? "Replier le classement" : "Dérouler la liste complète"}</span>
           </button>
-          <div class="comp-dropdown-all-cards" id="comp-dropdown-all-cards" style="display: ${this.showAllLeaderboardExpanded ? 'flex' : 'none'};"></div>
+          <div class="comp-dropdown-all-cards" id="comp-dropdown-all-cards" style="display: ${this.showAllLeaderboardExpanded ? "flex" : "none"};"></div>
         `;
 
         this.dom.playersList.appendChild(container);
 
         // Affichage de la carte détaillée du joueur sélectionné dans le menu déroulant
-        const selectedPlayerView = container.querySelector('#comp-dropdown-player-view');
-        const selectedPlayerObj = players.find(p => p.player_id === this.selectedLeaderboardPlayerId) || players[0];
+        const selectedPlayerView = container.querySelector(
+          "#comp-dropdown-player-view",
+        );
+        const selectedPlayerObj =
+          players.find(
+            (p) => p.player_id === this.selectedLeaderboardPlayerId,
+          ) || players[0];
         const selectedIdx = players.indexOf(selectedPlayerObj);
         if (selectedPlayerView && selectedPlayerObj) {
-          selectedPlayerView.appendChild(this.renderPlayerCard(selectedPlayerObj, selectedIdx, selectedPlayerObj.player_id === this.playerId));
+          selectedPlayerView.appendChild(
+            this.renderPlayerCard(
+              selectedPlayerObj,
+              selectedIdx,
+              selectedPlayerObj.player_id === this.playerId,
+            ),
+          );
         }
 
         // Si la liste complète est dépliée, afficher également toutes les cartes
-        const allCardsContainer = container.querySelector('#comp-dropdown-all-cards');
+        const allCardsContainer = container.querySelector(
+          "#comp-dropdown-all-cards",
+        );
         if (allCardsContainer && this.showAllLeaderboardExpanded) {
           players.forEach((p, idx) => {
-            allCardsContainer.appendChild(this.renderPlayerCard(p, idx, p.player_id === this.playerId));
+            allCardsContainer.appendChild(
+              this.renderPlayerCard(p, idx, p.player_id === this.playerId),
+            );
           });
         }
 
         // Événement de changement dans le menu déroulant
-        const dropdown = container.querySelector('#comp-leaderboard-dropdown');
+        const dropdown = container.querySelector("#comp-leaderboard-dropdown");
         if (dropdown) {
-          dropdown.addEventListener('change', (e) => {
+          dropdown.addEventListener("change", (e) => {
             this.selectedLeaderboardPlayerId = e.target.value;
-            const updatedPlayer = players.find(p => p.player_id === this.selectedLeaderboardPlayerId);
+            const updatedPlayer = players.find(
+              (p) => p.player_id === this.selectedLeaderboardPlayerId,
+            );
             const updatedIdx = players.indexOf(updatedPlayer);
             if (selectedPlayerView && updatedPlayer) {
-              selectedPlayerView.innerHTML = '';
-              selectedPlayerView.appendChild(this.renderPlayerCard(updatedPlayer, updatedIdx, updatedPlayer.player_id === this.playerId));
+              selectedPlayerView.innerHTML = "";
+              selectedPlayerView.appendChild(
+                this.renderPlayerCard(
+                  updatedPlayer,
+                  updatedIdx,
+                  updatedPlayer.player_id === this.playerId,
+                ),
+              );
             }
           });
         }
 
         // Événement déplier/replier
-        const toggleBtn = container.querySelector('#btn-toggle-dropdown-all');
+        const toggleBtn = container.querySelector("#btn-toggle-dropdown-all");
         if (toggleBtn && allCardsContainer) {
-          toggleBtn.addEventListener('click', () => {
+          toggleBtn.addEventListener("click", () => {
             this.showAllLeaderboardExpanded = !this.showAllLeaderboardExpanded;
-            allCardsContainer.style.display = this.showAllLeaderboardExpanded ? 'flex' : 'none';
-            toggleBtn.querySelector('.toggle-icon').textContent = this.showAllLeaderboardExpanded ? '▲' : '📜';
-            toggleBtn.querySelector('.toggle-text').textContent = this.showAllLeaderboardExpanded ? 'Replier le classement' : 'Dérouler la liste complète';
-            if (this.showAllLeaderboardExpanded && allCardsContainer.children.length === 0) {
+            allCardsContainer.style.display = this.showAllLeaderboardExpanded
+              ? "flex"
+              : "none";
+            toggleBtn.querySelector(".toggle-icon").textContent = this
+              .showAllLeaderboardExpanded
+              ? "▲"
+              : "📜";
+            toggleBtn.querySelector(".toggle-text").textContent = this
+              .showAllLeaderboardExpanded
+              ? "Replier le classement"
+              : "Dérouler la liste complète";
+            if (
+              this.showAllLeaderboardExpanded &&
+              allCardsContainer.children.length === 0
+            ) {
               players.forEach((p, idx) => {
-                allCardsContainer.appendChild(this.renderPlayerCard(p, idx, p.player_id === this.playerId));
+                allCardsContainer.appendChild(
+                  this.renderPlayerCard(p, idx, p.player_id === this.playerId),
+                );
               });
             }
           });
@@ -4226,10 +5418,10 @@ class PedantixApp {
 
   updateActivity(events) {
     if (!events || !Array.isArray(events)) return;
-    this.dom.activityFeed.innerHTML = '';
-    events.slice(0, 15).forEach(ev => {
-      const div = document.createElement('div');
-      div.className = 'activity-item';
+    this.dom.activityFeed.innerHTML = "";
+    events.slice(0, 15).forEach((ev) => {
+      const div = document.createElement("div");
+      div.className = "activity-item";
       div.innerHTML = `<span class="activity-time">${ev.timestamp}</span> ${this.escapeHtml(ev.text)}`;
       this.dom.activityFeed.appendChild(div);
     });
@@ -4239,22 +5431,26 @@ class PedantixApp {
     this.dom.opponentWinName.textContent = winnerName;
     this.dom.opponentWinTitle.textContent = title;
     this.dom.opponentWinTries.textContent = attempts;
-    this.dom.opponentWinBanner.style.display = 'block';
+    this.dom.opponentWinBanner.style.display = "block";
   }
 
   hideOpponentWin() {
-    this.dom.opponentWinBanner.style.display = 'none';
+    this.dom.opponentWinBanner.style.display = "none";
   }
 
   updateBadges() {
     if (this.dom.puzzleNum && this.seed) {
-      this.dom.puzzleNum.textContent = this.seed.replace('P-', '').replace('D-', '');
+      this.dom.puzzleNum.textContent = this.seed
+        .replace("P-", "")
+        .replace("D-", "");
     }
     if (this.dom.puzzleLabel) {
-      this.dom.puzzleLabel.textContent = this.isSoloMode ? 'Solo' : 'Partie';
+      this.dom.puzzleLabel.textContent = this.isSoloMode ? "Solo" : "Partie";
     }
     if (this.dom.modeBadge) {
-      this.dom.modeBadge.textContent = this.isSoloMode ? 'Mode Solo' : 'Concours Réseau';
+      this.dom.modeBadge.textContent = this.isSoloMode
+        ? "Mode Solo"
+        : "Concours Réseau";
     }
   }
 
@@ -4264,129 +5460,142 @@ class PedantixApp {
 
   renderBoard() {
     // 1. Render Title
-    this.dom.wikiHeading.innerHTML = '';
-    const titleTokens = this.tokens.filter(t => t.is_title);
-    titleTokens.forEach(t => {
+    this.dom.wikiHeading.innerHTML = "";
+    const titleTokens = this.tokens.filter((t) => t.is_title);
+    titleTokens.forEach((t) => {
       this.dom.wikiHeading.appendChild(this.createTokenElement(t, true));
     });
 
     // Canari piège titre invisible (détecte les scrapers de titre)
-    const titleCanary = document.createElement('span');
-    titleCanary.className = 'w revealed canary-trap';
-    titleCanary.textContent = 'piegebothoney';
-    titleCanary.setAttribute('aria-hidden', 'true');
+    const titleCanary = document.createElement("span");
+    titleCanary.className = "w revealed canary-trap";
+    titleCanary.textContent = "piegebothoney";
+    titleCanary.setAttribute("aria-hidden", "true");
     this.dom.wikiHeading.appendChild(titleCanary);
 
     // 2. Render Paragraphs
-    this.dom.article.innerHTML = '';
-    const bodyTokens = this.tokens.filter(t => !t.is_title);
+    this.dom.article.innerHTML = "";
+    const bodyTokens = this.tokens.filter((t) => !t.is_title);
 
     const pGroups = {};
-    bodyTokens.forEach(t => {
+    bodyTokens.forEach((t) => {
       const pIdx = t.paragraph_idx;
       if (!pGroups[pIdx]) pGroups[pIdx] = [];
       pGroups[pIdx].push(t);
     });
 
-    Object.keys(pGroups).sort((a,b) => Number(a)-Number(b)).forEach(pIdx => {
-      const pEl = document.createElement('p');
-      pGroups[pIdx].forEach(t => {
-        pEl.appendChild(this.createTokenElement(t, false));
+    Object.keys(pGroups)
+      .sort((a, b) => Number(a) - Number(b))
+      .forEach((pIdx) => {
+        const pEl = document.createElement("p");
+        pGroups[pIdx].forEach((t) => {
+          pEl.appendChild(this.createTokenElement(t, false));
+        });
+        this.dom.article.appendChild(pEl);
       });
-      this.dom.article.appendChild(pEl);
-    });
 
     // 3. Canaris pièges invisibles (détectent scrapers DOM et extensions tierces)
-    const canary1 = document.createElement('span');
-    canary1.className = 'w revealed canary-trap';
-    canary1.textContent = 'canaritrichebot';
-    canary1.setAttribute('aria-hidden', 'true');
+    const canary1 = document.createElement("span");
+    canary1.className = "w revealed canary-trap";
+    canary1.textContent = "canaritrichebot";
+    canary1.setAttribute("aria-hidden", "true");
     this.dom.article.appendChild(canary1);
 
-    const canary2 = document.createElement('span');
-    canary2.className = 'w revealed canary-trap';
-    canary2.textContent = 'xylophonepiege';
-    canary2.setAttribute('aria-hidden', 'true');
+    const canary2 = document.createElement("span");
+    canary2.className = "w revealed canary-trap";
+    canary2.textContent = "xylophonepiege";
+    canary2.setAttribute("aria-hidden", "true");
     this.dom.article.appendChild(canary2);
   }
 
   renderTokenContent(token, span) {
     if (token.revealed) {
-      span.classList.add('revealed');
-      span.classList.remove('hint-word', 'close-heat-grey', 'hint-pulse', 'showing-len');
+      span.classList.add("revealed");
+      span.classList.remove(
+        "hint-word",
+        "close-heat-grey",
+        "hint-pulse",
+        "showing-len",
+      );
       span.textContent = token.text;
-      span.style.color = '';
-      span.style.backgroundColor = '';
-      span.style.borderColor = '';
-      span.title = '';
+      span.style.color = "";
+      span.style.backgroundColor = "";
+      span.style.borderColor = "";
+      span.title = "";
       delete span.dataset.heat;
       delete span.dataset.word;
       return;
     }
 
     // Not revealed yet
-    span.classList.remove('revealed', 'hint-word', 'close-heat', 'close-heat-grey', 'heat-flash');
+    span.classList.remove(
+      "revealed",
+      "hint-word",
+      "close-heat",
+      "close-heat-grey",
+      "heat-flash",
+    );
 
     if (token.hint_revealed) {
-      span.classList.add('hint-word');
+      span.classList.add("hint-word");
       span.textContent = token.text;
-      span.style.color = '';
-      span.style.backgroundColor = '';
-      span.style.borderColor = '';
-      span.title = 'Mot dévoilé automatiquement comme indice';
+      span.style.color = "";
+      span.style.backgroundColor = "";
+      span.style.borderColor = "";
+      span.title = "Mot dévoilé automatiquement comme indice";
       delete span.dataset.heat;
       delete span.dataset.word;
     } else if (token.close_word && token.heat >= 48) {
       span.dataset.heat = token.heat;
       span.dataset.word = token.close_word;
-      span.classList.add('close-heat-grey');
+      span.classList.add("close-heat-grey");
       span.innerHTML = `&nbsp;${this.escapeHtml(token.close_word)}&nbsp;`;
       span.style.color = this.getGreyColor(Number(token.heat));
-      span.style.backgroundColor = '#222222';
+      span.style.backgroundColor = "#222222";
       span.title = `Proximité : ${token.heat}% (proche de « ${token.close_word} »)`;
     } else {
-      span.classList.remove('hint-word', 'close-heat-grey');
-      span.innerHTML = '&nbsp;'.repeat(Math.max(1, token.length));
-      span.style.color = '';
-      span.style.backgroundColor = '';
-      span.style.borderColor = '';
-      span.title = '';
+      span.classList.remove("hint-word", "close-heat-grey");
+      span.innerHTML = "&nbsp;".repeat(Math.max(1, token.length));
+      span.style.color = "";
+      span.style.backgroundColor = "";
+      span.style.borderColor = "";
+      span.title = "";
     }
   }
 
   createTokenElement(token, isTitle) {
-    if (token.type === 'space') {
-      const span = document.createElement('span');
-      span.className = 'space-span';
-      span.innerHTML = ' ';
+    if (token.type === "space") {
+      const span = document.createElement("span");
+      span.className = "space-span";
+      span.innerHTML = " ";
       return span;
     }
 
-    if (token.type === 'punct') {
-      const span = document.createElement('span');
-      span.className = 'punct-span';
+    if (token.type === "punct") {
+      const span = document.createElement("span");
+      span.className = "punct-span";
       span.textContent = token.text;
       return span;
     }
 
     // Word token (.w)
-    const span = document.createElement('span');
+    const span = document.createElement("span");
     span.id = `token-${token.id}`;
     span.dataset.id = token.id;
-    span.className = `w ${isTitle ? 'h' : ''}`;
+    span.className = `w ${isTitle ? "h" : ""}`;
 
     this.renderTokenContent(token, span);
 
-    span.addEventListener('click', () => {
-      if (!span.classList.contains('revealed')) {
-        this.playTone('click');
-        span.classList.add('showing-len');
+    span.addEventListener("click", () => {
+      if (!span.classList.contains("revealed")) {
+        this.playTone("click");
+        span.classList.add("showing-len");
         span.innerHTML = `&nbsp;${token.length}&nbsp;`;
-        span.style.color = '#00f0ff';
-        span.style.backgroundColor = '#0b1320';
+        span.style.color = "#00f0ff";
+        span.style.backgroundColor = "#0b1320";
         setTimeout(() => {
-          if (!span.classList.contains('revealed')) {
-            span.classList.remove('showing-len');
+          if (!span.classList.contains("revealed")) {
+            span.classList.remove("showing-len");
             this.renderTokenContent(token, span);
           }
         }, 2000);
@@ -4402,41 +5611,52 @@ class PedantixApp {
 
   async handleGuessSubmit(e) {
     if (e && e.isTrusted === false) {
-      this.playTone('miss');
-      this.showToast('🤖 Action automatisée ou script de triche détecté.');
+      this.playTone("miss");
+      this.showToast("🤖 Action automatisée ou script de triche détecté.");
       return;
     }
 
     if (this.isGuessSubmitting) {
-      this.showToast('La proposition précédente est encore en cours de vérification.');
+      this.showToast(
+        "La proposition précédente est encore en cours de vérification.",
+      );
       return;
     }
 
     if (this.isInputLocked) {
-      this.showToast('Veuillez patienter avant de pouvoir reproposer un mot.');
+      this.showToast("Veuillez patienter avant de pouvoir reproposer un mot.");
       return;
     }
 
     if (this.isSpectator) {
-      this.showToast('👁️ Vous êtes en mode spectateur (en pause). Reprenez votre place pour proposer des mots.');
+      this.showToast(
+        "👁️ Vous êtes en mode spectateur (en pause). Reprenez votre place pour proposer des mots.",
+      );
       return;
     }
     const rawWord = this.dom.guessInput.value.trim();
     if (!rawWord) return;
 
     // Détection immédiate du canari piège (honeypot DOM)
-    const cleanLower = rawWord.toLowerCase().replace(/[- ']/g, '');
-    if (cleanLower === 'canaritrichebot' || cleanLower === 'piegebothoney' || cleanLower === 'xylophonepiege') {
-      this.playTone('miss');
-      this.showToast('🤖 Piège anti-triche activé ! Extension ou scraper détecté.');
+    const cleanLower = rawWord.toLowerCase().replace(/[- ']/g, "");
+    if (
+      cleanLower === "canaritrichebot" ||
+      cleanLower === "piegebothoney" ||
+      cleanLower === "xylophonepiege"
+    ) {
+      this.playTone("miss");
+      this.showToast(
+        "🤖 Piège anti-triche activé ! Extension ou scraper détecté.",
+      );
       this.lockInputTemporarily(30);
-      this.dom.errorLabel.innerHTML = '🤖 <b>Anti-Triche</b> : Scraping DOM / Extension détectée. Suspendu 30s.';
-      this.dom.guessInput.value = '';
+      this.dom.errorLabel.innerHTML =
+        "🤖 <b>Anti-Triche</b> : Scraping DOM / Extension détectée. Suspendu 30s.";
+      this.dom.guessInput.value = "";
       return;
     }
 
-    if (this.roomStatus === 'lobby') {
-      this.showToast('Attendez que l\'Host démarre la partie !');
+    if (this.roomStatus === "lobby") {
+      this.showToast("Attendez que l'Host démarre la partie !");
       return;
     }
 
@@ -4448,17 +5668,17 @@ class PedantixApp {
     this.isGuessSubmitting = true;
     this.updateGuessInputAvailability();
     const previousPlaceholder = this.dom.guessInput.placeholder;
-    this.dom.guessInput.placeholder = 'Vérification du mot en cours…';
+    this.dom.guessInput.placeholder = "Vérification du mot en cours…";
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/guess'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/guess"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
           word: rawWord,
-          guess_token: this.guessToken
-        })
+          guess_token: this.guessToken,
+        }),
       });
 
       const data = await resp.json().catch(() => ({}));
@@ -4467,24 +5687,31 @@ class PedantixApp {
         this.guessToken = data.next_token;
       }
       if (!resp.ok) {
-        throw new Error(data.detail || data.error || 'La proposition n’a pas pu être vérifiée. Réessayez.');
+        throw new Error(
+          data.detail ||
+            data.error ||
+            "La proposition n’a pas pu être vérifiée. Réessayez.",
+        );
       }
       if (!data.status && !data.error) {
-        throw new Error('Réponse invalide du serveur. Votre mot est conservé pour réessayer.');
+        throw new Error(
+          "Réponse invalide du serveur. Votre mot est conservé pour réessayer.",
+        );
       }
 
       this.processGuessResult(data, rawWord);
-      const wasRejected = data.status === 'bot_blocked'
-        || data.status === 'invalid_word'
-        || !!data.error;
+      const wasRejected =
+        data.status === "bot_blocked" ||
+        data.status === "invalid_word" ||
+        !!data.error;
       if (!wasRejected && this.dom.guessInput.value.trim() === rawWord) {
-        this.dom.guessInput.value = '';
-        if (this.dom.guessLenBadge) this.dom.guessLenBadge.style.display = 'none';
+        this.dom.guessInput.value = "";
+        if (this.dom.guessLenBadge)
+          this.dom.guessLenBadge.style.display = "none";
       }
-
     } catch (err) {
       console.error(err);
-      const message = err.message || 'Erreur lors de la vérification.';
+      const message = err.message || "Erreur lors de la vérification.";
       this.dom.errorLabel.textContent = `${message} Votre mot est conservé dans le champ.`;
     } finally {
       this.isGuessSubmitting = false;
@@ -4496,8 +5723,6 @@ class PedantixApp {
     }
   }
 
-
-
   lockInputTemporarily(seconds) {
     if (this.inputLockTimeout) clearInterval(this.inputLockTimeout);
     this.isInputLocked = true;
@@ -4505,7 +5730,11 @@ class PedantixApp {
       this.dom.guessInput.disabled = true;
       this.dom.guessInput.placeholder = `Suspension anti-triche : ${seconds}s...`;
     }
-    const submitBtn = this.dom.form ? this.dom.form.querySelector('button[type="submit"], input[type="submit"]') : null;
+    const submitBtn = this.dom.form
+      ? this.dom.form.querySelector(
+          'button[type="submit"], input[type="submit"]',
+        )
+      : null;
     if (submitBtn) submitBtn.disabled = true;
 
     let remaining = seconds;
@@ -4516,12 +5745,15 @@ class PedantixApp {
         this.inputLockTimeout = null;
         this.isInputLocked = false;
         if (this.dom.guessInput && !this.isSpectator) {
-          this.dom.guessInput.placeholder = 'Entrez un mot...';
+          this.dom.guessInput.placeholder = "Entrez un mot...";
         }
         this.updateGuessInputAvailability();
         if (!this.dom.guessInput.disabled) this.dom.guessInput.focus();
-        if (this.dom.errorLabel && this.dom.errorLabel.textContent.includes('Anti-Triche')) {
-          this.dom.errorLabel.textContent = '';
+        if (
+          this.dom.errorLabel &&
+          this.dom.errorLabel.textContent.includes("Anti-Triche")
+        ) {
+          this.dom.errorLabel.textContent = "";
         }
       } else {
         if (this.dom.guessInput) {
@@ -4532,40 +5764,43 @@ class PedantixApp {
   }
 
   processGuessResult(data, word) {
-    if (data.status === 'already_won') {
+    if (data.status === "already_won") {
       this.showToast(data.message);
       return;
     }
 
     // Bot / Anti-cheat rejection check
-    if (data.status === 'bot_blocked') {
-      this.playTone('miss');
-      this.dom.errorLabel.innerHTML = `🤖 <b>Protection Anti-Triche</b> : ${this.escapeHtml(data.error || 'Requête bloquée.')}`;
-      this.showToast(data.error || 'Requête bloquée par l\'anti-triche.');
+    if (data.status === "bot_blocked") {
+      this.playTone("miss");
+      this.dom.errorLabel.innerHTML = `🤖 <b>Protection Anti-Triche</b> : ${this.escapeHtml(data.error || "Requête bloquée.")}`;
+      this.showToast(data.error || "Requête bloquée par l'anti-triche.");
       const cd = data.cooldown_seconds || 1;
       this.lockInputTemporarily(cd);
       return;
     }
 
     // Check if word was already found or already written
-    if (data.is_repeat || data.status === 'already_guessed') {
-      this.playTone('miss');
+    if (data.is_repeat || data.status === "already_guessed") {
+      this.playTone("miss");
       this.dom.errorLabel.innerHTML = `⚠️ <b>"${this.escapeHtml(word)}"</b> : Déjà écrit`;
       this.showToast(`« ${this.escapeHtml(word)} » : Déjà écrit`);
       return;
     }
 
     // French word validation rejection check
-    if (data.status === 'invalid_word' || (data.error && data.status !== 'already_won')) {
-      this.playTone('miss');
+    if (
+      data.status === "invalid_word" ||
+      (data.error && data.status !== "already_won")
+    ) {
+      this.playTone("miss");
       this.dom.errorLabel.innerHTML = `⚠️ <b>"${this.escapeHtml(word)}"</b> : ${data.error || "Ce mot n'est pas français ou n'existe pas."}`;
       this.showToast(data.error || "Mot non reconnu");
       return;
     }
 
     // Reset previous flash states
-    document.querySelectorAll('.w.just-revealed').forEach(el => {
-      el.classList.remove('just-revealed');
+    document.querySelectorAll(".w.just-revealed").forEach((el) => {
+      el.classList.remove("just-revealed");
     });
 
     const matchCount = data.matches_count || 0;
@@ -4573,19 +5808,19 @@ class PedantixApp {
 
     // 1. Audio and feedback indicator
     if (matchCount > 0) {
-      this.playTone('match');
-      const greenBlocks = '🟩'.repeat(Math.min(5, matchCount));
-      this.dom.errorLabel.innerHTML = `${greenBlocks} <b>"${this.escapeHtml(word)}"</b> : ${matchCount} occurrence${matchCount > 1 ? 's' : ''}`;
-    } else if (closeCount > 0 || data.status === 'close') {
-      this.playTone('close');
+      this.playTone("match");
+      const greenBlocks = "🟩".repeat(Math.min(5, matchCount));
+      this.dom.errorLabel.innerHTML = `${greenBlocks} <b>"${this.escapeHtml(word)}"</b> : ${matchCount} occurrence${matchCount > 1 ? "s" : ""}`;
+    } else if (closeCount > 0 || data.status === "close") {
+      this.playTone("close");
       const maxScore = data.score || 50;
       if (closeCount > 0) {
-        this.dom.errorLabel.innerHTML = `🔥 <b>"${this.escapeHtml(word)}"</b> : Mot proche (${maxScore}%, ${closeCount} lié${closeCount > 1 ? 's' : ''})`;
+        this.dom.errorLabel.innerHTML = `🔥 <b>"${this.escapeHtml(word)}"</b> : Mot proche (${maxScore}%, ${closeCount} lié${closeCount > 1 ? "s" : ""})`;
       } else {
         this.dom.errorLabel.innerHTML = `🔥 <b>"${this.escapeHtml(word)}"</b> : Mot proche (${maxScore}%)`;
       }
     } else {
-      this.playTone('miss');
+      this.playTone("miss");
       this.dom.errorLabel.innerHTML = `🟥 <b>"${this.escapeHtml(word)}"</b> : Absent`;
     }
 
@@ -4600,7 +5835,8 @@ class PedantixApp {
     }
 
     // 4. Update stats and history
-    this.revealedWordsCount = data.revealed_words_count || this.revealedWordsCount;
+    this.revealedWordsCount =
+      data.revealed_words_count || this.revealedWordsCount;
     this.history = data.history || this.history;
     this.updateDayMeter();
     this.renderHistory();
@@ -4615,21 +5851,36 @@ class PedantixApp {
 
   updateDayMeter() {
     const attempts = this.history.length;
-    this.dom.attemptsStat.textContent = `${attempts} coup${attempts > 1 ? 's' : ''}`;
+    this.dom.attemptsStat.textContent = `${attempts} coup${attempts > 1 ? "s" : ""}`;
     this.dom.revealedStat.textContent = this.revealedWordsCount;
     this.dom.totalStat.textContent = this.totalWords;
 
-    const pct = this.totalWords > 0 ? Math.round((this.revealedWordsCount / this.totalWords) * 100) : 0;
+    const pct =
+      this.totalWords > 0
+        ? Math.round((this.revealedWordsCount / this.totalWords) * 100)
+        : 0;
     this.dom.pctStat.textContent = `${pct}%`;
 
     const totalBlocks = 10;
-    const greenBlocks = Math.round((this.revealedWordsCount / Math.max(1, this.totalWords)) * totalBlocks);
-    
-    const closeTokensCount = document.querySelectorAll('.w.close-heat-grey:not(.revealed), .w.close-heat:not(.revealed)').length;
-    const orangeBlocks = Math.min(totalBlocks - greenBlocks, Math.round((closeTokensCount / Math.max(1, this.totalWords)) * totalBlocks * 2));
+    const greenBlocks = Math.round(
+      (this.revealedWordsCount / Math.max(1, this.totalWords)) * totalBlocks,
+    );
+
+    const closeTokensCount = document.querySelectorAll(
+      ".w.close-heat-grey:not(.revealed), .w.close-heat:not(.revealed)",
+    ).length;
+    const orangeBlocks = Math.min(
+      totalBlocks - greenBlocks,
+      Math.round(
+        (closeTokensCount / Math.max(1, this.totalWords)) * totalBlocks * 2,
+      ),
+    );
     const redBlocks = Math.max(0, totalBlocks - greenBlocks - orangeBlocks);
 
-    const meterStr = '🟩'.repeat(greenBlocks) + '🟧'.repeat(orangeBlocks) + '🟥'.repeat(redBlocks);
+    const meterStr =
+      "🟩".repeat(greenBlocks) +
+      "🟧".repeat(orangeBlocks) +
+      "🟥".repeat(redBlocks);
     this.dom.dayMeter.textContent = meterStr;
     this.dom.meterSpan.textContent = meterStr;
 
@@ -4644,18 +5895,26 @@ class PedantixApp {
 
   renderHistory() {
     const tbody = this.dom.guessesTbody;
-    tbody.innerHTML = '';
+    tbody.innerHTML = "";
 
     let items = [...this.history];
 
     if (this.filterQuery) {
-      items = items.filter(h => h.word.toLowerCase().includes(this.filterQuery));
+      items = items.filter((h) =>
+        h.word.toLowerCase().includes(this.filterQuery),
+      );
     }
 
-    if (this.sortMode === 'chrono') {
-      items.sort((a,b) => this.sortAsc ? (b.attempt - a.attempt) : (a.attempt - b.attempt));
+    if (this.sortMode === "chrono") {
+      items.sort((a, b) =>
+        this.sortAsc ? b.attempt - a.attempt : a.attempt - b.attempt,
+      );
     } else {
-      items.sort((a,b) => this.sortAsc ? a.word.localeCompare(b.word) : b.word.localeCompare(a.word));
+      items.sort((a, b) =>
+        this.sortAsc
+          ? a.word.localeCompare(b.word)
+          : b.word.localeCompare(a.word),
+      );
     }
 
     if (this.isCollapsed) {
@@ -4663,19 +5922,19 @@ class PedantixApp {
     }
 
     if (items.length === 0) {
-      const tr = document.createElement('tr');
+      const tr = document.createElement("tr");
       tr.innerHTML = `<td colspan="3" style="text-align: center; color: rgba(0,0,0,0.5); padding: 10px 0;">Aucun mot</td>`;
       tbody.appendChild(tr);
       return;
     }
 
-    items.forEach(item => {
-      const tr = document.createElement('tr');
+    items.forEach((item) => {
+      const tr = document.createElement("tr");
 
-      let badge = '';
-      if (item.status === 'match') {
+      let badge = "";
+      if (item.status === "match") {
         badge = `<span class="guess-tag tag-match">🟩 ${item.count}</span>`;
-      } else if (item.status === 'close') {
+      } else if (item.status === "close") {
         const grey = this.getGreyColor(item.score);
         badge = `<span class="guess-tag tag-close-grey" style="background-color: #222222; border: 1px solid rgba(255, 255, 255, 0.22); color: ${grey}; font-weight: 700;" title="Proximité : ${item.score}%">🔥 ${item.score}%</span>`;
       } else {
@@ -4699,110 +5958,130 @@ class PedantixApp {
     this.isWon = true;
     this.isAbandoned = false;
     this.stopWordHintTimer();
-    this.playTone('win');
+    this.playTone("win");
     try {
       if (this.confetti) {
-        if (typeof this.confetti.render === 'function') {
+        if (typeof this.confetti.render === "function") {
           this.confetti.render();
-        } else if (typeof this.confetti.start === 'function') {
+        } else if (typeof this.confetti.start === "function") {
           this.confetti.start();
         }
       }
     } catch (e) {
-      console.warn('Erreur confetti:', e);
+      console.warn("Erreur confetti:", e);
     }
 
-    this.dom.triesSpan.textContent = `${this.history.length} coup${this.history.length > 1 ? 's' : ''}`;
+    this.dom.triesSpan.textContent = `${this.history.length} coup${this.history.length > 1 ? "s" : ""}`;
 
     if (this.dom.successDiffBadge) {
       this.dom.successDiffBadge.className = `diff-badge-pill diff-badge-${this.articleDifficulty}`;
-      this.dom.successDiffBadge.textContent = this.getDifficultyBadgeText(this.articleDifficulty);
+      this.dom.successDiffBadge.textContent = this.getDifficultyBadgeText(
+        this.articleDifficulty,
+      );
     }
     if (this.dom.successLangVal) {
-      this.dom.successLangVal.textContent = this.articleLangCount ? this.articleLangCount : '--';
+      this.dom.successLangVal.textContent = this.articleLangCount
+        ? this.articleLangCount
+        : "--";
     }
     if (this.dom.successViewsVal) {
-      this.dom.successViewsVal.textContent = this.articlePageviews90d ? this.formatNumber(this.articlePageviews90d) : '--';
+      this.dom.successViewsVal.textContent = this.articlePageviews90d
+        ? this.formatNumber(this.articlePageviews90d)
+        : "--";
     }
 
-    this.dom.successBox.classList.add('active');
+    this.dom.successBox.classList.add("active");
     if (this.dom.surrenderBanner) {
-      this.dom.surrenderBanner.style.display = 'none';
-      this.dom.surrenderBanner.classList.remove('active');
+      this.dom.surrenderBanner.style.display = "none";
+      this.dom.surrenderBanner.classList.remove("active");
     }
     this.hideOpponentWin();
 
-    const title = this.tokens.filter(t => t.is_title).map(t => t.text).join('');
+    const title = this.tokens
+      .filter((t) => t.is_title)
+      .map((t) => t.text)
+      .join("");
     this.dom.solutionDisplay.textContent = title;
 
-    const wikiUrl = this.solution ? this.solution.url : `https://fr.wikipedia.org/wiki/${encodeURIComponent(title)}`;
+    const wikiUrl = this.solution
+      ? this.solution.url
+      : `https://fr.wikipedia.org/wiki/${encodeURIComponent(title)}`;
     if (this.solution) {
       this.dom.solutionLink.href = this.solution.url;
       if (this.solution.image) {
         this.dom.wikiImg.src = this.solution.image;
-        this.dom.wikiImg.style.display = 'block';
+        this.dom.wikiImg.style.display = "block";
       }
     } else {
       this.dom.solutionLink.href = wikiUrl;
     }
 
     if (this.dom.articleFinishedBar) {
-      if (this.dom.articleFinishedWikiLink) this.dom.articleFinishedWikiLink.href = wikiUrl;
-      this.dom.articleFinishedBar.style.display = 'flex';
+      if (this.dom.articleFinishedWikiLink)
+        this.dom.articleFinishedWikiLink.href = wikiUrl;
+      this.dom.articleFinishedBar.style.display = "flex";
     }
 
     this.updateYesterdayLink(title, this.dom.solutionLink.href);
 
     this.syncRoomUI();
-    this.dom.successBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    this.dom.successBox.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async unmaskAllWords() {
     if (!this.isWon && !this.isAbandoned) {
-      this.showToast("L'article ne peut être démasqué qu'une fois la manche terminée.");
+      this.showToast(
+        "L'article ne peut être démasqué qu'une fois la manche terminée.",
+      );
       return;
     }
     try {
       if (this.dom.seeFullPageBtn) {
         this.dom.seeFullPageBtn.disabled = true;
-        this.dom.seeFullPageBtn.innerHTML = '<span>⏳</span> Démasquage en cours...';
+        this.dom.seeFullPageBtn.innerHTML =
+          "<span>⏳</span> Démasquage en cours...";
       }
 
       let endpoint;
       let requestBody;
       if (this.roomId) {
-        endpoint = '/api/room/unmask';
+        endpoint = "/api/room/unmask";
         requestBody = {
           room_id: this.roomId,
-          player_id: this.playerId
+          player_id: this.playerId,
         };
       } else if (this.sessionId) {
-        endpoint = '/api/game/unmask';
+        endpoint = "/api/game/unmask";
         requestBody = { session_id: this.sessionId };
       } else {
         throw new Error("La partie en cours est introuvable.");
       }
 
       const resp = await fetch(this.getApiUrl(endpoint), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
       });
       const data = await resp.json().catch(() => null);
       if (!resp.ok) {
         throw new Error(data?.detail || `Erreur serveur (${resp.status}).`);
       }
-      if (!data || !data.tokens || typeof data.tokens !== 'object' || Object.keys(data.tokens).length === 0) {
+      if (
+        !data ||
+        !data.tokens ||
+        typeof data.tokens !== "object" ||
+        Object.keys(data.tokens).length === 0
+      ) {
         throw new Error("Le serveur n'a renvoyé aucun mot à démasquer.");
       }
 
       this.applyUnmaskedTokens(data.tokens);
       this.markUnmaskButtonComplete();
-      this.showToast('Article entièrement démasqué 📖');
+      this.showToast("Article entièrement démasqué 📖");
     } catch (err) {
-      console.error('Erreur démasquage complet:', err);
+      console.error("Erreur démasquage complet:", err);
       this.resetUnmaskButton();
-      const errorMessage = err instanceof Error ? err.message : 'réessayez.';
+      const errorMessage = err instanceof Error ? err.message : "réessayez.";
       this.showToast(`Erreur lors du démasquage : ${errorMessage}`);
     }
   }
@@ -4810,17 +6089,17 @@ class PedantixApp {
   markUnmaskButtonComplete() {
     if (!this.dom.seeFullPageBtn) return;
     this.dom.seeFullPageBtn.disabled = true;
-    this.dom.seeFullPageBtn.innerHTML = '<span>✅</span> Article démasqué';
+    this.dom.seeFullPageBtn.innerHTML = "<span>✅</span> Article démasqué";
   }
 
   resetUnmaskButton() {
     if (!this.dom.seeFullPageBtn) return;
     this.dom.seeFullPageBtn.disabled = false;
-    this.dom.seeFullPageBtn.innerHTML = '<span>👁️</span> Voir tout démasqué';
+    this.dom.seeFullPageBtn.innerHTML = "<span>👁️</span> Voir tout démasqué";
   }
 
   applyUnmaskedTokens(tokensMap) {
-    if (!tokensMap || typeof tokensMap !== 'object') return;
+    if (!tokensMap || typeof tokensMap !== "object") return;
     Object.entries(tokensMap).forEach(([tid, text]) => {
       const token = this.tokensById[tid];
       if (token) {
@@ -4829,29 +6108,43 @@ class PedantixApp {
       }
       const el = document.getElementById(`token-${tid}`);
       if (el) {
-        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
-        el.style.backgroundColor = '';
-        el.style.borderColor = '';
-        el.style.color = '';
-        el.title = '';
+        el.classList.remove(
+          "showing-len",
+          "close-heat",
+          "close-heat-grey",
+          "heat-flash",
+          "hint-word",
+          "hint-pulse",
+        );
+        el.style.backgroundColor = "";
+        el.style.borderColor = "";
+        el.style.color = "";
+        el.title = "";
         delete el.dataset.heat;
         delete el.dataset.word;
-        el.classList.add('revealed');
+        el.classList.add("revealed");
         el.textContent = text;
       }
     });
 
-    this.tokens.forEach(t => {
+    this.tokens.forEach((t) => {
       const el = document.getElementById(`token-${t.id}`);
-      if (el && (t.type === 'word' || t.is_word)) {
-        el.classList.remove('showing-len', 'close-heat', 'close-heat-grey', 'heat-flash', 'hint-word', 'hint-pulse');
-        el.style.backgroundColor = '';
-        el.style.borderColor = '';
-        el.style.color = '';
-        el.title = '';
+      if (el && (t.type === "word" || t.is_word)) {
+        el.classList.remove(
+          "showing-len",
+          "close-heat",
+          "close-heat-grey",
+          "heat-flash",
+          "hint-word",
+          "hint-pulse",
+        );
+        el.style.backgroundColor = "";
+        el.style.borderColor = "";
+        el.style.color = "";
+        el.title = "";
         delete el.dataset.heat;
         delete el.dataset.word;
-        el.classList.add('revealed');
+        el.classList.add("revealed");
         if (t.text) {
           el.textContent = t.text;
         }
@@ -4861,17 +6154,21 @@ class PedantixApp {
 
   async handleSurrenderClick() {
     if (this.isSpectator) {
-      this.showToast("👁️ Vous êtes en mode spectateur (en pause). Reprenez votre place de joueur pour voter ou proposer l'abandon.");
+      this.showToast(
+        "👁️ Vous êtes en mode spectateur (en pause). Reprenez votre place de joueur pour voter ou proposer l'abandon.",
+      );
       return;
     }
 
-    if (this.roomStatus !== 'playing' && this.roomStatus !== 'ending') {
-      this.showToast('Aucune partie en cours à abandonner.');
+    if (this.roomStatus !== "playing" && this.roomStatus !== "ending") {
+      this.showToast("Aucune partie en cours à abandonner.");
       return;
     }
 
     if (this.surrenderCooldownRemaining > 0) {
-      this.showToast(`Votre demande d'abandon a été refusée. Veuillez patienter encore ${this.surrenderCooldownRemaining} s avant de pouvoir refaire une demande.`);
+      this.showToast(
+        `Votre demande d'abandon a été refusée. Veuillez patienter encore ${this.surrenderCooldownRemaining} s avant de pouvoir refaire une demande.`,
+      );
       return;
     }
 
@@ -4881,27 +6178,27 @@ class PedantixApp {
 
     if (!confirm(confirmMsg)) return;
 
-    this.playTone('click');
+    this.playTone("click");
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/surrender'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/surrender"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          vote: 'yes'
-        })
+          vote: "yes",
+        }),
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         if (err.cooldown_remaining) {
           this.startSurrenderCooldown(err.cooldown_remaining);
         }
-        this.showToast(err.detail || 'Erreur lors de la demande d\'abandon.');
+        this.showToast(err.detail || "Erreur lors de la demande d'abandon.");
       }
     } catch (err) {
-      console.error('Erreur demande abandon:', err);
-      this.showToast('Erreur de connexion lors de la demande d\'abandon.');
+      console.error("Erreur demande abandon:", err);
+      this.showToast("Erreur de connexion lors de la demande d'abandon.");
     }
   }
 
@@ -4932,12 +6229,12 @@ class PedantixApp {
     const label = `🏳️ Abandonner (${this.surrenderCooldownRemaining}s)`;
     const title = `Demande refusée. Réessai possible dans ${this.surrenderCooldownRemaining}s`;
     if (this.dom.btnSurrenderRoom) {
-      this.dom.btnSurrenderRoom.classList.add('btn-cooldown');
+      this.dom.btnSurrenderRoom.classList.add("btn-cooldown");
       this.dom.btnSurrenderRoom.textContent = label;
       this.dom.btnSurrenderRoom.title = title;
     }
     if (this.dom.btnSideSurrender) {
-      this.dom.btnSideSurrender.classList.add('btn-cooldown');
+      this.dom.btnSideSurrender.classList.add("btn-cooldown");
       this.dom.btnSideSurrender.textContent = label;
       this.dom.btnSideSurrender.title = title;
     }
@@ -4949,51 +6246,51 @@ class PedantixApp {
       this.surrenderCooldownTimer = null;
     }
     this.surrenderCooldownRemaining = 0;
-    const defaultLabel = '🏳️ Abandonner';
+    const defaultLabel = "🏳️ Abandonner";
     const defaultTitle = "Proposer d'abandonner la partie en cours";
     if (this.dom.btnSurrenderRoom) {
-      this.dom.btnSurrenderRoom.classList.remove('btn-cooldown');
+      this.dom.btnSurrenderRoom.classList.remove("btn-cooldown");
       this.dom.btnSurrenderRoom.textContent = defaultLabel;
       this.dom.btnSurrenderRoom.title = defaultTitle;
     }
     if (this.dom.btnSideSurrender) {
-      this.dom.btnSideSurrender.classList.remove('btn-cooldown');
+      this.dom.btnSideSurrender.classList.remove("btn-cooldown");
       this.dom.btnSideSurrender.textContent = defaultLabel;
       this.dom.btnSideSurrender.title = defaultTitle;
     }
   }
 
   async voteSurrender(vote) {
-    this.playTone('click');
+    this.playTone("click");
     try {
-      const resp = await fetch(this.getApiUrl('/api/room/surrender'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/room/surrender"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: this.roomId,
           player_id: this.playerId,
-          vote: vote
-        })
+          vote: vote,
+        }),
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        this.showToast(err.detail || 'Erreur lors du vote.');
+        this.showToast(err.detail || "Erreur lors du vote.");
       } else {
-        if (vote === 'cancel') {
+        if (vote === "cancel") {
           this.closeModal(this.dom.surrenderModal);
-          this.showToast('Demande d\'abandon annulée.');
-        } else if (vote === 'no') {
+          this.showToast("Demande d'abandon annulée.");
+        } else if (vote === "no") {
           this.closeModal(this.dom.surrenderModal);
         }
       }
     } catch (err) {
-      console.error('Erreur vote abandon:', err);
+      console.error("Erreur vote abandon:", err);
     }
   }
 
   showSurrenderModal(data) {
     if (!this.dom.surrenderModal) return;
-    const initiatorName = data.initiator_name || 'Un joueur';
+    const initiatorName = data.initiator_name || "Un joueur";
     const votesCount = data.votes_count || 1;
     const totalRequired = data.total_required || 1;
     const votedIds = data.voted_player_ids || [];
@@ -5001,7 +6298,7 @@ class PedantixApp {
     const isInitiator = data.initiator_id === this.playerId;
 
     if (this.dom.surrenderVoteCount) {
-      this.dom.surrenderVoteCount.textContent = `${votesCount} / ${totalRequired} joueur${totalRequired > 1 ? 's' : ''}`;
+      this.dom.surrenderVoteCount.textContent = `${votesCount} / ${totalRequired} joueur${totalRequired > 1 ? "s" : ""}`;
     }
 
     if (this.dom.surrenderPromptText) {
@@ -5015,13 +6312,18 @@ class PedantixApp {
     }
 
     if (hasVoted) {
-      if (this.dom.surrenderActionsVoting) this.dom.surrenderActionsVoting.style.display = 'none';
+      if (this.dom.surrenderActionsVoting)
+        this.dom.surrenderActionsVoting.style.display = "none";
       if (this.dom.surrenderActionsWaiting) {
-        this.dom.surrenderActionsWaiting.style.display = isInitiator ? 'flex' : 'none';
+        this.dom.surrenderActionsWaiting.style.display = isInitiator
+          ? "flex"
+          : "none";
       }
     } else {
-      if (this.dom.surrenderActionsVoting) this.dom.surrenderActionsVoting.style.display = 'flex';
-      if (this.dom.surrenderActionsWaiting) this.dom.surrenderActionsWaiting.style.display = 'none';
+      if (this.dom.surrenderActionsVoting)
+        this.dom.surrenderActionsVoting.style.display = "flex";
+      if (this.dom.surrenderActionsWaiting)
+        this.dom.surrenderActionsWaiting.style.display = "none";
     }
 
     this.openModal(this.dom.surrenderModal);
@@ -5031,12 +6333,13 @@ class PedantixApp {
     this.closeModal(this.dom.surrenderModal);
     this.stopWordHintTimer();
     if (this.sprintInterval) clearInterval(this.sprintInterval);
-    if (this.dom.sprintTimerBanner) this.dom.sprintTimerBanner.style.display = 'none';
+    if (this.dom.sprintTimerBanner)
+      this.dom.sprintTimerBanner.style.display = "none";
     this.hideOpponentWin();
 
     this.isAbandoned = true;
     this.isWon = false;
-    this.roomStatus = this.isSoloMode ? 'playing' : 'lobby';
+    this.roomStatus = this.isSoloMode ? "playing" : "lobby";
     this.isReady = this.isSoloMode ? true : false;
     this.lastRound = msg.last_round || null;
     if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
@@ -5053,14 +6356,21 @@ class PedantixApp {
       this.unmaskAllWords();
     }
 
-    this.playTone('hint');
-    const canJoinNextRound = (msg.promoted_player_ids || []).includes(this.playerId);
-    this.showToast(canJoinNextRound
-      ? '🏳️ Partie abandonnée ! Vous pourrez jouer la prochaine manche.'
-      : '🏳️ Partie abandonnée ! L\'article a été entièrement démasqué.');
+    this.playTone("hint");
+    const canJoinNextRound = (msg.promoted_player_ids || []).includes(
+      this.playerId,
+    );
+    this.showToast(
+      canJoinNextRound
+        ? "🏳️ Partie abandonnée ! Vous pourrez jouer la prochaine manche."
+        : "🏳️ Partie abandonnée ! L'article a été entièrement démasqué.",
+    );
 
-    const title = msg.title || (msg.solution && msg.solution.title) || '';
-    const wikiUrl = msg.url || (msg.solution && msg.solution.url) || `https://fr.wikipedia.org/wiki/${encodeURIComponent(title)}`;
+    const title = msg.title || (msg.solution && msg.solution.title) || "";
+    const wikiUrl =
+      msg.url ||
+      (msg.solution && msg.solution.url) ||
+      `https://fr.wikipedia.org/wiki/${encodeURIComponent(title)}`;
     if (this.dom.solutionDisplay) {
       this.dom.solutionDisplay.textContent = title;
     }
@@ -5070,23 +6380,31 @@ class PedantixApp {
 
     // Display surrender banner
     if (this.dom.surrenderBanner) {
-      if (this.dom.surrenderSolutionDisplay) this.dom.surrenderSolutionDisplay.textContent = title;
-      if (this.dom.surrenderSolutionLink) this.dom.surrenderSolutionLink.href = wikiUrl;
+      if (this.dom.surrenderSolutionDisplay)
+        this.dom.surrenderSolutionDisplay.textContent = title;
+      if (this.dom.surrenderSolutionLink)
+        this.dom.surrenderSolutionLink.href = wikiUrl;
       if (this.dom.surrenderDiffBadge) {
         this.dom.surrenderDiffBadge.className = `diff-badge-pill diff-badge-${this.articleDifficulty}`;
-        this.dom.surrenderDiffBadge.textContent = this.getDifficultyBadgeText(this.articleDifficulty);
+        this.dom.surrenderDiffBadge.textContent = this.getDifficultyBadgeText(
+          this.articleDifficulty,
+        );
       }
       if (this.dom.surrenderLangVal) {
-        this.dom.surrenderLangVal.textContent = this.articleLangCount ? this.articleLangCount : '--';
+        this.dom.surrenderLangVal.textContent = this.articleLangCount
+          ? this.articleLangCount
+          : "--";
       }
       if (this.dom.surrenderViewsVal) {
-        this.dom.surrenderViewsVal.textContent = this.articlePageviews90d ? this.formatNumber(this.articlePageviews90d) : '--';
+        this.dom.surrenderViewsVal.textContent = this.articlePageviews90d
+          ? this.formatNumber(this.articlePageviews90d)
+          : "--";
       }
-      this.dom.surrenderBanner.style.display = 'block';
-      this.dom.surrenderBanner.classList.add('active');
+      this.dom.surrenderBanner.style.display = "block";
+      this.dom.surrenderBanner.classList.add("active");
     }
     if (this.dom.successBox) {
-      this.dom.successBox.classList.remove('active');
+      this.dom.successBox.classList.remove("active");
     }
 
     // Show finished bar at bottom of article
@@ -5094,39 +6412,48 @@ class PedantixApp {
       if (this.dom.articleFinishedWikiLink) {
         this.dom.articleFinishedWikiLink.href = wikiUrl;
       }
-      this.dom.articleFinishedBar.style.display = 'flex';
+      this.dom.articleFinishedBar.style.display = "flex";
     }
 
     if (this.solution && this.solution.image && this.dom.wikiImg) {
       this.dom.wikiImg.src = this.solution.image;
-      this.dom.wikiImg.style.display = 'block';
+      this.dom.wikiImg.style.display = "block";
     }
 
     this.updateModeUI();
     this.syncRoomUI();
     if (this.dom.surrenderBanner) {
-      this.dom.surrenderBanner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      this.dom.surrenderBanner.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
     }
   }
 
   copyShareScore() {
     const attempts = this.history.length;
-    const title = this.tokens.filter(t => t.is_title).map(t => t.text).join('');
+    const title = this.tokens
+      .filter((t) => t.is_title)
+      .map((t) => t.text)
+      .join("");
     const meter = this.dom.dayMeter.textContent;
     const num = this.dom.puzzleNum.textContent;
 
-    const shareText = `J'ai remporté le concours Pédantix nº ${num} (${title}) en ${attempts} coup${attempts > 1 ? 's' : ''} !\n${meter}\nhttps://pedantix.certitudes.org`;
+    const shareText = `J'ai remporté le concours Pédantix nº ${num} (${title}) en ${attempts} coup${attempts > 1 ? "s" : ""} !\n${meter}\nhttps://pedantix.certitudes.org`;
 
     const origHTML = this.dom.shareBtn.innerHTML;
-    navigator.clipboard.writeText(shareText).then(() => {
-      this.showToast('Résumé copié dans le presse-papiers ! 📋');
-      this.dom.shareBtn.innerHTML = '<span>✅</span> Copié !';
-      setTimeout(() => {
-        this.dom.shareBtn.innerHTML = origHTML;
-      }, 2500);
-    }).catch(() => {
-      prompt('Copiez votre résumé :', shareText);
-    });
+    navigator.clipboard
+      .writeText(shareText)
+      .then(() => {
+        this.showToast("Résumé copié dans le presse-papiers ! 📋");
+        this.dom.shareBtn.innerHTML = "<span>✅</span> Copié !";
+        setTimeout(() => {
+          this.dom.shareBtn.innerHTML = origHTML;
+        }, 2500);
+      })
+      .catch(() => {
+        prompt("Copiez votre résumé :", shareText);
+      });
   }
 
   updateYesterdayLink(title, url) {
@@ -5140,13 +6467,15 @@ class PedantixApp {
 
   async refreshStatsModal() {
     if (this.dom.btnAdminUsers) {
-      this.dom.btnAdminUsers.style.display = this.authUser && this.authUser.trim() === 'Gwen'
-        ? 'inline-flex'
-        : 'none';
+      this.dom.btnAdminUsers.style.display =
+        this.authUser && this.authUser.trim() === "Gwen"
+          ? "inline-flex"
+          : "none";
     }
-    const formatAverage = value => value === null || value === undefined ? '—' : Number(value).toFixed(1);
-    const formatDuration = value => {
-      if (value === null || value === undefined) return '—';
+    const formatAverage = (value) =>
+      value === null || value === undefined ? "—" : Number(value).toFixed(1);
+    const formatDuration = (value) => {
+      if (value === null || value === undefined) return "—";
       const seconds = Math.round(Number(value));
       return seconds >= 60
         ? `${Math.floor(seconds / 60)} min ${seconds % 60} s`
@@ -5154,30 +6483,42 @@ class PedantixApp {
     };
 
     try {
-      const resp = await fetch(this.getApiUrl(`/api/user/stats?username=${encodeURIComponent(this.playerName)}`));
+      const resp = await fetch(
+        this.getApiUrl(
+          `/api/user/stats?username=${encodeURIComponent(this.playerName)}`,
+        ),
+      );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
-      if (this.dom.statsUserName) this.dom.statsUserName.textContent = data.username || this.playerName;
-      if (this.dom.statsUserScore) this.dom.statsUserScore.textContent = `${data.score || 0} pt${data.score === 1 ? '' : 's'}`;
-      if (this.dom.sPlayed) this.dom.sPlayed.textContent = data.games_played || 0;
+      if (this.dom.statsUserName)
+        this.dom.statsUserName.textContent = data.username || this.playerName;
+      if (this.dom.statsUserScore)
+        this.dom.statsUserScore.textContent = `${data.score || 0} pt${data.score === 1 ? "" : "s"}`;
+      if (this.dom.sPlayed)
+        this.dom.sPlayed.textContent = data.games_played || 0;
       if (this.dom.sWon) this.dom.sWon.textContent = data.wins || 0;
-      if (this.dom.sWinRate) this.dom.sWinRate.textContent = `${data.win_rate || 0}%`;
-      if (this.dom.sAvg) this.dom.sAvg.textContent = formatAverage(data.avg_attempts) || '—';
-      if (this.dom.sBest) this.dom.sBest.textContent = data.best_attempts ?? '—';
+      if (this.dom.sWinRate)
+        this.dom.sWinRate.textContent = `${data.win_rate || 0}%`;
+      if (this.dom.sAvg)
+        this.dom.sAvg.textContent = formatAverage(data.avg_attempts) || "—";
+      if (this.dom.sBest)
+        this.dom.sBest.textContent = data.best_attempts ?? "—";
 
-      ['solo', 'multiplayer'].forEach(mode => {
+      ["solo", "multiplayer"].forEach((mode) => {
         const stats = data[mode] || {};
         const values = {
           games: stats.games_played || 0,
           wins: stats.wins || 0,
-          'win-rate': `${stats.win_rate || 0}%`,
-          'avg-attempts': formatAverage(stats.avg_attempts),
-          'winning-attempts': formatAverage(stats.avg_winning_attempts),
-          'best-attempts': stats.best_attempts ?? '—',
+          "win-rate": `${stats.win_rate || 0}%`,
+          "avg-attempts": formatAverage(stats.avg_attempts),
+          "winning-attempts": formatAverage(stats.avg_winning_attempts),
+          "best-attempts": stats.best_attempts ?? "—",
           time: formatDuration(stats.avg_time_seconds),
-          revealed: stats.avg_revealed_pct === null || stats.avg_revealed_pct === undefined
-            ? '—'
-            : `${Number(stats.avg_revealed_pct).toFixed(1)}%`,
+          revealed:
+            stats.avg_revealed_pct === null ||
+            stats.avg_revealed_pct === undefined
+              ? "—"
+              : `${Number(stats.avg_revealed_pct).toFixed(1)}%`,
           points: stats.points || 0,
         };
         Object.entries(values).forEach(([metric, value]) => {
@@ -5189,23 +6530,34 @@ class PedantixApp {
       if (this.dom.statsFavWordsList) {
         const words = data.favorite_words || [];
         this.dom.statsFavWordsList.innerHTML = words.length
-          ? words.map(fw => `
+          ? words
+              .map(
+                (fw) => `
               <span class="fav-word-badge" title="${fw.count} fois joué">
                 <span class="fav-word-text">${this.escapeHtml(fw.word)}</span>
                 <span class="fav-word-count">${fw.count}</span>
               </span>
-            `).join('')
+            `,
+              )
+              .join("")
           : '<span class="empty-fav-hint">Jouez des mots pour découvrir vos mots fétiches !</span>';
       }
 
       if (this.dom.statsRecentList) {
         const recentGames = data.recent_games || [];
         this.dom.statsRecentList.innerHTML = recentGames.length
-          ? recentGames.map(game => {
-              const date = game.finished_at ? new Date(game.finished_at).toLocaleDateString('fr-FR') : '—';
-              const result = game.won ? 'Titre trouvé' : (game.surrendered ? 'Abandon' : 'Non trouvé');
-              const mode = game.mode === 'solo' ? 'Solo' : 'Multijoueur';
-              return `
+          ? recentGames
+              .map((game) => {
+                const date = game.finished_at
+                  ? new Date(game.finished_at).toLocaleDateString("fr-FR")
+                  : "—";
+                const result = game.won
+                  ? "Titre trouvé"
+                  : game.surrendered
+                    ? "Abandon"
+                    : "Non trouvé";
+                const mode = game.mode === "solo" ? "Solo" : "Multijoueur";
+                return `
                 <tr>
                   <td><b>${this.escapeHtml(game.title)}</b></td>
                   <td>${mode}</td>
@@ -5215,104 +6567,139 @@ class PedantixApp {
                   <td style="text-align: right;">${date}</td>
                 </tr>
               `;
-            }).join('')
+              })
+              .join("")
           : '<tr><td colspan="6" style="text-align:center; opacity:0.6;">Aucune manche suivie pour le moment</td></tr>';
       }
     } catch (e) {
-      console.warn('Erreur chargement statistiques utilisateur :', e);
+      console.warn("Erreur chargement statistiques utilisateur :", e);
       if (this.dom.statsRecentList) {
-        this.dom.statsRecentList.innerHTML = '<tr><td colspan="6" style="text-align:center; opacity:0.6;">Statistiques momentanément indisponibles</td></tr>';
+        this.dom.statsRecentList.innerHTML =
+          '<tr><td colspan="6" style="text-align:center; opacity:0.6;">Statistiques momentanément indisponibles</td></tr>';
       }
     }
   }
 
   async loadAdminUsers() {
-    const password = this.dom.adminCurrentPassword ? this.dom.adminCurrentPassword.value : '';
+    const password = this.dom.adminCurrentPassword
+      ? this.dom.adminCurrentPassword.value
+      : "";
     if (!password) {
-      this.setAdminUsersMessage('Saisissez le mot de passe actuel de Gwen.', true);
+      this.setAdminUsersMessage(
+        "Saisissez le mot de passe actuel de Gwen.",
+        true,
+      );
       return;
     }
     if (this.dom.adminNewPassword) {
-      this.dom.adminNewPassword.value = '';
+      this.dom.adminNewPassword.value = "";
       this.dom.adminNewPassword.disabled = true;
     }
     if (this.dom.adminTargetUser) {
-      this.dom.adminTargetUser.replaceChildren(new Option('Vérifiez d’abord votre compte', ''));
+      this.dom.adminTargetUser.replaceChildren(
+        new Option("Vérifiez d’abord votre compte", ""),
+      );
       this.dom.adminTargetUser.disabled = true;
     }
     if (this.dom.adminResetStep) {
-      this.dom.adminResetStep.classList.add('is-disabled');
-      this.dom.adminResetStep.setAttribute('aria-disabled', 'true');
+      this.dom.adminResetStep.classList.add("is-disabled");
+      this.dom.adminResetStep.setAttribute("aria-disabled", "true");
     }
-    if (this.dom.btnAdminResetPassword) this.dom.btnAdminResetPassword.disabled = true;
+    if (this.dom.btnAdminResetPassword)
+      this.dom.btnAdminResetPassword.disabled = true;
     const button = this.dom.btnAdminLoadUsers;
     if (button) {
       button.disabled = true;
-      button.textContent = 'Vérification…';
+      button.textContent = "Vérification…";
     }
     try {
-      const resp = await fetch(this.getApiUrl('/api/admin/users'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admin_username: this.authUser, admin_password: password })
+      const resp = await fetch(this.getApiUrl("/api/admin/users"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          admin_username: this.authUser,
+          admin_password: password,
+        }),
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || 'Impossible de charger les comptes.');
+      if (!resp.ok)
+        throw new Error(data.detail || "Impossible de charger les comptes.");
       const select = this.dom.adminTargetUser;
       if (!select) return;
-      select.replaceChildren(new Option('Sélectionner un compte', ''));
-      data.users.forEach(username => select.add(new Option(username, username)));
+      select.replaceChildren(new Option("Sélectionner un compte", ""));
+      data.users.forEach((username) =>
+        select.add(new Option(username, username)),
+      );
       select.disabled = false;
       if (this.dom.adminNewPassword) this.dom.adminNewPassword.disabled = false;
       if (this.dom.adminResetStep) {
-        this.dom.adminResetStep.classList.remove('is-disabled');
-        this.dom.adminResetStep.setAttribute('aria-disabled', 'false');
+        this.dom.adminResetStep.classList.remove("is-disabled");
+        this.dom.adminResetStep.setAttribute("aria-disabled", "false");
       }
       this.updateAdminResetAvailability();
       this.setAdminUsersMessage(`${data.users.length} compte(s) chargé(s).`);
     } catch (error) {
-      this.setAdminUsersMessage(error.message || 'Erreur lors du chargement des comptes.', true);
+      this.setAdminUsersMessage(
+        error.message || "Erreur lors du chargement des comptes.",
+        true,
+      );
     } finally {
       if (button) {
         button.disabled = false;
-        button.textContent = 'Vérifier et continuer';
+        button.textContent = "Vérifier et continuer";
       }
     }
   }
 
   async adminResetPassword() {
-    const adminPassword = this.dom.adminCurrentPassword ? this.dom.adminCurrentPassword.value : '';
-    const targetUsername = this.dom.adminTargetUser ? this.dom.adminTargetUser.value : '';
-    const newPassword = this.dom.adminNewPassword ? this.dom.adminNewPassword.value : '';
+    const adminPassword = this.dom.adminCurrentPassword
+      ? this.dom.adminCurrentPassword.value
+      : "";
+    const targetUsername = this.dom.adminTargetUser
+      ? this.dom.adminTargetUser.value
+      : "";
+    const newPassword = this.dom.adminNewPassword
+      ? this.dom.adminNewPassword.value
+      : "";
     if (!adminPassword || !targetUsername || !newPassword) {
-      this.setAdminUsersMessage('Saisissez le mot de passe de Gwen, sélectionnez un compte et entrez le nouveau mot de passe.', true);
+      this.setAdminUsersMessage(
+        "Saisissez le mot de passe de Gwen, sélectionnez un compte et entrez le nouveau mot de passe.",
+        true,
+      );
       return;
     }
-    if (!confirm(`Réinitialiser le mot de passe de « ${targetUsername} » ?`)) return;
+    if (!confirm(`Réinitialiser le mot de passe de « ${targetUsername} » ?`))
+      return;
     const button = this.dom.btnAdminResetPassword;
     if (button) {
       button.disabled = true;
-      button.textContent = 'Réinitialisation…';
+      button.textContent = "Réinitialisation…";
     }
     try {
-      const resp = await fetch(this.getApiUrl('/api/admin/reset-password'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const resp = await fetch(this.getApiUrl("/api/admin/reset-password"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           admin_username: this.authUser,
           admin_password: adminPassword,
           target_username: targetUsername,
-          new_password: newPassword
-        })
+          new_password: newPassword,
+        }),
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || 'La réinitialisation a échoué.');
-      if (this.dom.adminNewPassword) this.dom.adminNewPassword.value = '';
-      this.setAdminUsersMessage(`Mot de passe de « ${data.username} » réinitialisé.`);
+      if (!resp.ok)
+        throw new Error(data.detail || "La réinitialisation a échoué.");
+      if (this.dom.adminNewPassword) this.dom.adminNewPassword.value = "";
+      this.setAdminUsersMessage(
+        `Mot de passe de « ${data.username} » réinitialisé.`,
+      );
     } catch (error) {
-      this.setAdminUsersMessage(error.message || 'Erreur lors de la réinitialisation.', true);
+      this.setAdminUsersMessage(
+        error.message || "Erreur lors de la réinitialisation.",
+        true,
+      );
     } finally {
-      if (button) button.textContent = 'Réinitialiser le mot de passe';
+      if (button) button.textContent = "Réinitialiser le mot de passe";
       this.updateAdminResetAvailability();
     }
   }
@@ -5321,27 +6708,31 @@ class PedantixApp {
     const element = this.dom.adminUsersMessage;
     if (!element) return;
     element.textContent = message;
-    element.classList.toggle('error', isError);
+    element.classList.toggle("error", isError);
   }
 
   clearAdminUsersPanel() {
-    if (this.dom.adminCurrentPassword) this.dom.adminCurrentPassword.value = '';
+    if (this.dom.adminCurrentPassword) this.dom.adminCurrentPassword.value = "";
     if (this.dom.adminNewPassword) {
-      this.dom.adminNewPassword.value = '';
+      this.dom.adminNewPassword.value = "";
       this.dom.adminNewPassword.disabled = true;
     }
     if (this.dom.adminTargetUser) {
-      this.dom.adminTargetUser.replaceChildren(new Option('Vérifiez d’abord votre compte', ''));
+      this.dom.adminTargetUser.replaceChildren(
+        new Option("Vérifiez d’abord votre compte", ""),
+      );
       this.dom.adminTargetUser.disabled = true;
     }
     if (this.dom.adminResetStep) {
-      this.dom.adminResetStep.classList.add('is-disabled');
-      this.dom.adminResetStep.setAttribute('aria-disabled', 'true');
+      this.dom.adminResetStep.classList.add("is-disabled");
+      this.dom.adminResetStep.setAttribute("aria-disabled", "true");
     }
-    if (this.dom.btnAdminResetPassword) this.dom.btnAdminResetPassword.disabled = true;
+    if (this.dom.btnAdminResetPassword)
+      this.dom.btnAdminResetPassword.disabled = true;
     if (this.dom.adminUsersPanel) this.dom.adminUsersPanel.hidden = true;
-    if (this.dom.btnAdminUsers) this.dom.btnAdminUsers.setAttribute('aria-expanded', 'false');
-    this.setAdminUsersMessage('');
+    if (this.dom.btnAdminUsers)
+      this.dom.btnAdminUsers.setAttribute("aria-expanded", "false");
+    this.setAdminUsersMessage("");
   }
 
   updateAdminResetAvailability() {
@@ -5359,47 +6750,62 @@ class PedantixApp {
   // =========================================================================
 
   checkAuthOnLoad() {
-    this.authUser = localStorage.getItem('pedantix_auth_user') || null;
-    this.authToken = localStorage.getItem('pedantix_auth_token') || null;
+    this.authUser = localStorage.getItem("pedantix_auth_user") || null;
+    this.authToken = localStorage.getItem("pedantix_auth_token") || null;
 
     if (this.authUser) {
       this.playerName = this.authUser;
-      if (this.dom.playerPseudoInput) this.dom.playerPseudoInput.value = this.authUser;
-      if (this.dom.lobbyPseudoInput) this.dom.lobbyPseudoInput.value = this.authUser;
+      if (this.dom.playerPseudoInput)
+        this.dom.playerPseudoInput.value = this.authUser;
+      if (this.dom.lobbyPseudoInput)
+        this.dom.lobbyPseudoInput.value = this.authUser;
     }
   }
 
   openAuthModal() {
-    this.pendingAuthUsername = '';
-    this.showAuthStep('username');
+    this.pendingAuthUsername = "";
+    this.showAuthStep("username");
     this.openModal(this.dom.authModal);
   }
 
   showAuthStep(step) {
     if (this.dom.authErrorBox) {
-      this.dom.authErrorBox.style.display = 'none';
-      this.dom.authErrorBox.textContent = '';
+      this.dom.authErrorBox.style.display = "none";
+      this.dom.authErrorBox.textContent = "";
     }
 
-    if (this.dom.authStepUsername) this.dom.authStepUsername.style.display = (step === 'username') ? 'block' : 'none';
-    if (this.dom.authStepLogin) this.dom.authStepLogin.style.display = (step === 'login') ? 'block' : 'none';
-    if (this.dom.authStepRegister) this.dom.authStepRegister.style.display = (step === 'register') ? 'block' : 'none';
+    if (this.dom.authStepUsername)
+      this.dom.authStepUsername.style.display =
+        step === "username" ? "block" : "none";
+    if (this.dom.authStepLogin)
+      this.dom.authStepLogin.style.display =
+        step === "login" ? "block" : "none";
+    if (this.dom.authStepRegister)
+      this.dom.authStepRegister.style.display =
+        step === "register" ? "block" : "none";
 
-    if (step === 'username') {
+    if (step === "username") {
       if (this.dom.authUsernameInput) {
-        this.dom.authUsernameInput.value = (this.playerName && !this.playerName.startsWith('Joueur ')) ? this.playerName : '';
+        this.dom.authUsernameInput.value =
+          this.playerName && !this.playerName.startsWith("Joueur ")
+            ? this.playerName
+            : "";
         setTimeout(() => this.dom.authUsernameInput.focus(), 150);
       }
-    } else if (step === 'login') {
-      if (this.dom.authLoginUsernameDisplay) this.dom.authLoginUsernameDisplay.textContent = this.pendingAuthUsername;
+    } else if (step === "login") {
+      if (this.dom.authLoginUsernameDisplay)
+        this.dom.authLoginUsernameDisplay.textContent =
+          this.pendingAuthUsername;
       if (this.dom.authPasswordInput) {
-        this.dom.authPasswordInput.value = '';
+        this.dom.authPasswordInput.value = "";
         setTimeout(() => this.dom.authPasswordInput.focus(), 150);
       }
-    } else if (step === 'register') {
-      if (this.dom.authRegisterUsernameDisplay) this.dom.authRegisterUsernameDisplay.textContent = this.pendingAuthUsername;
+    } else if (step === "register") {
+      if (this.dom.authRegisterUsernameDisplay)
+        this.dom.authRegisterUsernameDisplay.textContent =
+          this.pendingAuthUsername;
       if (this.dom.authNewPasswordInput) {
-        this.dom.authNewPasswordInput.value = '';
+        this.dom.authNewPasswordInput.value = "";
         setTimeout(() => this.dom.authNewPasswordInput.focus(), 150);
       }
     }
@@ -5408,76 +6814,89 @@ class PedantixApp {
   showAuthError(msg) {
     if (this.dom.authErrorBox) {
       this.dom.authErrorBox.textContent = `⚠️ ${msg}`;
-      this.dom.authErrorBox.style.display = 'flex';
+      this.dom.authErrorBox.style.display = "flex";
     }
   }
 
   async handleAuthUsernameSubmit() {
-    const raw = this.dom.authUsernameInput ? this.dom.authUsernameInput.value.trim() : '';
+    const raw = this.dom.authUsernameInput
+      ? this.dom.authUsernameInput.value.trim()
+      : "";
     if (!raw) {
       this.showAuthError("Veuillez saisir un nom d'utilisateur.");
       return;
     }
     if (raw.length < 2) {
-      this.showAuthError("Le nom d'utilisateur doit contenir au moins 2 caractères.");
+      this.showAuthError(
+        "Le nom d'utilisateur doit contenir au moins 2 caractères.",
+      );
       return;
     }
 
     const btn = this.dom.btnAuthContinue;
     if (btn) {
       btn.disabled = true;
-      btn.textContent = 'Vérification...';
+      btn.textContent = "Vérification...";
     }
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/auth/check-username'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: raw })
+      const resp = await fetch(this.getApiUrl("/api/auth/check-username"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: raw }),
       });
 
-      if (!resp.ok) throw new Error('Erreur réseau');
+      if (!resp.ok) throw new Error("Erreur réseau");
       const data = await resp.json();
 
       this.pendingAuthUsername = data.username || raw;
       if (data.exists) {
-        this.showAuthStep('login');
+        this.showAuthStep("login");
       } else {
-        this.showAuthStep('register');
+        this.showAuthStep("register");
       }
     } catch (e) {
-      this.showAuthError("Impossible de joindre le serveur. Vérifiez votre connexion.");
+      this.showAuthError(
+        "Impossible de joindre le serveur. Vérifiez votre connexion.",
+      );
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = 'Continuer ➔';
+        btn.textContent = "Continuer ➔";
       }
     }
   }
 
   async handleAuthLoginSubmit() {
-    const pwd = this.dom.authPasswordInput ? this.dom.authPasswordInput.value : '';
+    const pwd = this.dom.authPasswordInput
+      ? this.dom.authPasswordInput.value
+      : "";
     if (!pwd) {
       this.showAuthError("Veuillez saisir votre mot de passe.");
       return;
     }
 
-    const btn = document.getElementById('btn-auth-login');
+    const btn = document.getElementById("btn-auth-login");
     if (btn) {
       btn.disabled = true;
-      btn.textContent = 'Connexion...';
+      btn.textContent = "Connexion...";
     }
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/auth/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: this.pendingAuthUsername, password: pwd })
+      const resp = await fetch(this.getApiUrl("/api/auth/login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: this.pendingAuthUsername,
+          password: pwd,
+        }),
       });
 
       const data = await resp.json();
       if (!resp.ok) {
-        this.showAuthError(data.detail || data.error || "Mot de passe incorrect.");
+        this.showAuthError(
+          data.detail || data.error || "Mot de passe incorrect.",
+        );
         return;
       }
 
@@ -5487,34 +6906,43 @@ class PedantixApp {
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = 'Se connecter ✅';
+        btn.textContent = "Se connecter ✅";
       }
     }
   }
 
   async handleAuthRegisterSubmit() {
-    const pwd = this.dom.authNewPasswordInput ? this.dom.authNewPasswordInput.value : '';
+    const pwd = this.dom.authNewPasswordInput
+      ? this.dom.authNewPasswordInput.value
+      : "";
     if (!pwd || pwd.length < 3) {
-      this.showAuthError("Le mot de passe doit contenir au moins 3 caractères.");
+      this.showAuthError(
+        "Le mot de passe doit contenir au moins 3 caractères.",
+      );
       return;
     }
 
-    const btn = document.getElementById('btn-auth-register');
+    const btn = document.getElementById("btn-auth-register");
     if (btn) {
       btn.disabled = true;
-      btn.textContent = 'Création du compte...';
+      btn.textContent = "Création du compte...";
     }
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/auth/register'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: this.pendingAuthUsername, password: pwd })
+      const resp = await fetch(this.getApiUrl("/api/auth/register"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: this.pendingAuthUsername,
+          password: pwd,
+        }),
       });
 
       const data = await resp.json();
       if (!resp.ok) {
-        this.showAuthError(data.detail || data.error || "Erreur lors de la création du compte.");
+        this.showAuthError(
+          data.detail || data.error || "Erreur lors de la création du compte.",
+        );
         return;
       }
 
@@ -5524,7 +6952,7 @@ class PedantixApp {
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = 'Créer mon compte & Jouer 🚀';
+        btn.textContent = "Créer mon compte & Jouer 🚀";
       }
     }
   }
@@ -5534,9 +6962,9 @@ class PedantixApp {
     this.authToken = token;
     this.playerName = username;
 
-    localStorage.setItem('pedantix_auth_user', username);
-    localStorage.setItem('pedantix_auth_token', token);
-    localStorage.setItem('pedantix_player_name', username);
+    localStorage.setItem("pedantix_auth_user", username);
+    localStorage.setItem("pedantix_auth_token", token);
+    localStorage.setItem("pedantix_player_name", username);
 
     if (this.dom.playerPseudoInput) this.dom.playerPseudoInput.value = username;
     if (this.dom.lobbyPseudoInput) this.dom.lobbyPseudoInput.value = username;
@@ -5550,9 +6978,9 @@ class PedantixApp {
 
   handleAuthLogout() {
     this.clearAdminUsersPanel();
-    localStorage.removeItem('pedantix_auth_user');
-    localStorage.removeItem('pedantix_auth_token');
-    window.location.href = '/';
+    localStorage.removeItem("pedantix_auth_user");
+    localStorage.removeItem("pedantix_auth_token");
+    window.location.href = "/";
   }
 
   // =========================================================================
@@ -5568,36 +6996,48 @@ class PedantixApp {
   }
 
   async testServerConnectivity() {
-    if (!this.dom.serverModalStatusText || !this.dom.serverModalStatusIndicator) return;
-    this.dom.serverModalStatusText.textContent = "Test de la connexion au serveur...";
-    this.dom.serverModalStatusIndicator.className = "server-status-indicator checking";
+    if (!this.dom.serverModalStatusText || !this.dom.serverModalStatusIndicator)
+      return;
+    this.dom.serverModalStatusText.textContent =
+      "Test de la connexion au serveur...";
+    this.dom.serverModalStatusIndicator.className =
+      "server-status-indicator checking";
 
     try {
-      const resp = await fetch(this.getApiUrl('/api/network-info'), { signal: AbortSignal.timeout(6000) });
+      const resp = await fetch(this.getApiUrl("/api/network-info"), {
+        signal: AbortSignal.timeout(6000),
+      });
       if (resp.ok) {
-        this.dom.serverModalStatusText.textContent = "Connecté au serveur API ✅";
-        this.dom.serverModalStatusIndicator.className = "server-status-indicator online";
+        this.dom.serverModalStatusText.textContent =
+          "Connecté au serveur API ✅";
+        this.dom.serverModalStatusIndicator.className =
+          "server-status-indicator online";
       } else {
         this.dom.serverModalStatusText.textContent = `Erreur HTTP (${resp.status}) ⚠️`;
-        this.dom.serverModalStatusIndicator.className = "server-status-indicator offline";
+        this.dom.serverModalStatusIndicator.className =
+          "server-status-indicator offline";
       }
     } catch (e) {
-      this.dom.serverModalStatusText.textContent = "Serveur injoignable ou en cours de réveil ⚠️";
-      this.dom.serverModalStatusIndicator.className = "server-status-indicator offline";
+      this.dom.serverModalStatusText.textContent =
+        "Serveur injoignable ou en cours de réveil ⚠️";
+      this.dom.serverModalStatusIndicator.className =
+        "server-status-indicator offline";
     }
   }
 
   async saveServerSettings() {
-    const raw = this.dom.inputBackendUrl ? this.dom.inputBackendUrl.value.trim() : '';
-    localStorage.setItem('pedantix_backend_url', raw);
+    const raw = this.dom.inputBackendUrl
+      ? this.dom.inputBackendUrl.value.trim()
+      : "";
+    localStorage.setItem("pedantix_backend_url", raw);
     this.showToast("Configuration du serveur enregistrée ! Test en cours...");
     await this.testServerConnectivity();
   }
 }
 
 // Start app on DOMContentLoaded
-window.addEventListener('DOMContentLoaded', () => {
-  if (document.documentElement.classList.contains('game-mode')) {
+window.addEventListener("DOMContentLoaded", () => {
+  if (document.documentElement.classList.contains("game-mode")) {
     new PedantixApp();
   }
 });

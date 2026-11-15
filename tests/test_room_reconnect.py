@@ -227,6 +227,32 @@ class RoomReconnectTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn(self.player.player_id, self.room.players)
 
+    def test_voice_chat_toggles_and_member_state(self):
+        other = RoomPlayer(
+            "player-2",
+            "Autre joueur",
+            SimpleNamespace(total_words=10),
+        )
+        self.room.players[other.player_id] = other
+
+        state = self.room.toggle_voice_chat(self.player.player_id, True)
+        self.assertTrue(state["enabled"])
+        self.assertTrue(self.room.voice_chat["enabled"])
+
+        join_state = self.room.join_voice_chat(other.player_id)
+        self.assertIn(other.player_id, join_state["members"])
+        self.assertFalse(join_state["muted"].get(other.player_id, False))
+
+        toggle_mute = self.room.set_voice_chat_muted(other.player_id, True)
+        self.assertTrue(toggle_mute["muted"][other.player_id])
+
+        leave_state = self.room.leave_voice_chat(other.player_id)
+        self.assertNotIn(other.player_id, leave_state["members"])
+
+        off_state = self.room.toggle_voice_chat(self.player.player_id, False)
+        self.assertFalse(off_state["enabled"])
+        self.assertEqual(off_state["members"], [])
+
     def test_late_joiner_is_spectator_until_room_returns_to_lobby(self):
         self.room.status = "playing"
 
