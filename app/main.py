@@ -92,6 +92,7 @@ from app.scribbl import (
 )
 from app.tarot_africain import (
     MAX_PLAYERS as TAROT_MAX_PLAYERS,
+    SOLO_BOT_DIFFICULTIES,
     tarot_africain_manager,
 )
 from app.game import GameManager, GameSession
@@ -681,6 +682,7 @@ class TarotPlayerRequest(BaseModel):
     player_id: str = Field(min_length=1, max_length=100)
     player_name: str = Field(min_length=1, max_length=40)
     mode: Literal["multiplayer", "solo"] = "multiplayer"
+    bot_difficulties: Optional[List[Literal["facile", "moyen", "difficile"]]] = None
 
 class TarotRoomRequest(TarotPlayerRequest):
     room_id: str = Field(min_length=1, max_length=6)
@@ -1608,11 +1610,6 @@ def _leave_store_multiplayer_room(
             return {"status": "already_left"}
 
         room = manager.rooms[room_key]
-        if getattr(room, "is_solo", False):
-            raise HTTPException(
-                status_code=400,
-                detail="Cette route ne permet de quitter que les salons multijoueurs.",
-            )
         if game_id == "scribbl":
             if player_id not in room.players:
                 return {"status": "already_left"}
@@ -3262,13 +3259,26 @@ async def list_tarot_rooms(player_id: Optional[str] = Query(None)):
 
 @app.post("/api/tarot-africain/room/create")
 async def create_tarot_room(req: TarotPlayerRequest):
+    solo_bot_difficulties = None
+    if req.mode == "solo":
+        solo_bot_difficulties = req.bot_difficulties or list(SOLO_BOT_DIFFICULTIES)
     room = tarot_africain_manager.create_room(
         req.player_id,
         req.player_name,
         solo=req.mode == "solo",
+        solo_bot_difficulties=solo_bot_difficulties,
     )
     _touch_room_activity("tarot-africain", room.room_id, req.player_id)
     return room.to_dict(req.player_id)
+
+
+@app.post("/api/tarot-africain/room/leave")
+async def leave_tarot_room(req: RoomLeaveRequest):
+    room = tarot_africain_manager.leave_room(req.room_id, req.player_id)
+    if room is None:
+        return {"status": "already_left"}
+    await _broadcast_tarot_state(req.room_id)
+    return {"status": "left"}
 
 
 @app.post("/api/tarot-africain/room/join")

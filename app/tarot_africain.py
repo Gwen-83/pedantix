@@ -71,6 +71,7 @@ class TarotRoom:
     seats: list[TarotSeat] = field(default_factory=list)
     status: str = "lobby"
     is_solo: bool = False
+    solo_bot_difficulties: list[str] = field(default_factory=lambda: list(SOLO_BOT_DIFFICULTIES))
     phase: str = "lobby"
     match_number: int = 1
     schedule: list[tuple[int, int, str]] = field(default_factory=list)
@@ -221,7 +222,10 @@ class TarotAfricainManager:
         self._rng = rng or random.SystemRandom()
 
     @staticmethod
-    def _solo_bot_seats() -> list[TarotSeat]:
+    def _solo_bot_seats(solo_bot_difficulties: list[str] | None = None) -> list[TarotSeat]:
+        difficulties = list(solo_bot_difficulties or SOLO_BOT_DIFFICULTIES)
+        if len(difficulties) != 3:
+            difficulties = list(SOLO_BOT_DIFFICULTIES)
         return [
             TarotSeat(
                 player_id=f"bot-{difficulty}-{uuid.uuid4().hex[:4]}",
@@ -229,20 +233,50 @@ class TarotAfricainManager:
                 is_bot=True,
                 bot_difficulty=difficulty,
             )
-            for difficulty in SOLO_BOT_DIFFICULTIES
+            for difficulty in difficulties
         ]
 
+    @staticmethod
+    def _normalize_solo_bot_difficulties(
+        solo_bot_difficulties: list[str] | tuple[str, ...] | None,
+    ) -> list[str]:
+        if solo_bot_difficulties is None:
+            return list(SOLO_BOT_DIFFICULTIES)
+        normalized = [str(difficulty).strip().lower() for difficulty in solo_bot_difficulties]
+        if len(normalized) != 3:
+            raise ValueError("Un mode solo doit choisir 3 niveaux de bots.")
+        invalid = [difficulty for difficulty in normalized if difficulty not in SOLO_BOT_DIFFICULTIES]
+        if invalid:
+            raise ValueError(
+                "Les niveaux des bots solo doivent être parmi : "
+                + ", ".join(SOLO_BOT_DIFFICULTIES)
+                + "."
+            )
+        return normalized
+
     def create_room(
-        self, player_id: str, player_name: str, solo: bool = False,
+        self,
+        player_id: str,
+        player_name: str,
+        solo: bool = False,
+        solo_bot_difficulties: list[str] | tuple[str, ...] | None = None,
     ) -> TarotRoom:
         with self._lock:
             room_id = uuid.uuid4().hex[:6].upper()
             while room_id in self.rooms:
                 room_id = uuid.uuid4().hex[:6].upper()
-            room = TarotRoom(room_id=room_id, host_player_id=player_id, is_solo=solo)
+            normalized = self._normalize_solo_bot_difficulties(
+                solo_bot_difficulties if solo else None
+            ) if solo else list(SOLO_BOT_DIFFICULTIES)
+            room = TarotRoom(
+                room_id=room_id,
+                host_player_id=player_id,
+                is_solo=solo,
+                solo_bot_difficulties=normalized,
+            )
             room.seats.append(TarotSeat(player_id, _clean_name(player_name)))
             if solo:
-                room.seats.extend(self._solo_bot_seats())
+                room.seats.extend(self._solo_bot_seats(room.solo_bot_difficulties))
             self.rooms[room_id] = room
             return room
 
@@ -363,6 +397,8 @@ class TarotAfricainManager:
                 room.seats.pop(index)
             elif not seat.is_bot:
                 seat.is_bot = True
+                if room.is_solo and room.solo_bot_difficulties:
+                    seat.bot_difficulty = room.solo_bot_difficulties[index % len(room.solo_bot_difficulties)]
                 self._log(room, f"🤖 {seat.name} a quitté la table : un bot joue à sa place.")
             humans = room.players
             if not humans:
@@ -382,7 +418,7 @@ class TarotAfricainManager:
             if room.is_solo:
                 human = next((seat for seat in room.seats if not seat.is_bot), None)
                 room.seats = [TarotSeat(human.player_id, human.name)] if human else []
-                room.seats.extend(self._solo_bot_seats())
+                room.seats.extend(self._solo_bot_seats(room.solo_bot_difficulties))
             else:
                 room.seats = [
                     TarotSeat(seat.player_id, seat.name)

@@ -375,18 +375,33 @@ class TarotAfricainApiTests(unittest.TestCase):
     def test_solo_creation_route_creates_a_player_plus_three_bots(self):
         response = self.client.post(
             "/api/tarot-africain/room/create",
-            json={"player_id": "solo-host", "player_name": "Solo", "mode": "solo"},
+            json={
+                "player_id": "solo-host",
+                "player_name": "Solo",
+                "mode": "solo",
+                "bot_difficulties": ["difficile", "facile", "moyen"],
+            },
         )
         self.assertEqual(response.status_code, 200)
         state = response.json()
         self.assertTrue(state["is_solo"])
         self.assertEqual(state["player_count"], 4)
         self.assertEqual(sum(1 for seat in state["seats"] if seat["is_bot"]), 3)
-        self.assertEqual([seat["bot_difficulty"] for seat in state["seats"] if seat["is_bot"]], ["facile", "moyen", "difficile"])
+        self.assertEqual(
+            [seat["bot_difficulty"] for seat in state["seats"] if seat["is_bot"]],
+            ["difficile", "facile", "moyen"],
+        )
 
         rooms = self.client.get("/api/tarot-africain/rooms", params={"player_id": "solo-host"})
         self.assertTrue(rooms.json()["rooms"][0]["is_solo"])
-        self.assertEqual(rooms.json()["rooms"][0]["bot_difficulties"], ["facile", "moyen", "difficile"])
+        self.assertEqual(rooms.json()["rooms"][0]["bot_difficulties"], ["difficile", "facile", "moyen"])
+
+        leave = self.client.post(
+            "/api/tarot-africain/room/leave",
+            json={"room_id": state["room_id"], "player_id": "solo-host"},
+        )
+        self.assertEqual(leave.status_code, 200)
+        self.assertEqual(leave.json(), {"status": "left"})
 
     def test_websocket_runs_bids_and_plays_and_rejects_invalid_actions(self):
         room = main.tarot_africain_manager.create_room("host-id", "Hôte")

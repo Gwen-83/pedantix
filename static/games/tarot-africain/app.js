@@ -255,8 +255,12 @@
     const count = state.player_count;
     const cardsByPlayers = { 2: 11, 3: 7, 4: 5, 5: 4, 6: 3 };
     const cards = cardsByPlayers[count];
+    const botLevels =
+      Array.isArray(state.bot_difficulties) && state.bot_difficulties.length
+        ? state.bot_difficulties
+        : ["facile", "moyen", "difficile"];
     const soloNotice = state.is_solo
-      ? " Mode solo : 1 joueur contre 3 bots de niveaux facile, moyen et difficile."
+      ? ` Mode solo : 1 joueur contre 3 bots (${botLevels.join(", ")}).`
       : "";
     $("tarot-lobby-message").textContent = cards
       ? `${plural(count, "joueur")} · ${cards} cartes au maximum, ${plural(22 - cards * count, "carte mise", "cartes mises")} de côté, ${count * (cards + 1)} manches au total.${soloNotice}`
@@ -903,11 +907,22 @@
       mode === "solo" ? $("tarot-create-solo") : $("tarot-create");
     createButton.disabled = true;
     try {
-      const nextState = await request("/api/tarot-africain/room/create", {
+      const payload = {
         player_id: playerId,
         player_name: playerName,
         mode,
-      });
+      };
+      if (mode === "solo") {
+        payload.bot_difficulties = [
+          $("tarot-solo-bot-1").value,
+          $("tarot-solo-bot-2").value,
+          $("tarot-solo-bot-3").value,
+        ];
+      }
+      const nextState = await request(
+        "/api/tarot-africain/room/create",
+        payload,
+      );
       deliberateClose = false;
       setRoom(nextState, true);
     } catch (error) {

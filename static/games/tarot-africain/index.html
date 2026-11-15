@@ -66,9 +66,35 @@
           <section class="tarot-home-card">
             <h2>Mode solo</h2>
             <p class="tarot-muted">
-              Vous affrontez 3 bots de niveaux facile, moyen et difficile dans
-              une partie standard de 4 joueurs.
+              Choisissez le niveau de chacun des 3 bots avant de lancer la
+              partie. Le salon solo reste une partie standard de 4 joueurs.
             </p>
+            <div class="tarot-solo-config" aria-label="Niveaux des bots solo">
+              <label>
+                Bot 1
+                <select id="tarot-solo-bot-1">
+                  <option value="facile">Facile</option>
+                  <option value="moyen" selected>Moyen</option>
+                  <option value="difficile">Difficile</option>
+                </select>
+              </label>
+              <label>
+                Bot 2
+                <select id="tarot-solo-bot-2">
+                  <option value="facile">Facile</option>
+                  <option value="moyen" selected>Moyen</option>
+                  <option value="difficile">Difficile</option>
+                </select>
+              </label>
+              <label>
+                Bot 3
+                <select id="tarot-solo-bot-3">
+                  <option value="facile">Facile</option>
+                  <option value="moyen" selected>Moyen</option>
+                  <option value="difficile">Difficile</option>
+                </select>
+              </label>
+            </div>
             <button
               id="tarot-create-solo"
               class="tarot-button tarot-button-primary"
