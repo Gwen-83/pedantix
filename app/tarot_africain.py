@@ -16,7 +16,8 @@ EXCUSE_VALUES = {"min": 0, "max": 22}
 CARDS_PER_PLAYER = {2: 11, 3: 7, 4: 5, 5: 4, 6: 3}
 ACTION_SECONDS = 60
 BOT_DELAY_SECONDS = 1.2
-TRICK_PAUSE_SECONDS = 2.5
+TRICK_PAUSE_SECONDS = 5
+DISTRIBUTION_PAUSE_SECONDS = 5
 ROUND_SUMMARY_SECONDS = 8
 MAX_BID = 99
 MAX_LOG_ENTRIES = 40
@@ -694,7 +695,12 @@ class TarotAfricainManager:
 
     def _finish_round(self, room: TarotRoom, now: float) -> None:
         if room.round_index + 1 < len(room.schedule):
-            self._begin_round(room, room.round_index + 1, now)
+            room.phase = "distribution_pause"
+            room.current_seat = None
+            room.leader_seat = None
+            room.turn_started_at = None
+            room.deadline = now + DISTRIBUTION_PAUSE_SECONDS
+            self._log(room, f"🧩 Nouvelle distribution dans {DISTRIBUTION_PAUSE_SECONDS} secondes.")
             return
         room.status = "finished"
         room.phase = "finished"
@@ -718,6 +724,11 @@ class TarotAfricainManager:
     def _step(self, room: TarotRoom, now: float) -> bool:
         if room.status != "playing":
             return False
+        if room.phase == "distribution_pause":
+            if room.deadline is None or now < room.deadline:
+                return False
+            self._begin_round(room, room.round_index + 1, now)
+            return True
         if room.phase in {"trick_end", "round_end"}:
             if room.deadline is None or now < room.deadline:
                 return False

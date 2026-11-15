@@ -14,6 +14,7 @@ from app.tarot_africain import (
     ROUND_NORMAL,
     ROUND_SINGLE_HIDDEN,
     ROUND_SINGLE_VISIBLE,
+    DISTRIBUTION_PAUSE_SECONDS,
     TRICK_PAUSE_SECONDS,
     TarotAfricainManager,
     build_schedule,
@@ -198,6 +199,38 @@ class TarotAfricainRulesTests(unittest.TestCase):
         disabled = room.toggle_voice_chat("p0", False)
         self.assertFalse(disabled["enabled"])
         self.assertEqual(disabled["members"], [])
+
+    def test_distribution_pause_defaults_to_five_seconds(self):
+        self.assertEqual(DISTRIBUTION_PAUSE_SECONDS, 5)
+
+    def test_round_distribution_waits_before_next_round_starts(self):
+        room = self.make_room(2)
+        room.schedule = [(0, 2, ROUND_NORMAL), (0, 2, ROUND_NORMAL)]
+        room.round_index = 0
+        room.status = "playing"
+        room.phase = "round_end"
+        room.current_seat = None
+        room.deadline = time.time()
+        room.trick = []
+        room.trick_winner_seat = None
+        room.seats[0].bid = 1
+        room.seats[1].bid = 1
+        room.seats[0].tricks = 1
+        room.seats[1].tricks = 1
+        room.seats[0].hand = []
+        room.seats[1].hand = []
+        room.history.clear()
+        room.log.clear()
+
+        self.manager._finish_round(room, time.time())
+        self.assertEqual(room.phase, "distribution_pause")
+
+        now = time.time()
+        self.manager._advance(room, now + DISTRIBUTION_PAUSE_SECONDS - 0.1)
+        self.assertEqual(room.phase, "distribution_pause")
+        self.manager._advance(room, now + DISTRIBUTION_PAUSE_SECONDS + 0.1)
+        self.assertEqual(room.phase, "bidding")
+        self.assertEqual(room.round_index, 1)
 
     def test_highest_card_wins_and_the_winner_leads_the_next_trick(self):
         room = self.make_room(4)
