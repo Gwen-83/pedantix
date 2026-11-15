@@ -20,6 +20,7 @@ TRICK_PAUSE_SECONDS = 2.5
 ROUND_SUMMARY_SECONDS = 8
 MAX_BID = 99
 MAX_LOG_ENTRIES = 40
+SOLO_BOT_DIFFICULTIES = ("facile", "moyen", "difficile")
 
 ROUND_NORMAL = "normal"
 ROUND_SINGLE_VISIBLE = "single_visible"
@@ -60,6 +61,7 @@ class TarotSeat:
     bid: int | None = None
     tricks: int = 0
     exact_bids: int = 0
+    bot_difficulty: str | None = None
 
 
 @dataclass
@@ -68,6 +70,7 @@ class TarotRoom:
     host_player_id: str
     seats: list[TarotSeat] = field(default_factory=list)
     status: str = "lobby"
+    is_solo: bool = False
     phase: str = "lobby"
     match_number: int = 1
     schedule: list[tuple[int, int, str]] = field(default_factory=list)
@@ -148,6 +151,7 @@ class TarotRoom:
                 "hand": sorted(seat.hand) if visible else None,
                 "is_dealer": spec is not None and spec[0] == index,
                 "is_current": self.current_seat == index,
+                "bot_difficulty": seat.bot_difficulty if seat.is_bot else None,
             })
         round_info = None
         if spec is not None and self.status == "playing":
@@ -175,6 +179,8 @@ class TarotRoom:
             "my_seat": viewer,
             "seats": seats,
             "player_count": len(self.seats),
+            "is_solo": self.is_solo,
+            "bot_difficulties": [seat.bot_difficulty for seat in self.seats if seat.is_bot],
             "min_players": MIN_PLAYERS,
             "max_players": MAX_PLAYERS,
             "can_start": (
@@ -214,13 +220,29 @@ class TarotAfricainManager:
         self._lock = threading.RLock()
         self._rng = rng or random.SystemRandom()
 
-    def create_room(self, player_id: str, player_name: str) -> TarotRoom:
+    @staticmethod
+    def _solo_bot_seats() -> list[TarotSeat]:
+        return [
+            TarotSeat(
+                player_id=f"bot-{difficulty}-{uuid.uuid4().hex[:4]}",
+                name=f"Bot {difficulty.title()}",
+                is_bot=True,
+                bot_difficulty=difficulty,
+            )
+            for difficulty in SOLO_BOT_DIFFICULTIES
+        ]
+
+    def create_room(
+        self, player_id: str, player_name: str, solo: bool = False,
+    ) -> TarotRoom:
         with self._lock:
             room_id = uuid.uuid4().hex[:6].upper()
             while room_id in self.rooms:
                 room_id = uuid.uuid4().hex[:6].upper()
-            room = TarotRoom(room_id=room_id, host_player_id=player_id)
+            room = TarotRoom(room_id=room_id, host_player_id=player_id, is_solo=solo)
             room.seats.append(TarotSeat(player_id, _clean_name(player_name)))
+            if solo:
+                room.seats.extend(self._solo_bot_seats())
             self.rooms[room_id] = room
             return room
 
@@ -233,10 +255,13 @@ class TarotAfricainManager:
                 seat.name = _clean_name(player_name)
                 if seat.is_bot:
                     seat.is_bot = False
+                    seat.bot_difficulty = None
                     self._log(room, f"👋 {seat.name} reprend sa place à la table.")
                     if room.host_player_id not in room.players:
                         room.host_player_id = player_id
                 return room
+            if room.is_solo:
+                raise ValueError("Le mode solo est réservé à une partie contre 3 bots.")
             if room.status != "lobby":
                 raise ValueError("Cette partie a déjà commencé.")
             if len(room.seats) >= MAX_PLAYERS:
@@ -261,6 +286,8 @@ class TarotAfricainManager:
                     "status": room.status,
                     "player_count": len(room.seats),
                     "max_players": MAX_PLAYERS,
+                    "is_solo": room.is_solo,
+                    "bot_difficulties": [seat.bot_difficulty for seat in room.seats if seat.is_bot],
                     "host_name": next(
                         (seat.name for seat in room.seats
                          if seat.player_id == room.host_player_id),
@@ -279,7 +306,10 @@ class TarotAfricainManager:
                 raise PermissionError("Seul l’hôte peut démarrer la partie.")
             if room.status != "lobby":
                 raise ValueError("Cette partie a déjà démarré.")
-            if not MIN_PLAYERS <= len(room.seats) <= MAX_PLAYERS:
+            if room.is_solo:
+                if len(room.seats) != 4:
+                    raise ValueError("Un mode solo doit inclure 1 joueur et 3 bots.")
+            elif not MIN_PLAYERS <= len(room.seats) <= MAX_PLAYERS:
                 raise ValueError(
                     f"Il faut entre {MIN_PLAYERS} et {MAX_PLAYERS} joueurs pour démarrer."
                 )
@@ -349,10 +379,15 @@ class TarotAfricainManager:
                 raise PermissionError("Seul l’hôte peut relancer la partie.")
             if room.status != "finished":
                 raise ValueError("La partie doit être terminée pour être relancée.")
-            room.seats = [
-                TarotSeat(seat.player_id, seat.name)
-                for seat in room.seats if not seat.is_bot
-            ]
+            if room.is_solo:
+                human = next((seat for seat in room.seats if not seat.is_bot), None)
+                room.seats = [TarotSeat(human.player_id, human.name)] if human else []
+                room.seats.extend(self._solo_bot_seats())
+            else:
+                room.seats = [
+                    TarotSeat(seat.player_id, seat.name)
+                    for seat in room.seats if not seat.is_bot
+                ]
             room.match_number += 1
             room.status = "lobby"
             room.phase = "lobby"
@@ -582,9 +617,9 @@ class TarotAfricainManager:
             self._log(room, f"⏱️ Temps écoulé : le jeu {action} automatiquement pour {seat.name}.")
         index = room.current_seat
         if room.phase == "bidding":
-            self._apply_bid(room, index, choose_bot_bid(room, index), now)
+            self._apply_bid(room, index, choose_bot_bid(room, index, self._rng), now)
         else:
-            card, mode = choose_bot_card(room, index)
+            card, mode = choose_bot_card(room, index, self._rng)
             self._apply_play(room, index, card, mode, now)
         return True
 
@@ -608,7 +643,7 @@ def _respect_dealer_rule(room: TarotRoom, index: int, bid: int, estimate: float)
     return bid - 1 if estimate < bid else bid + 1
 
 
-def choose_bot_bid(room: TarotRoom, index: int) -> int:
+def choose_bot_bid(room: TarotRoom, index: int, rng: random.Random | None = None) -> int:
     _dealer, _cards, kind = room.schedule[room.round_index]
     seat = room.seats[index]
     opponents = len(room.seats) - 1
@@ -624,10 +659,19 @@ def choose_bot_bid(room: TarotRoom, index: int) -> int:
     else:
         estimate = sum(_win_probability(card, seat.hand, opponents) for card in seat.hand)
     bid = int(estimate + 0.5)
+    bot_level = (room.seats[index].bot_difficulty or "moyen").lower()
+    if bot_level == "facile":
+        offset = (rng.choice([-2, -1, 0, 0, 1, 2]) if rng is not None else random.choice([-2, -1, 0, 0, 1, 2]))
+        bid = max(0, min(MAX_BID, bid + offset))
+    elif bot_level == "difficile":
+        if estimate - bid > 0.25:
+            bid += 1
+        elif bid > 0 and estimate - bid < -0.25:
+            bid = max(0, bid - 1)
     return _respect_dealer_rule(room, index, bid, estimate)
 
 
-def choose_bot_card(room: TarotRoom, index: int) -> tuple[int, str | None]:
+def choose_bot_card(room: TarotRoom, index: int, rng: random.Random | None = None) -> tuple[int, str | None]:
     seat = room.seats[index]
     hand = sorted(seat.hand)
     numbers = [card for card in hand if card != EXCUSE]
@@ -635,25 +679,42 @@ def choose_bot_card(room: TarotRoom, index: int) -> tuple[int, str | None]:
     wants_tricks = (seat.bid or 0) > seat.tricks
     best = max((entry["value"] for entry in room.trick), default=None)
     is_last = len(room.trick) == len(room.seats) - 1
+    bot_level = (room.seats[index].bot_difficulty or "moyen").lower()
+
+    if bot_level == "facile" and hand and rng is not None and rng.random() < 0.35:
+        return rng.choice(hand), None
 
     if wants_tricks:
         if best is None:
-            return (numbers[-1], None) if numbers else (EXCUSE, "max")
+            decision = (numbers[-1], None) if numbers else (EXCUSE, "max")
+            if bot_level == "difficile" and numbers:
+                return max(numbers), None
+            return decision
         winners = [card for card in numbers if card > best]
         if winners:
+            if bot_level == "difficile":
+                return max(winners), None
             return (winners[0] if is_last else winners[-1], None)
         if has_excuse:
             return EXCUSE, "max"
         return numbers[0], None
 
     if best is None:
-        return (EXCUSE, "min") if has_excuse else (numbers[0], None)
+        decision = (EXCUSE, "min") if has_excuse else (numbers[0], None)
+        if bot_level == "difficile" and numbers:
+            return min(numbers), None
+        return decision
     losers = [card for card in numbers if card < best]
     if losers:
+        if bot_level == "difficile":
+            return max(losers), None
         return losers[-1], None
     if has_excuse:
         return EXCUSE, "min"
-    return (numbers[-1] if is_last else numbers[0]), None
+    decision = (numbers[-1] if is_last else numbers[0]), None
+    if bot_level == "difficile" and numbers:
+        return (max(numbers) if is_last else min(numbers)), None
+    return decision
 
 
 tarot_africain_manager = TarotAfricainManager()

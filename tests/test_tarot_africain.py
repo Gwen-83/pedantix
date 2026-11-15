@@ -324,6 +324,20 @@ class TarotAfricainRulesTests(unittest.TestCase):
         self.assertEqual([seat.player_id for seat in room.seats], [f"p{i}" for i in range(5)])
         self.assertTrue(all(seat.penalties == 0 for seat in room.seats))
 
+    def test_solo_room_creates_three_bots_with_three_levels(self):
+        room = self.manager.create_room("p0", "Alice", solo=True)
+        self.assertTrue(room.is_solo)
+        self.assertEqual(len(room.seats), 4)
+        self.assertEqual([seat.is_bot for seat in room.seats], [False, True, True, True])
+        self.assertEqual(
+            [seat.bot_difficulty for seat in room.seats if seat.is_bot],
+            ["facile", "moyen", "difficile"],
+        )
+        self.assertEqual(room.players, {"p0": room.seats[0]})
+        self.manager.start_room(room.room_id, "p0")
+        self.assertEqual(room.status, "playing")
+        self.assertEqual(room.current_seat, 1)
+
 
 class TarotAfricainApiTests(unittest.TestCase):
     def setUp(self):
@@ -357,6 +371,22 @@ class TarotAfricainApiTests(unittest.TestCase):
             json={"room_id": "ZZZZZZ", "player_id": "x", "player_name": "X"},
         )
         self.assertEqual(missing.status_code, 404)
+
+    def test_solo_creation_route_creates_a_player_plus_three_bots(self):
+        response = self.client.post(
+            "/api/tarot-africain/room/create",
+            json={"player_id": "solo-host", "player_name": "Solo", "mode": "solo"},
+        )
+        self.assertEqual(response.status_code, 200)
+        state = response.json()
+        self.assertTrue(state["is_solo"])
+        self.assertEqual(state["player_count"], 4)
+        self.assertEqual(sum(1 for seat in state["seats"] if seat["is_bot"]), 3)
+        self.assertEqual([seat["bot_difficulty"] for seat in state["seats"] if seat["is_bot"]], ["facile", "moyen", "difficile"])
+
+        rooms = self.client.get("/api/tarot-africain/rooms", params={"player_id": "solo-host"})
+        self.assertTrue(rooms.json()["rooms"][0]["is_solo"])
+        self.assertEqual(rooms.json()["rooms"][0]["bot_difficulties"], ["facile", "moyen", "difficile"])
 
     def test_websocket_runs_bids_and_plays_and_rejects_invalid_actions(self):
         room = main.tarot_africain_manager.create_room("host-id", "Hôte")

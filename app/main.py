@@ -680,6 +680,7 @@ class ScribblRoomCreateRequest(ScribblPlayerRequest):
 class TarotPlayerRequest(BaseModel):
     player_id: str = Field(min_length=1, max_length=100)
     player_name: str = Field(min_length=1, max_length=40)
+    mode: Literal["multiplayer", "solo"] = "multiplayer"
 
 class TarotRoomRequest(TarotPlayerRequest):
     room_id: str = Field(min_length=1, max_length=6)
@@ -3191,6 +3192,9 @@ def _record_tarot_room_results(room) -> None:
     room.stats_recorded = True
     duration = max(0, int(time.time() - room.started_at))
     winner_ids = set(room.winner_ids())
+    mode = "solo" if room.is_solo else "multiplayer"
+    title = "Tarot africain contre l’IA" if room.is_solo else "Tarot africain"
+    difficulty = "3 bots" if room.is_solo else f"{len(room.seats)} joueurs"
     for seat in room.seats:
         if seat.is_bot:
             continue
@@ -3204,11 +3208,11 @@ def _record_tarot_room_results(room) -> None:
             attempts=seat.penalties,
             points=points,
             session_id=f"tarot-africain:{room.room_id}:{room.match_number}",
-            mode="multiplayer",
-            title="Tarot africain",
+            mode=mode,
+            title=title,
             duration_seconds=duration,
             game_id="tarot-africain",
-            difficulty=f"{len(room.seats)} joueurs",
+            difficulty=difficulty,
             metrics={
                 "penalties": seat.penalties,
                 "exact_bids": seat.exact_bids,
@@ -3242,9 +3246,9 @@ def _tarot_session_start(room) -> None:
     record_multigame_session_start(
         f"tarot-africain:{room.room_id}:{room.match_number}",
         "tarot-africain",
-        "multiplayer",
-        "Tarot africain",
-        f"{len(room.seats)} joueurs",
+        "solo" if room.is_solo else "multiplayer",
+        "Tarot africain contre l’IA" if room.is_solo else "Tarot africain",
+        "3 bots" if room.is_solo else f"{len(room.seats)} joueurs",
     )
 
 
@@ -3258,7 +3262,11 @@ async def list_tarot_rooms(player_id: Optional[str] = Query(None)):
 
 @app.post("/api/tarot-africain/room/create")
 async def create_tarot_room(req: TarotPlayerRequest):
-    room = tarot_africain_manager.create_room(req.player_id, req.player_name)
+    room = tarot_africain_manager.create_room(
+        req.player_id,
+        req.player_name,
+        solo=req.mode == "solo",
+    )
     _touch_room_activity("tarot-africain", room.room_id, req.player_id)
     return room.to_dict(req.player_id)
 
