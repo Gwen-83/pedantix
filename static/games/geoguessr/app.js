@@ -43,10 +43,13 @@
   let revealedAnswerLines = [];
   let countryBoundaryLayer = null;
   let countryBoundaryLoading = null;
-  let mapLabelsLayer = null;
-  let mapLabelsLayerFallback = false;
-  let mapLabelsFallbackErrorShown = false;
-  let mapCitiesLayer = null;
+  const ESRI_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services";
+  const MAP_STYLE_STORAGE_KEY = "geoguessr_map_style";
+  let baseLayers = null;
+  let baseLayerFamily = "";
+  let activeBaseLayerName = "";
+  let layerControl = null;
+  let mapTilesErrorShown = false;
   let physicalFeaturesLoading = null;
   let physicalFeatureLayers = [];
   let mountainRangeLabelMarkers = [];
@@ -500,8 +503,7 @@
 
   function ensureMap() {
     if (map) {
-      if (!countryBoundaryLayer && !countryBoundaryLoading)
-        loadCountryBoundaries();
+      if (!countryBoundaryLayer) loadCountryBoundaries();
       return true;
     }
     if (!window.L) {
@@ -522,16 +524,17 @@
       keyboard: true,
       zoomControl: true,
     }).setView([20, 0], 2);
+    L.control.scale({ imperial: false }).addTo(map);
     loadCountryBoundaries();
     map.on("click", (event) => {
       if (!state || state.status !== "playing" || guessLocked()) return;
-      const latlng = {
-        latitude: event.latlng.lat,
-        longitude: event.latlng.lng,
+      const clicked = event.latlng.wrap();
+      selectedPosition = {
+        latitude: clicked.lat,
+        longitude: clicked.lng,
       };
-      selectedPosition = latlng;
       if (state.variant === "flags") {
-        const country = findCountryAtPoint(event.latlng);
+        const country = findCountryAtPoint(clicked);
         selectedCountry = country;
         if (country) {
           document.getElementById("geo-round-message").textContent =
@@ -542,50 +545,52 @@
         }
       } else {
         document.getElementById("geo-round-message").textContent =
-          `Estimation sélectionnée : ${event.latlng.lat.toFixed(2)}, ${event.latlng.lng.toFixed(2)}. Vous pouvez encore la déplacer.`;
+          `Estimation sélectionnée : ${clicked.lat.toFixed(2)}, ${clicked.lng.toFixed(2)}. Vous pouvez encore la déplacer.`;
       }
-      setGuessMarker(selectedPosition.latitude, selectedPosition.longitude);
+      setGuessMarker(event.latlng.lat, event.latlng.lng);
       document.getElementById("geo-submit-guess").disabled = false;
     });
-    map.on("zoomend", () => {
-      updatePhysicalFeatureVisibility(state?.variant === "panorama");
+    map.on("baselayerchange", (event) => {
+      activeBaseLayerName = event.name;
+      localStorage.setItem(
+        `${MAP_STYLE_STORAGE_KEY}_${baseLayerFamily}`,
+        event.name,
+      );
+      refreshMapOverlays();
     });
+    map.on("zoomend", refreshMapOverlays);
     return true;
   }
 
-  function countryBoundaryStyle(isPanorama) {
-    return {
-      color: isPanorama ? "#63716f" : "#31444a",
-      weight: isPanorama ? 1 : 0.9,
-      opacity: isPanorama ? 0.9 : 0.76,
-      fillColor: '#65a84a',
-      fillOpacity: isPanorama ? 0 : 0.22,
-    };
+  function esriTileLayer(service, options) {
+    return L.tileLayer(`${ESRI_TILES}/${service}/MapServer/tile/{z}/{y}/{x}`, {
+      maxZoom: 19,
+      ...options,
+    });
   }
 
-  function createPanoramaLabelsLayer(useFallback = false) {
+  function createStreetMapLayer() {
+    let usingFallback = false;
     const layer = L.tileLayer(
-      useFallback
-        ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
-        : "https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
+      "https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
       {
         subdomains: ['a', 'b', 'c'],
         maxZoom: 19,
-        attribution: useFallback
-          ? "&copy; Esri &mdash; Sources: HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), OpenStreetMap contributors, and the GIS User Community"
-          : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap France</a>',
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap France</a>',
       },
     );
     layer.on('tileerror', () => {
-      if (mapLabelsLayer !== layer) return;
-      if (!useFallback) {
-        mapLabelsLayerFallback = true;
-        map.removeLayer(layer);
-        mapLabelsLayer = createPanoramaLabelsLayer(true).addTo(map);
-        document.querySelector(".geo-map-actions > span").textContent =
-          "Carte de secours © Esri · frontières © Natural Earth";
-      } else if (!mapLabelsFallbackErrorShown) {
-        mapLabelsFallbackErrorShown = true;
+      if (!map?.hasLayer(layer)) return;
+      if (!usingFallback) {
+        usingFallback = true;
+        map.attributionControl.removeAttribution(layer.getAttribution());
+        layer.options.attribution =
+          "&copy; Esri &mdash; Sources : HERE, Garmin, USGS, OpenStreetMap contributors";
+        map.attributionControl.addAttribution(layer.getAttribution());
+        layer.setUrl(`${ESRI_TILES}/World_Topo_Map/MapServer/tile/{z}/{y}/{x}`);
+      } else if (!mapTilesErrorShown) {
+        mapTilesErrorShown = true;
         showError(
           playError,
           "Impossible de charger le fond de carte. Vérifiez votre connexion ou désactivez le bloqueur de contenu.",
@@ -595,60 +600,103 @@
     return layer;
   }
 
-  function setMapStyle(isPanorama) {
-    if (!map) return;
-    if (isPanorama && !mapLabelsLayer) {
-      mapLabelsLayerFallback = false;
-      mapLabelsFallbackErrorShown = false;
-      mapLabelsLayer = createPanoramaLabelsLayer().addTo(map);
-    } else if (!isPanorama) {
-      if (mapLabelsLayer) {
-        map.removeLayer(mapLabelsLayer);
-        mapLabelsLayer = null;
-      }
-      mapLabelsLayerFallback = false;
-      mapLabelsFallbackErrorShown = false;
-      if (!mapCitiesLayer) {
-        mapCitiesLayer = L.tileLayer(
-          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}",
-          {
-            maxNativeZoom: 9,
-            maxZoom: 19,
-            attribution: "Sources : Esri, USGS, NOAA",
-          },
-        ).addTo(map);
-      }
-      loadPhysicalFeatures();
-    } else {
-      if (mapCitiesLayer) map.removeLayer(mapCitiesLayer);
-      mapCitiesLayer = null;
+  function createBaseLayers(withPlaceNames) {
+    const satellite = esriTileLayer("World_Imagery", {
+      maxNativeZoom: 17,
+      attribution:
+        "Imagerie &copy; Esri, Maxar, Earthstar Geographics, GIS User Community",
+    });
+    if (withPlaceNames) {
+      return {
+        Plan: createStreetMapLayer(),
+        Satellite: L.layerGroup([
+          satellite,
+          esriTileLayer("Reference/World_Transportation", {
+            maxNativeZoom: 17,
+            opacity: 0.7,
+          }),
+          esriTileLayer("Reference/World_Boundaries_and_Places", {
+            maxNativeZoom: 17,
+            attribution: "Noms et frontières &copy; Esri",
+          }),
+        ]),
+      };
     }
-
-    const maxZoom = 19;
-    map.setMaxZoom(maxZoom);
-    if (map.getZoom() > maxZoom) map.setZoom(maxZoom);
-    updatePhysicalFeatureVisibility(isPanorama);
-
-    countryBoundaryLayer?.setStyle(countryBoundaryStyle(isPanorama));
-    const attribution = document.querySelector(".geo-map-actions > span");
-    attribution.textContent = isPanorama
-      ? "Carte © OpenStreetMap France · frontières © Natural Earth"
-      : "Relief © Esri, USGS, NOAA · fleuves et massifs © Natural Earth · sans noms de villes";
+    return {
+      Satellite: satellite,
+      Relief: L.layerGroup([
+        esriTileLayer("World_Physical_Map", {
+          maxNativeZoom: 8,
+          attribution: "Relief &copy; Esri, US National Park Service",
+        }),
+        esriTileLayer("Elevation/World_Hillshade", {
+          maxNativeZoom: 16,
+          opacity: 0.5,
+          className: "geo-hillshade-layer",
+          attribution: "Ombrage &copy; Esri, USGS, NASA",
+        }),
+      ]),
+    };
   }
 
-  function updatePhysicalFeatureVisibility(isPanorama) {
+  function setMapStyle(withPlaceNames) {
     if (!map) return;
-    for (const layer of physicalFeatureLayers) {
-      if (isPanorama && map.hasLayer(layer)) map.removeLayer(layer);
-      else if (!isPanorama && !map.hasLayer(layer)) layer.addTo(map);
+    const family = withPlaceNames ? "names" : "no-names";
+    if (baseLayerFamily !== family) {
+      for (const layer of Object.values(baseLayers || {})) map.removeLayer(layer);
+      layerControl?.remove();
+      baseLayers = createBaseLayers(withPlaceNames);
+      baseLayerFamily = family;
+      mapTilesErrorShown = false;
+      const storedName = localStorage.getItem(
+        `${MAP_STYLE_STORAGE_KEY}_${family}`,
+      );
+      activeBaseLayerName = Object.hasOwn(baseLayers, storedName)
+        ? storedName
+        : Object.keys(baseLayers)[0];
+      baseLayers[activeBaseLayerName].addTo(map);
+      layerControl = L.control
+        .layers(baseLayers, null, { collapsed: false })
+        .addTo(map);
+      document.querySelector(".geo-map-actions > span").textContent =
+        withPlaceNames
+          ? "Plan © OpenStreetMap France · satellite et noms © Esri"
+          : "Satellite et relief © Esri · frontières et fleuves © Natural Earth · sans noms de lieux";
     }
+    if (!withPlaceNames) loadPhysicalFeatures();
+    refreshMapOverlays();
+  }
 
-    const showMountainLabels = !isPanorama && map.getZoom() >= 4;
-    for (const marker of mountainRangeLabelMarkers) {
-      if (showMountainLabels && !map.hasLayer(marker)) marker.addTo(map);
-      else if (!showMountainLabels && map.hasLayer(marker))
-        map.removeLayer(marker);
+  function toggleMapLayer(layer, visible) {
+    if (visible && !map.hasLayer(layer)) layer.addTo(map);
+    else if (!visible && map.hasLayer(layer)) map.removeLayer(layer);
+  }
+
+  function refreshMapOverlays() {
+    if (!map) return;
+    const showReferenceLines = baseLayerFamily === "no-names";
+    const onSatellite = activeBaseLayerName === "Satellite";
+    const showPhysicalFeatures = showReferenceLines && !onSatellite;
+    if (countryBoundaryLayer) {
+      countryBoundaryLayer.setStyle(countryBoundaryStyle(onSatellite));
+      toggleMapLayer(countryBoundaryLayer, showReferenceLines);
     }
+    for (const layer of physicalFeatureLayers) {
+      toggleMapLayer(layer, showPhysicalFeatures);
+    }
+    const showMountainLabels = showPhysicalFeatures && map.getZoom() >= 4;
+    for (const marker of mountainRangeLabelMarkers) {
+      toggleMapLayer(marker, showMountainLabels);
+    }
+  }
+
+  function countryBoundaryStyle(onSatellite) {
+    return {
+      color: onSatellite ? "#f8fafc" : "#4a5340",
+      weight: onSatellite ? 1 : 0.9,
+      opacity: onSatellite ? 0.7 : 0.8,
+      fill: false,
+    };
   }
 
   function loadPhysicalFeatures() {
@@ -666,42 +714,32 @@
         const riverLayer = L.geoJSON(rivers, {
           interactive: false,
           style: (feature) => ({
-            color: "#328da4",
-            opacity: 0.88,
-            weight: feature.properties.scalerank <= 2 ? 1.8 : 1.2,
+            color: "#3f7fb0",
+            opacity: 0.85,
+            weight: feature.properties.scalerank <= 2 ? 1.6 : 1,
           }),
         });
-        const mountainRangeLayer = L.geoJSON(mountainRanges, {
-          interactive: false,
-          style: (feature) => ({
-            color: "#526b45",
-            opacity: 0.78,
-            weight: feature.properties.scalerank <= 2 ? 1.1 : 0.75,
-            dashArray: "4 4",
-            fillColor: "#83966b",
-            fillOpacity: 0.08,
-          }),
-          onEachFeature: (feature, layer) => {
-            if (feature.properties.scalerank > 2) return;
-            const label = document.createElement("span");
-            label.textContent =
-              feature.properties.name_fr || feature.properties.name;
-            mountainRangeLabelMarkers.push(
-              L.marker(layer.getBounds().getCenter(), {
-                icon: L.divIcon({
-                  className: "geo-mountain-label",
-                  html: label,
-                  iconSize: [0, 0],
-                  iconAnchor: [0, 0],
-                }),
-                interactive: false,
-                keyboard: false,
+        for (const feature of mountainRanges.features) {
+          if (feature.properties.scalerank > 2) continue;
+          const label = document.createElement("span");
+          label.className = "geo-mountain-label-text";
+          label.textContent =
+            feature.properties.name_fr || feature.properties.name;
+          mountainRangeLabelMarkers.push(
+            L.marker(L.geoJSON(feature).getBounds().getCenter(), {
+              icon: L.divIcon({
+                className: "geo-mountain-label",
+                html: label,
+                iconSize: [0, 0],
+                iconAnchor: [0, 0],
               }),
-            );
-          },
-        });
-        physicalFeatureLayers = [mountainRangeLayer, riverLayer];
-        updatePhysicalFeatureVisibility(state?.variant === "panorama");
+              interactive: false,
+              keyboard: false,
+            }),
+          );
+        }
+        physicalFeatureLayers = [riverLayer];
+        refreshMapOverlays();
       })
       .catch((error) => {
         physicalFeaturesLoading = null;
@@ -756,19 +794,19 @@
     return false;
   }
 
+  function attachCountryBoundaries(countries) {
+    if (!map || countryBoundaryLayer || !countries) return;
+    countryBoundaryLayer = L.geoJSON(countries, {
+      interactive: false,
+      style: countryBoundaryStyle(activeBaseLayerName === "Satellite"),
+      smoothFactor: 0.5,
+    });
+    refreshMapOverlays();
+  }
+
   function loadCountryBoundaries() {
     if (countryBoundaryLoading) {
-      return countryBoundaryLoading.then((data) => {
-        if (map && !countryBoundaryLayer && data) {
-          const isPanorama = state?.variant === "panorama";
-          countryBoundaryLayer = L.geoJSON(data, {
-            interactive: false,
-            style: countryBoundaryStyle(isPanorama),
-            smoothFactor: 0.5,
-          }).addTo(map);
-          countryBoundaryLayer.bringToBack();
-        }
-      });
+      return countryBoundaryLoading.then(attachCountryBoundaries);
     }
     countryBoundaryLoading = fetch(
       "/static/games/geoguessr/data/countries_50m.geojson",
@@ -779,15 +817,7 @@
       })
       .then((countries) => {
         countryData = countries;
-        if (map && !countryBoundaryLayer) {
-          const isPanorama = state?.variant === "panorama";
-          countryBoundaryLayer = L.geoJSON(countries, {
-            interactive: false,
-            style: countryBoundaryStyle(isPanorama),
-            smoothFactor: 0.5,
-          }).addTo(map);
-          countryBoundaryLayer.bringToBack();
-        }
+        attachCountryBoundaries(countries);
         return countries;
       })
       .catch((error) => {
@@ -819,44 +849,27 @@
     selectedCountry = null;
   }
 
-  function findCountryAtPoint(latlng) {
-    if (!latlng) return null;
-    const lng = latlng.lng;
-    const lat = latlng.lat;
-    if (countryBoundaryLayer) {
-      let matched = null;
-      countryBoundaryLayer.eachLayer((layer) => {
-        if (matched || !layer?.feature?.properties) return;
-        const bounds = layer.getBounds?.();
-        if (bounds && !bounds.contains(latlng)) return;
-        if (pointInFeatureGeometry(lng, lat, layer.feature.geometry)) {
-          const props = layer.feature.properties;
-          const name =
-            props.NAME_EN ||
-            props.ADMIN ||
-            props.NAME ||
-            props.NAME_FR ||
-            props.NAME_LOCAL;
-          const code = (props.ISO_A2 || props.WB_A2 || "").toUpperCase();
-          if (name) matched = { name, code };
-        }
-      });
-      if (matched) return matched;
+  function countryIsoCode(props) {
+    for (const key of ["ISO_A2_EH", "ISO_A2", "WB_A2"]) {
+      const code = String(props[key] || "").trim().toUpperCase();
+      if (/^[A-Z]{2}$/.test(code)) return code;
     }
-    if (countryData?.features) {
-      for (const feature of countryData.features) {
-        if (pointInFeatureGeometry(lng, lat, feature.geometry)) {
-          const props = feature.properties || {};
-          const name =
-            props.NAME_EN ||
-            props.ADMIN ||
-            props.NAME ||
-            props.NAME_FR ||
-            props.NAME_LOCAL;
-          const code = (props.ISO_A2 || props.WB_A2 || "").toUpperCase();
-          if (name) return { name, code };
-        }
-      }
+    return "";
+  }
+
+  function findCountryAtPoint(latlng) {
+    if (!latlng || !countryData?.features) return null;
+    for (const feature of countryData.features) {
+      if (!pointInFeatureGeometry(latlng.lng, latlng.lat, feature.geometry))
+        continue;
+      const props = feature.properties || {};
+      const name =
+        props.NAME_EN ||
+        props.ADMIN ||
+        props.NAME ||
+        props.NAME_FR ||
+        props.NAME_LOCAL;
+      if (name) return { name, code: countryIsoCode(props) };
     }
     return null;
   }

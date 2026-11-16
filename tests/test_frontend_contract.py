@@ -390,9 +390,15 @@ class FrontendContractTests(unittest.TestCase):
                 ]
                 self.assertTrue(calls, f"{route_name} must offload synchronous game processing")
 
-    def test_geoguessr_map_overzooms_and_shows_keyless_physical_features(self):
+    def test_geoguessr_maps_use_keyless_realistic_layers(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
         source = (static_dir / "app.js").read_text()
+        base_layers = source.split("function createBaseLayers(withPlaceNames)", 1)[1].split(
+            "function setMapStyle(", 1
+        )[0]
+        named_layers, unnamed_layers = base_layers.split("if (withPlaceNames) {", 1)[1].split(
+            "    return {\n      Satellite: satellite,", 1
+        )
         detailed_boundaries = self.client.get(
             "/static/games/geoguessr/data/countries_50m.geojson"
         )
@@ -401,13 +407,21 @@ class FrontendContractTests(unittest.TestCase):
             "/static/games/geoguessr/data/mountain_ranges_50m.geojson"
         )
 
-        self.assertIn("World_Terrain_Base/MapServer/tile/{z}/{y}/{x}", source)
-        self.assertIn("maxNativeZoom: 9", source)
-        self.assertIn("maxZoom: 19", source)
-        self.assertIn("const maxZoom = 19", source)
+        self.assertIn('"https://server.arcgisonline.com/ArcGIS/rest/services"', source)
+        self.assertIn('esriTileLayer("World_Imagery"', base_layers)
+        self.assertIn("Plan: createStreetMapLayer()", named_layers)
+        self.assertIn('"Reference/World_Boundaries_and_Places"', named_layers)
+        self.assertIn('"World_Physical_Map"', unnamed_layers)
+        self.assertIn('"Elevation/World_Hillshade"', unnamed_layers)
+        for labelled_service in ("World_Boundaries_and_Places", "openstreetmap", "World_Topo_Map"):
+            self.assertNotIn(labelled_service, unnamed_layers)
+        self.assertIn("setMapStyle(isPanorama);", source)
+        self.assertIn('const family = withPlaceNames ? "names" : "no-names";', source)
+        self.assertIn("L.control.scale({ imperial: false })", source)
+        self.assertIn("L.control\n        .layers(baseLayers, null, { collapsed: false })", source)
         self.assertIn("{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png", source)
         self.assertIn("subdomains: ['a', 'b', 'c']", source)
-        self.assertIn("OpenStreetMap France", source)
+        self.assertIn("maxZoom: 19", source)
         self.assertIn("dragging: true", source)
         self.assertIn("scrollWheelZoom: true", source)
         self.assertIn("touchZoom: true", source)
@@ -415,16 +429,32 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("data/countries_50m.geojson", source)
         self.assertIn("rivers_50m.geojson", source)
         self.assertIn("mountain_ranges_50m.geojson", source)
-        self.assertIn("fillColor: '#65a84a'", source)
-        self.assertIn("name_fr", source)
+        self.assertIn('label.className = "geo-mountain-label-text";', source)
         self.assertIn("smoothFactor: 0.5", source)
         self.assertNotIn("basemaps.cartocdn.com", source)
+        self.assertNotIn("key=", base_layers)
         self.assertEqual(detailed_boundaries.status_code, 200)
         self.assertIn('"name":"ne_50m_admin_0_countries"', detailed_boundaries.text)
         self.assertEqual(rivers.status_code, 200)
         self.assertGreater(len(rivers.json()["features"]), 200)
         self.assertEqual(mountain_ranges.status_code, 200)
         self.assertGreater(len(mountain_ranges.json()["features"]), 100)
+
+    def test_geoguessr_map_tiles_are_allowed_by_csp(self):
+        csp = self.client.get("/games/geoguessr/").headers["Content-Security-Policy"]
+        img_sources = csp.split("img-src", 1)[1].split(";", 1)[0]
+
+        self.assertIn("https://server.arcgisonline.com", img_sources)
+        self.assertIn("https://*.tile.openstreetmap.fr", img_sources)
+
+    def test_geoguessr_map_clicks_send_wrapped_coordinates(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
+        source = (static_dir / "app.js").read_text()
+
+        self.assertIn("const clicked = event.latlng.wrap();", source)
+        self.assertIn("longitude: clicked.lng,", source)
+        self.assertIn("findCountryAtPoint(clicked)", source)
+        self.assertIn('for (const key of ["ISO_A2_EH", "ISO_A2", "WB_A2"])', source)
 
     def test_geoguessr_solo_keeps_answer_map_framed_until_next_round(self):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
@@ -474,9 +504,9 @@ class FrontendContractTests(unittest.TestCase):
         static_dir = Path(__file__).resolve().parents[1] / "static" / "games" / "geoguessr"
         source = (static_dir / "app.js").read_text()
 
-        self.assertIn("function createPanoramaLabelsLayer(useFallback = false)", source)
+        self.assertIn("function createStreetMapLayer()", source)
         self.assertIn("layer.on('tileerror'", source)
-        self.assertIn("World_Topo_Map/MapServer/tile/{z}/{y}/{x}", source)
+        self.assertIn("layer.setUrl(`${ESRI_TILES}/World_Topo_Map/MapServer/tile/{z}/{y}/{x}`);", source)
         self.assertIn("Impossible de charger le fond de carte.", source)
 
     def test_multiplayer_exit_controls_call_the_server_leave_endpoint(self):

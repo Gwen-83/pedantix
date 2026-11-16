@@ -751,18 +751,29 @@ def _score_guess(city: tuple[str, str, str, float, float], latitude: float, long
     }
 
 
+def _country_iso_code(properties: Dict[str, Any]) -> str:
+    for key in ("ISO_A2_EH", "ISO_A2", "WB_A2"):
+        code = str(properties.get(key) or "").strip().upper()
+        if len(code) == 2 and code.isascii() and code.isalpha():
+            return code
+    return ""
+
+
 def _country_flag_pool(region: str = "world") -> List[Dict[str, Any]]:
     geojson_path = Path(__file__).resolve().parent.parent / "static" / "games" / "geoguessr" / "data" / "countries_50m.geojson"
     with geojson_path.open(encoding="utf-8") as handle:
         countries = json.load(handle).get("features", [])
 
+    countries.sort(key=lambda feature: feature.get("properties", {}).get("TYPE") == "Dependency")
     results: List[Dict[str, Any]] = []
+    seen_codes: Set[str] = set()
     for feature in countries:
         properties = feature.get("properties", {})
         name = (properties.get("NAME_EN") or properties.get("ADMIN") or properties.get("NAME") or properties.get("NAME_FR") or "").strip()
-        iso_code = (properties.get("ISO_A2") or properties.get("WB_A2") or "").strip().upper()
-        if not name or not iso_code or name in {"Antarctica", "Bouvet Island"}:
+        iso_code = _country_iso_code(properties)
+        if not name or not iso_code or iso_code in seen_codes or name in {"Antarctica", "Bouvet Island"}:
             continue
+        seen_codes.add(iso_code)
         continent = (properties.get("CONTINENT") or "").strip()
         if region == "france":
             if name != "France":

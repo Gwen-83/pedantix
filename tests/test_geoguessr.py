@@ -80,6 +80,14 @@ class GeoGuessrTests(unittest.TestCase):
         self.assertGreaterEqual(len(pool), 190)
         self.assertIn("France", names)
         self.assertIn("United States of America", names)
+        codes = {country["name"]: country["code"] for country in pool}
+        self.assertEqual(codes["France"], "FR")
+        self.assertEqual(codes["Norway"], "NO")
+        self.assertEqual(codes["Australia"], "AU")
+        self.assertEqual(len(set(codes.values())), len(pool))
+        for country in pool:
+            self.assertRegex(country["code"], r"^[A-Z]{2}$")
+            self.assertTrue(country["flag_url"].endswith(f"/{country['code'].lower()}.png"))
 
         game = self.manager.create_solo("alice", "Alice", "world", "flags", round_count=None)
         self.assertEqual(game.variant, "flags")
