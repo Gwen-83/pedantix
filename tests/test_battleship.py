@@ -262,6 +262,64 @@ class BattleshipTests(unittest.TestCase):
         self.assertFalse(off_state["enabled"])
         self.assertEqual(off_state["members"], [])
 
+    def test_voice_signals_are_queued_for_the_target_member_only(self):
+        room = self.create_room(3)
+        signal = {"kind": "offer", "session": "s1", "sdp": "v=0"}
+        with self.assertRaises(ValueError):
+            self.manager.send_voice_signal(room.room_id, "p1", "p2", signal)
+        room.toggle_voice_chat("p1", True)
+        room.join_voice_chat("p1")
+        room.join_voice_chat("p2")
+        self.manager.send_voice_signal(room.room_id, "p1", "p2", signal)
+        self.assertEqual(self.manager.drain_voice_signals(room.room_id, "p1"), [])
+        self.assertEqual(
+            self.manager.drain_voice_signals(room.room_id, "p2"),
+            [{"type": "voice_chat_signal", "from_player_id": "p1", "signal": signal}],
+        )
+        self.assertEqual(self.manager.drain_voice_signals(room.room_id, "p2"), [])
+
+        self.manager.send_voice_signal(room.room_id, "p1", "p2", signal)
+        room.leave_voice_chat("p1")
+        self.assertEqual(self.manager.drain_voice_signals(room.room_id, "p2"), [])
+
+    def test_voice_signal_route_feeds_the_polled_room_state(self):
+        from fastapi.testclient import TestClient
+        from app import main
+
+        client = TestClient(main.app)
+        room = main.battleship_manager.create_room("voice-a", "A")
+        main.battleship_manager.join_room(room.room_id, "voice-b", "B")
+        try:
+            room.toggle_voice_chat("voice-a", True)
+            room.join_voice_chat("voice-a")
+            room.join_voice_chat("voice-b")
+            sent = client.post("/api/battleship/room/voice/signal", json={
+                "room_id": room.room_id,
+                "player_id": "voice-b",
+                "player_name": "B",
+                "target_player_id": "voice-a",
+                "signal": {"kind": "ready", "session": "s2"},
+            })
+            self.assertEqual(sent.status_code, 200)
+            refused = client.post("/api/battleship/room/voice/signal", json={
+                "room_id": room.room_id,
+                "player_id": "voice-b",
+                "player_name": "B",
+                "target_player_id": "voice-a",
+                "signal": {"kind": "candidate", "session": "s2"},
+            })
+            self.assertEqual(refused.status_code, 409)
+            polled = client.get(
+                f"/api/battleship/room/{room.room_id}", params={"player_id": "voice-a"}
+            ).json()
+            self.assertEqual(polled["voice_signals"], [{
+                "type": "voice_chat_signal",
+                "from_player_id": "voice-b",
+                "signal": {"kind": "ready", "session": "s2"},
+            }])
+        finally:
+            main.battleship_manager.rooms.pop(room.room_id, None)
+
     def test_solo_fleet_can_be_placed_before_starting_and_bot_fleet_stays_hidden(self):
         room = self.manager.create_solo("human", "Capitaine", "difficile")
         state = room.to_dict("human")

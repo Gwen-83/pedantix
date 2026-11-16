@@ -410,6 +410,80 @@ class TarotAfricainRulesTests(unittest.TestCase):
         card, mode = choose_bot_card(room, 0, random.Random(0))
         self.assertEqual((card, mode), (8, None))
 
+    def test_easy_bot_always_returns_a_card_and_mode_pair(self):
+        room = self.make_room(2)
+        room.phase = "playing"
+        room.current_seat = 0
+        seat = room.seats[0]
+        seat.bot_difficulty = "facile"
+        seat.tricks = 0
+        cases = [
+            ([EXCUSE, 3, 5], 0, 16, (5, None)),
+            ([EXCUSE, 3, 5], 2, 16, (EXCUSE, "max")),
+            ([5, 16], 0, 3, (5, None)),
+            ([2, 16], 0, 3, (2, None)),
+        ]
+        for hand, bid, best, expected in cases:
+            with self.subTest(hand=hand, bid=bid, best=best):
+                seat.hand = list(hand)
+                seat.bid = bid
+                room.trick = [{"seat": 1, "card": best, "value": best, "excuse_mode": None}]
+                self.assertEqual(choose_bot_card(room, 0, random.Random(0)), expected)
+
+    def test_bot_dealer_never_makes_the_forbidden_bid_after_clamping(self):
+        room = self.make_room(2)
+        self.set_round(room, 1, 1, ROUND_SINGLE_VISIBLE, [[3], [21]])
+        self.manager.place_bid(room.room_id, "p0", 0)
+        room.seats[1].bot_difficulty = "difficile"
+        self.assertEqual(room.forbidden_dealer_bid(), 1)
+        for seed in range(30):
+            with self.subTest(seed=seed):
+                self.assertEqual(choose_bot_bid(room, 1, random.Random(seed)), 0)
+
+    def test_simulated_bot_games_always_reach_the_end(self):
+        for difficulty in ("facile", "moyen", "difficile"):
+            for seed in range(15):
+                with self.subTest(difficulty=difficulty, seed=seed):
+                    manager = TarotAfricainManager(rng=random.Random(seed))
+                    room = manager.create_room(
+                        "human", "Humain", solo=True, solo_bot_difficulties=[difficulty] * 3,
+                    )
+                    manager.start_room(room.room_id, "human")
+                    room.seats[0].is_bot = True
+                    room.seats[0].bot_difficulty = difficulty
+                    now = room.started_at
+                    for _ in range(2000):
+                        now += ACTION_SECONDS + 1
+                        manager._advance(room, now=now)
+                        if room.status == "finished":
+                            break
+                    self.assertEqual(room.status, "finished")
+
+    def test_voice_mute_does_not_join_and_signals_require_two_members(self):
+        room = self.make_room(3)
+        room.toggle_voice_chat("p0", True)
+        self.assertNotIn("p1", room.set_voice_chat_muted("p1", True)["members"])
+        room.join_voice_chat("p0")
+        room.join_voice_chat("p1")
+        signal = {"kind": "offer", "session": "s1", "sdp": "v=0"}
+        payload = room.build_voice_signal("p0", "p1", signal)
+        self.assertEqual(payload["from_player_id"], "p0")
+        self.assertEqual(payload["signal"], signal)
+        invalid = [
+            ("p0", "p2", signal),
+            ("p0", "p0", signal),
+            ("p0", "p1", {"kind": "candidate", "session": "s1"}),
+            ("p0", "p1", {"kind": "offer", "session": "s1"}),
+            ("p0", "p1", {"kind": "ready"}),
+            ("p0", "p1", "offer"),
+        ]
+        for sender, target, bad in invalid:
+            with self.subTest(sender=sender, target=target, signal=bad):
+                with self.assertRaises(ValueError):
+                    room.build_voice_signal(sender, target, bad)
+        self.manager.leave_room(room.room_id, "p1")
+        self.assertEqual(room.get_voice_chat_state()["members"], ["p0"])
+
     def test_a_bot_replaces_a_leaving_player_until_they_come_back(self):
         room = self.make_room(3)
         self.set_round(room, 2, 1, ROUND_SINGLE_VISIBLE, [[5], [9], [12]])
@@ -562,6 +636,36 @@ class TarotAfricainApiTests(unittest.TestCase):
             self.assertEqual(state["seats"][state["my_seat"]]["bid"], 1)
             socket.send_json({"type": "dance"})
             self.assertEqual(socket.receive_json()["type"], "error")
+
+    def test_voice_signals_are_relayed_with_the_server_side_sender(self):
+        room = main.tarot_africain_manager.create_room("host-id", "Hôte")
+        main.tarot_africain_manager.join_room(room.room_id, "guest-id", "Invité")
+        base = f"/ws/tarot-africain/{room.room_id}?player_id="
+        with self.client.websocket_connect(base + "host-id") as host, \
+                self.client.websocket_connect(base + "guest-id") as guest:
+            host.receive_json()
+            guest.receive_json()
+            host.send_json({"type": "voice_chat_toggle", "enabled": True})
+            self.assertTrue(host.receive_json()["voice_chat"]["enabled"])
+            guest.receive_json()
+            for socket in (host, guest):
+                socket.send_json({"type": "voice_chat_join"})
+                host.receive_json()
+                guest.receive_json()
+            guest.send_json({
+                "type": "voice_chat_signal",
+                "player_id": "spoofed-id",
+                "from_player_id": "spoofed-id",
+                "target_player_id": "host-id",
+                "signal": {"kind": "ready", "session": "abc", "extra": "drop"},
+            })
+            guest.send_json({"type": "ping"})
+            self.assertEqual(guest.receive_json()["type"], "pong")
+            self.assertEqual(host.receive_json(), {
+                "type": "voice_chat_signal",
+                "from_player_id": "guest-id",
+                "signal": {"kind": "ready", "session": "abc"},
+            })
 
     def test_leaving_or_being_evicted_mid_game_hands_the_seat_to_a_bot(self):
         room = main.tarot_africain_manager.create_room("host-id", "Hôte")

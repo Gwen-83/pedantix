@@ -145,6 +145,19 @@ Réponse :
 
 ## 5. Flux de signalisation WebRTC
 
+> **Implémentation actuelle** : la logique WebRTC est centralisée dans
+> `static/shared/voice-chat.js` (utilisé par Pédantix, Scribbl, Tarot africain et
+> Bataille navale) et l'état du salon vocal dans `app/voice_chat.py`
+> (`VoiceChatMixin`). Pour chaque paire de participants, seul le joueur dont
+> l'identifiant est le plus petit envoie l'offre : l'autre lui envoie d'abord un
+> signal `ready`. Les descriptions SDP sont envoyées complètes (candidats ICE
+> inclus), sans échange séparé de candidats. Le serveur n'accepte que les signaux
+> `ready` / `offer` / `answer` entre deux membres du salon vocal et impose
+> l'expéditeur (`from_player_id`). La Bataille navale relaie les signaux par
+> HTTP (`POST /api/battleship/room/voice/signal`, puis `voice_signals` dans
+> l'état interrogé).
+
+
 ### 5.1. Quand un joueur rejoint le salon vocal
 
 1. navigateur demande l'accès micro

@@ -4,7 +4,10 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Set
+from app.voice_chat import VoiceChatMixin, default_voice_chat_state
 
+VOICE_SIGNAL_MAILBOX_SIZE = 20
+VOICE_SIGNAL_TTL_SECONDS = 30
 BOARD_SIZE = 10
 SHIP_LENGTHS = {
     "carrier": 5,
@@ -134,7 +137,7 @@ class BattleshipPlayer:
 
 
 @dataclass
-class BattleshipRoom:
+class BattleshipRoom(VoiceChatMixin):
     room_id: str
     host_player_id: str
     difficulty: str = "moyen"
@@ -150,12 +153,8 @@ class BattleshipRoom:
     stats_recorded: bool = False
     is_solo: bool = False
     bot_difficulty: Optional[str] = None
-    voice_chat: Dict[str, Any] = field(default_factory=lambda: {
-        "enabled": False,
-        "members": [],
-        "muted": {},
-        "host_id": None,
-    })
+    voice_chat: Dict[str, Any] = field(default_factory=default_voice_chat_state)
+    voice_signals: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
 
     def _alive_ids(self) -> List[str]:
         return [
@@ -277,72 +276,6 @@ class BattleshipRoom:
                 if attack["target_id"] == target_id
             ],
         }
-
-    def _sanitize_voice_chat_members(self) -> None:
-        valid_members = [player_id for player_id in self.voice_chat.get("members", []) if player_id in self.players]
-        self.voice_chat["members"] = valid_members
-        muted = self.voice_chat.get("muted", {})
-        self.voice_chat["muted"] = {
-            player_id: bool(muted.get(player_id, False))
-            for player_id in valid_members
-        }
-        self.voice_chat["host_id"] = self.host_player_id
-
-    def get_voice_chat_state(self) -> Dict[str, Any]:
-        self._sanitize_voice_chat_members()
-        members = list(self.voice_chat.get("members", []))
-        muted = {
-            player_id: bool(self.voice_chat.get("muted", {}).get(player_id, False))
-            for player_id in members
-        }
-        return {
-            "enabled": bool(self.voice_chat.get("enabled", False)),
-            "members": members,
-            "muted": muted,
-            "host_id": self.host_player_id,
-            "room_id": self.room_id,
-        }
-
-    def toggle_voice_chat(self, player_id: str, enabled: Optional[bool] = None) -> Dict[str, Any]:
-        if player_id != self.host_player_id:
-            return self.get_voice_chat_state()
-        target_enabled = enabled if enabled is not None else not bool(self.voice_chat.get("enabled", False))
-        self.voice_chat["enabled"] = bool(target_enabled)
-        self.voice_chat["host_id"] = self.host_player_id
-        if not self.voice_chat["enabled"]:
-            self.voice_chat["members"] = []
-            self.voice_chat["muted"] = {}
-        else:
-            self._sanitize_voice_chat_members()
-        return self.get_voice_chat_state()
-
-    def join_voice_chat(self, player_id: str) -> Dict[str, Any]:
-        if player_id not in self.players:
-            return self.get_voice_chat_state()
-        if not self.voice_chat.get("enabled", False):
-            return self.get_voice_chat_state()
-        members = self.voice_chat.setdefault("members", [])
-        if player_id not in members:
-            members.append(player_id)
-        self.voice_chat.setdefault("muted", {})[player_id] = bool(self.voice_chat["muted"].get(player_id, False))
-        return self.get_voice_chat_state()
-
-    def leave_voice_chat(self, player_id: str) -> Dict[str, Any]:
-        members = self.voice_chat.setdefault("members", [])
-        if player_id in members:
-            members.remove(player_id)
-        self.voice_chat.setdefault("muted", {}).pop(player_id, None)
-        if not self.voice_chat.get("members") and not self.voice_chat.get("enabled", False):
-            self.voice_chat["muted"] = {}
-        return self.get_voice_chat_state()
-
-    def set_voice_chat_muted(self, player_id: str, muted: bool) -> Dict[str, Any]:
-        if player_id not in self.players:
-            return self.get_voice_chat_state()
-        self.voice_chat.setdefault("muted", {})[player_id] = bool(muted)
-        if player_id not in self.voice_chat.setdefault("members", []):
-            self.join_voice_chat(player_id)
-        return self.get_voice_chat_state()
 
     def _active_players(self) -> List[BattleshipPlayer]:
         return [player for player in self.players.values() if not player.is_spectator]
@@ -471,6 +404,31 @@ class BattleshipManager:
                 raise KeyError("Salon introuvable ou expiré.")
             room.set_voice_chat_muted(player_id, muted)
             return room
+
+    def send_voice_signal(self, room_id: str, player_id: str, target_player_id: str, signal: Any) -> None:
+        with self._lock:
+            room = self.get_room(room_id, player_id)
+            payload = room.build_voice_signal(player_id, target_player_id, signal)
+            payload["sent_at"] = time.time()
+            mailbox = room.voice_signals.setdefault(target_player_id, [])
+            mailbox.append(payload)
+            del mailbox[:-VOICE_SIGNAL_MAILBOX_SIZE]
+
+    def drain_voice_signals(self, room_id: str, player_id: str) -> List[Dict[str, Any]]:
+        with self._lock:
+            room = self.get_room(room_id, player_id)
+            members = room.get_voice_chat_state()["members"]
+            for target_id in list(room.voice_signals):
+                if target_id not in members:
+                    room.voice_signals.pop(target_id, None)
+            if player_id not in members:
+                return []
+            cutoff = time.time() - VOICE_SIGNAL_TTL_SECONDS
+            return [
+                {key: value for key, value in item.items() if key != "sent_at"}
+                for item in room.voice_signals.pop(player_id, [])
+                if item["sent_at"] >= cutoff and item["from_player_id"] in members
+            ]
 
     def choose_bot_shot(self, room: BattleshipRoom) -> str:
         bot_id = next(

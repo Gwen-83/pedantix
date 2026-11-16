@@ -8,6 +8,7 @@ import hmac
 import hashlib
 import datetime
 import asyncio
+import contextlib
 import threading
 import logging
 from contextlib import asynccontextmanager
@@ -633,6 +634,10 @@ class BattleshipVoiceToggleRequest(BattleshipRoomPlayerRequest):
 
 class BattleshipVoiceMuteRequest(BattleshipRoomPlayerRequest):
     muted: bool = False
+
+class BattleshipVoiceSignalRequest(BattleshipRoomPlayerRequest):
+    target_player_id: str = Field(min_length=1, max_length=100)
+    signal: Dict[str, Any]
 
 class BattleshipFireRequest(BattleshipRoomPlayerRequest):
     coordinate: str
@@ -2691,50 +2696,35 @@ async def room_ws(websocket: WebSocket, room_id: str, player_id: Optional[str] =
                             "leaderboard": room.get_leaderboard(),
                             "activity": room.recent_activity
                         })
-                elif msg_type == "voice_chat_toggle":
-                    pid = data.get("player_id")
-                    state = room.toggle_voice_chat(pid, bool(data.get("enabled", False)))
+                elif msg_type in {
+                    "voice_chat_toggle",
+                    "voice_chat_join",
+                    "voice_chat_leave",
+                    "voice_chat_mute_toggle",
+                }:
+                    pid = room.ws_player_map.get(websocket)
+                    if not pid:
+                        continue
+                    if msg_type == "voice_chat_toggle":
+                        state = room.toggle_voice_chat(pid, bool(data.get("enabled", False)))
+                    elif msg_type == "voice_chat_join":
+                        state = room.join_voice_chat(pid)
+                    elif msg_type == "voice_chat_leave":
+                        state = room.leave_voice_chat(pid)
+                    else:
+                        state = room.set_voice_chat_muted(pid, bool(data.get("muted", False)))
                     await room.broadcast({
                         "type": "voice_chat_state",
                         "room_id": room.room_id,
                         "voice_chat": state,
                     })
-                elif msg_type == "voice_chat_join":
-                    pid = data.get("player_id")
-                    if pid:
-                        state = room.join_voice_chat(pid)
-                        await room.broadcast({
-                            "type": "voice_chat_state",
-                            "room_id": room.room_id,
-                            "voice_chat": state,
-                        })
-                elif msg_type == "voice_chat_leave":
-                    pid = data.get("player_id")
-                    if pid:
-                        state = room.leave_voice_chat(pid)
-                        await room.broadcast({
-                            "type": "voice_chat_state",
-                            "room_id": room.room_id,
-                            "voice_chat": state,
-                        })
-                elif msg_type == "voice_chat_mute_toggle":
-                    pid = data.get("player_id")
-                    muted = bool(data.get("muted", False))
-                    if pid:
-                        state = room.set_voice_chat_muted(pid, muted)
-                        await room.broadcast({
-                            "type": "voice_chat_state",
-                            "room_id": room.room_id,
-                            "voice_chat": state,
-                        })
                 elif msg_type == "voice_chat_signal":
-                    target_player_id = data.get("target_player_id")
-                    if not target_player_id:
-                        continue
-                    target_ws = next((ws for ws, pid in room.ws_player_map.items() if pid == target_player_id), None)
-                    if target_ws is not None:
-                        payload = {"type": "voice_chat_signal", **{k: v for k, v in data.items() if k != "type"}}
-                        await target_ws.send_text(json.dumps(payload))
+                    await _relay_voice_signal(
+                        room,
+                        room.ws_player_map.get(websocket),
+                        data,
+                        room.ws_player_map,
+                    )
             except (json.JSONDecodeError, AttributeError, TypeError) as exc:
                 logger.warning("Message WebSocket invalide dans le salon %s: %s", room_id, exc)
 
@@ -2989,6 +2979,30 @@ async def join_undercover_room(req: UndercoverRoomPlayerRequest):
     return room.to_dict(req.player_id)
 
 
+async def _relay_voice_signal(
+    room,
+    sender_id: Optional[str],
+    message: dict[str, Any],
+    connections: dict[WebSocket, str],
+    lock: Optional[asyncio.Lock] = None,
+) -> None:
+    target_id = message.get("target_player_id")
+    try:
+        payload = room.build_voice_signal(sender_id, target_id, message.get("signal"))
+    except ValueError as exc:
+        logger.debug("Signal vocal ignoré dans le salon %s : %s", room.room_id, exc)
+        return
+    targets = [ws for ws, pid in list(connections.items()) if pid == target_id]
+    if not targets:
+        return
+    async with lock or contextlib.nullcontext():
+        for websocket in targets:
+            try:
+                await websocket.send_json(payload)
+            except (RuntimeError, WebSocketDisconnect, OSError) as exc:
+                logger.warning("Signal vocal non transmis au joueur %s : %s", target_id, exc)
+
+
 _scribbl_sockets: dict[str, dict[WebSocket, str]] = {}
 _scribbl_broadcast_locks: dict[str, asyncio.Lock] = {}
 
@@ -3220,16 +3234,13 @@ async def scribbl_websocket(
                     )
                     continue
                 elif action == "voice_chat_signal":
-                    target_player_id = message.get("target_player_id")
-                    if target_player_id:
-                        payload = {
-                            "type": "voice_chat_signal",
-                            **{k: v for k, v in message.items() if k != "type"},
-                        }
-                        for websocket_item, socket_player_id in list(_scribbl_sockets.get(room.room_id.upper(), {}).items()):
-                            if socket_player_id == target_player_id:
-                                await websocket_item.send_json(payload)
-                                break
+                    await _relay_voice_signal(
+                        room,
+                        player_id,
+                        message,
+                        _scribbl_sockets.get(room.room_id.upper(), {}),
+                        _scribbl_room_broadcast_lock(room.room_id),
+                    )
                     continue
                 elif action == "restart":
                     async with _game_launch_process_lock():
@@ -3499,16 +3510,13 @@ async def tarot_websocket(
                     )
                     continue
                 elif action == "voice_chat_signal":
-                    target_player_id = message.get("target_player_id")
-                    if target_player_id:
-                        payload = {
-                            "type": "voice_chat_signal",
-                            **{k: v for k, v in message.items() if k != "type"},
-                        }
-                        for websocket_item, socket_player_id in list(_tarot_sockets.get(room.room_id.upper(), {}).items()):
-                            if socket_player_id == target_player_id:
-                                await websocket_item.send_json(payload)
-                                break
+                    await _relay_voice_signal(
+                        room,
+                        player_id,
+                        message,
+                        _tarot_sockets.get(room.room_id.upper(), {}),
+                        _tarot_room_broadcast_lock(room.room_id),
+                    )
                     continue
                 elif action == "restart":
                     async with _game_launch_process_lock():
@@ -4113,9 +4121,10 @@ async def join_battleship_room(req: BattleshipRoomPlayerRequest):
 async def get_battleship_room(room_id: str, player_id: str = Query(...)):
     try:
         room = battleship_manager.get_room(room_id, player_id)
+        voice_signals = battleship_manager.drain_voice_signals(room_id, player_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return room.to_dict(player_id)
+    return {**room.to_dict(player_id), "voice_signals": voice_signals}
 
 
 @app.post("/api/battleship/room/voice/toggle")
@@ -4143,6 +4152,19 @@ async def leave_battleship_voice(req: BattleshipRoomPlayerRequest):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return room.to_dict(req.player_id)
+
+
+@app.post("/api/battleship/room/voice/signal")
+async def send_battleship_voice_signal(req: BattleshipVoiceSignalRequest):
+    try:
+        battleship_manager.send_voice_signal(
+            req.room_id, req.player_id, req.target_player_id, req.signal
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "sent"}
 
 
 @app.post("/api/battleship/room/voice/mute")

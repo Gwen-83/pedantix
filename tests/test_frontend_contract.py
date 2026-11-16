@@ -94,17 +94,21 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_voice_chat_clients_use_turn_servers_for_nat_traversal(self):
         project_root = Path(__file__).resolve().parents[1]
-        voice_files = [
-            project_root / "static" / "games" / "pedantix" / "app.js",
-            project_root / "static" / "games" / "scribbl" / "app.js",
-            project_root / "static" / "games" / "tarot-africain" / "app.js",
-        ]
+        shared = (project_root / "static" / "shared" / "voice-chat.js").read_text()
+        self.assertIn("stun:stun.l.google.com:19302", shared)
+        self.assertIn("turn:openrelay.metered.ca", shared)
 
-        for voice_file in voice_files:
-            with self.subTest(file=voice_file.name):
-                source = voice_file.read_text()
-                self.assertIn("stun:stun.l.google.com:19302", source)
-                self.assertIn("turn:openrelay.metered.ca", source)
+        for game in ("pedantix", "scribbl", "tarot-africain", "battleship"):
+            with self.subTest(game=game):
+                game_dir = project_root / "static" / "games" / game
+                page = (game_dir / "index.html").read_text()
+                self.assertLess(
+                    page.index("/static/shared/voice-chat.js"),
+                    page.index(f"/static/games/{game}/app.js"),
+                )
+                source = (game_dir / "app.js").read_text()
+                self.assertIn("createVoiceChat(", source)
+                self.assertNotIn("new RTCPeerConnection", source)
 
     def test_store_hides_unfinished_sessions_and_cumulative_play_time(self):
         response = self.client.get("/")

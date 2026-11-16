@@ -85,17 +85,6 @@ class PedantixApp {
       this.playerName = "Joueur " + Math.floor(Math.random() * 899 + 100);
       localStorage.setItem("pedantix_player_name", this.playerName);
     }
-    this.voiceChatIceServers = [
-      {
-        urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"],
-      },
-      {
-        urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-        username: "openrelayproject",
-        credential: "openrelayproject",
-      },
-    ];
-
     this.sessionId = null;
     this.seed = null;
     this.tokens = [];
@@ -169,10 +158,16 @@ class PedantixApp {
     // Chat and Network State
     this.chatMessages = [];
     this.voiceChatState = { enabled: false, members: [], muted: {} };
-    this.voiceChatJoined = false;
-    this.voiceChatPeerConnections = {};
-    this.voiceChatLocalStream = null;
-    this.voiceChatRemoteAudio = {};
+    this.voice = window.createVoiceChat({
+      playerId: this.playerId,
+      sendSignal: (targetId, signal) =>
+        this.sendVoiceMessage({
+          type: "voice_chat_signal",
+          target_player_id: targetId,
+          signal,
+        }),
+      requestLeave: () => this.sendVoiceMessage({ type: "voice_chat_leave" }),
+    });
     this.activeSidebarTab = "contest";
     this.unreadChatCount = 0;
     this.networkInfo = null;
@@ -2533,34 +2528,20 @@ class PedantixApp {
 
   applyVoiceChatState(state) {
     if (!state || typeof state !== "object") return;
-    const members = Array.isArray(state.members) ? state.members : [];
     this.voiceChatState = {
       enabled: !!state.enabled,
-      members,
+      members: Array.isArray(state.members) ? state.members : [],
       muted: state.muted || {},
-      host_id: state.host_id || (this.isHost ? this.playerId : null),
     };
-    this.voiceChatJoined = members.includes(this.playerId);
-    if (!this.voiceChatState.enabled && this.voiceChatLocalStream) {
-      this.stopVoiceLocalStream();
-    }
+    this.voice.update(this.voiceChatState);
     this.syncVoiceChatUI();
-    if (
-      this.voiceChatState.enabled &&
-      this.voiceChatJoined &&
-      this.voiceChatLocalStream
-    ) {
-      this.connectVoicePeers();
-    }
   }
 
   syncVoiceChatUI() {
     if (!this.dom || !this.dom.voiceChatSection) return;
     const multiplayer = this.isMultiplayerRoom();
     const enabled = !!this.voiceChatState.enabled;
-    const joined =
-      this.voiceChatJoined ||
-      this.voiceChatState.members.includes(this.playerId);
+    const joined = this.voiceChatState.members.includes(this.playerId);
     const muted = !!(
       this.voiceChatState.muted && this.voiceChatState.muted[this.playerId]
     );
@@ -2602,7 +2583,7 @@ class PedantixApp {
       const item = document.createElement("div");
       item.className = "voice-member-row";
       const me = memberId === this.playerId;
-      const player = (this.room?.players || []).find(
+      const player = (this.leaderboard || []).find(
         (entry) => entry.player_id === memberId,
       );
       const label = document.createElement("span");
@@ -2619,31 +2600,23 @@ class PedantixApp {
     });
   }
 
-  async toggleVoiceChat() {
-    if (!this.isHost || !this.ws || this.ws.readyState !== WebSocket.OPEN)
-      return;
-    const nextEnabled = !this.voiceChatState.enabled;
-    this.ws.send(
-      JSON.stringify({
-        type: "voice_chat_toggle",
-        player_id: this.playerId,
-        enabled: nextEnabled,
-      }),
-    );
+  sendVoiceMessage(message) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(JSON.stringify(message));
+    return true;
+  }
+
+  toggleVoiceChat() {
+    if (!this.isHost) return;
+    this.sendVoiceMessage({
+      type: "voice_chat_toggle",
+      enabled: !this.voiceChatState.enabled,
+    });
   }
 
   async toggleVoiceJoin() {
-    if (
-      !this.isMultiplayerRoom() ||
-      !this.ws ||
-      this.ws.readyState !== WebSocket.OPEN
-    )
-      return;
-    if (!this.voiceChatState.enabled) return;
-    if (
-      this.voiceChatJoined ||
-      this.voiceChatState.members.includes(this.playerId)
-    ) {
+    if (!this.isMultiplayerRoom() || !this.voiceChatState.enabled) return;
+    if (this.voiceChatState.members.includes(this.playerId)) {
       this.leaveVoiceChat();
       return;
     }
@@ -2651,195 +2624,32 @@ class PedantixApp {
   }
 
   async joinVoiceChat() {
-    if (!this.isMultiplayerRoom() || !this.voiceChatState.enabled) return;
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        this.showToast(
-          "🎙️ Le navigateur ne permet pas d’accéder au micro ici.",
-        );
-        return;
-      }
-      if (!this.voiceChatLocalStream) {
-        this.voiceChatLocalStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-      }
-      this.voiceChatJoined = true;
-      this.ws.send(
-        JSON.stringify({ type: "voice_chat_join", player_id: this.playerId }),
-      );
-      this.syncVoiceChatUI();
-      this.connectVoicePeers();
+      if (!(await this.voice.join())) return;
     } catch (error) {
-      console.error("Erreur accès micro:", error);
-      this.showToast(
-        "🎙️ Accès au micro refusé. Autorisez le navigateur pour utiliser le chat vocal.",
-      );
+      this.showToast(`🎙️ ${error.message}`);
+      return;
+    }
+    if (!this.sendVoiceMessage({ type: "voice_chat_join" })) {
+      this.voice.leave();
+      this.showToast("🎙️ Connexion au salon interrompue. Réessayez.");
     }
   }
 
   leaveVoiceChat() {
-    this.stopVoiceLocalStream();
-    this.voiceChatJoined = false;
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(
-        JSON.stringify({ type: "voice_chat_leave", player_id: this.playerId }),
-      );
-    }
-    this.syncVoiceChatUI();
+    this.voice.leave();
+    this.sendVoiceMessage({ type: "voice_chat_leave" });
   }
 
-  async toggleVoiceMute() {
-    if (!this.voiceChatState.enabled || !this.voiceChatJoined) return;
-    const nextMuted = !(
-      this.voiceChatState.muted && this.voiceChatState.muted[this.playerId]
-    );
-    this.ws.send(
-      JSON.stringify({
-        type: "voice_chat_mute_toggle",
-        player_id: this.playerId,
-        muted: nextMuted,
-      }),
-    );
-  }
-
-  stopVoiceLocalStream() {
-    if (this.voiceChatLocalStream) {
-      this.voiceChatLocalStream.getTracks().forEach((track) => track.stop());
-      this.voiceChatLocalStream = null;
-    }
-    Object.values(this.voiceChatPeerConnections).forEach((pc) => {
-      try {
-        pc.close();
-      } catch (e) {}
-    });
-    this.voiceChatPeerConnections = {};
-    Object.values(this.voiceChatRemoteAudio).forEach((audio) => {
-      try {
-        audio.remove();
-      } catch (e) {}
-    });
-    this.voiceChatRemoteAudio = {};
-  }
-
-  sendVoiceSignal(targetId, signalType, payload = {}) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(
-      JSON.stringify({
-        type: "voice_chat_signal",
-        player_id: this.playerId,
-        target_player_id: targetId,
-        signal_type: signalType,
-        ...payload,
-      }),
-    );
-  }
-
-  async createVoicePeerConnection(targetId) {
-    if (
-      !this.voiceChatLocalStream ||
-      targetId === this.playerId ||
-      this.voiceChatPeerConnections[targetId]
-    )
-      return;
-    if (!window.RTCPeerConnection) {
-      this.showToast("🎙️ WebRTC n’est pas disponible dans ce navigateur.");
-      return;
-    }
-    const pc = new RTCPeerConnection({
-      iceServers: this.voiceChatIceServers,
-    });
-    this.voiceChatPeerConnections[targetId] = pc;
-
-    this.voiceChatLocalStream.getAudioTracks().forEach((track) => {
-      pc.addTrack(track, this.voiceChatLocalStream);
-    });
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        this.sendVoiceSignal(targetId, "ice_candidate", {
-          candidate: event.candidate,
-        });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      if (!this.voiceChatRemoteAudio[targetId]) {
-        const audio = document.createElement("audio");
-        audio.autoplay = true;
-        audio.playsInline = true;
-        audio.srcObject = event.streams[0];
-        this.voiceChatRemoteAudio[targetId] = audio;
-        document.body.appendChild(audio);
-      }
-    };
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    this.sendVoiceSignal(targetId, "offer", { offer: pc.localDescription });
-  }
-
-  async connectVoicePeers() {
-    if (!this.voiceChatState.enabled || !this.voiceChatLocalStream) return;
-    const peers = (this.voiceChatState.members || []).filter(
-      (pid) => pid && pid !== this.playerId,
-    );
-    for (const peerId of peers) {
-      await this.createVoicePeerConnection(peerId);
-    }
-  }
-
-  async handleVoiceChatSignal(msg) {
-    const senderId = msg.player_id || msg.source_player_id;
-    if (!senderId || senderId === this.playerId) return;
-    if (!window.RTCPeerConnection) return;
-    let pc = this.voiceChatPeerConnections[senderId];
-    if (!pc) {
-      pc = new RTCPeerConnection({
-        iceServers: this.voiceChatIceServers,
-      });
-      this.voiceChatPeerConnections[senderId] = pc;
-      if (this.voiceChatLocalStream) {
-        this.voiceChatLocalStream.getAudioTracks().forEach((track) => {
-          pc.addTrack(track, this.voiceChatLocalStream);
-        });
-      }
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          this.sendVoiceSignal(senderId, "ice_candidate", {
-            candidate: event.candidate,
-          });
-        }
-      };
-      pc.ontrack = (event) => {
-        if (!this.voiceChatRemoteAudio[senderId]) {
-          const audio = document.createElement("audio");
-          audio.autoplay = true;
-          audio.playsInline = true;
-          audio.srcObject = event.streams[0];
-          this.voiceChatRemoteAudio[senderId] = audio;
-          document.body.appendChild(audio);
-        }
-      };
-    }
-
-    if (msg.signal_type === "offer" && msg.offer) {
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      this.sendVoiceSignal(senderId, "answer", { answer: pc.localDescription });
-    } else if (msg.signal_type === "answer" && msg.answer) {
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
-    } else if (msg.signal_type === "ice_candidate" && msg.candidate) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-      } catch (error) {
-        console.warn("ICE candidate ignoré:", error);
-      }
-    }
+  toggleVoiceMute() {
+    if (!this.voiceChatState.enabled) return;
+    const nextMuted = !this.voiceChatState.muted?.[this.playerId];
+    this.voice.setMuted(nextMuted);
+    this.sendVoiceMessage({ type: "voice_chat_mute_toggle", muted: nextMuted });
   }
 
   closeRoomWebSocket() {
+    this.voice.leave();
     if (this.pingInterval) clearInterval(this.pingInterval);
     if (this.wsReconnectTimeout) clearTimeout(this.wsReconnectTimeout);
     if (this.wsConnectTimeout) clearTimeout(this.wsConnectTimeout);
@@ -3071,7 +2881,7 @@ class PedantixApp {
     } else if (msg.type === "voice_chat_state") {
       this.applyVoiceChatState(msg.voice_chat || msg);
     } else if (msg.type === "voice_chat_signal") {
-      this.handleVoiceChatSignal(msg);
+      this.voice.handleSignal(msg);
     } else if (msg.type === "difficulty_changed") {
       this.currentDifficulty = msg.difficulty || this.currentDifficulty;
       this.articleDifficulty = msg.article_difficulty || this.currentDifficulty;
@@ -3159,6 +2969,7 @@ class PedantixApp {
         }
       }
       if (msg.activity) this.updateActivity(msg.activity);
+      if (msg.voice_chat) this.applyVoiceChatState(msg.voice_chat);
       if (msg.can_start !== undefined) this.canStart = msg.can_start;
       if (msg.host_player_id) {
         this.isHost = msg.host_player_id === this.playerId;

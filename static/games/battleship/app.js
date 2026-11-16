@@ -57,6 +57,23 @@
   let knownSunkShips = new Set();
   let sinkingAnnouncementExpiresAt = 0;
   let pollFailed = false;
+  const voice = window.createVoiceChat({
+    playerId,
+    sendSignal: (targetId, signal) => {
+      if (!state?.room_id) return;
+      post("/api/battleship/room/voice/signal", {
+        ...roomPayload(),
+        target_player_id: targetId,
+        signal,
+      }).catch((error) => console.warn("Signal vocal non transmis :", error));
+    },
+    requestLeave: () => {
+      if (!state?.room_id) return;
+      post("/api/battleship/room/voice/leave", roomPayload()).catch((error) =>
+        console.warn("Sortie du chat vocal impossible :", error),
+      );
+    },
+  });
 
   document.getElementById("naval-player-name").textContent = playerName;
 
@@ -132,6 +149,7 @@
       }
     }
     stopPolling();
+    voice.leave();
     localStorage.removeItem("battleship_solo_room_id");
     localStorage.removeItem("battleship_active_room_id");
     state = null;
@@ -387,38 +405,38 @@
     const join = document.getElementById("naval-voice-join");
     const mute = document.getElementById("naval-voice-mute");
     const membersList = document.getElementById("naval-voice-members");
-    const voice = state?.voice_chat || {
+    const voiceState = state?.voice_chat || {
       enabled: false,
       members: [],
       muted: {},
     };
     const multiplayer = !!state && !state.is_solo;
-    const joined = (voice.members || []).includes(playerId);
-    const mutedValue = !!(voice.muted && voice.muted[playerId]);
+    const joined = (voiceState.members || []).includes(playerId);
+    const mutedValue = !!(voiceState.muted && voiceState.muted[playerId]);
 
     panel.hidden = !multiplayer;
     toggle.hidden = !multiplayer || playerId !== state?.host_player_id;
-    toggle.textContent = voice.enabled
+    toggle.textContent = voiceState.enabled
       ? "Désactiver le chat vocal"
       : "Activer le chat vocal";
     toggle.disabled = roomBusy;
-    join.hidden = !multiplayer || !voice.enabled;
+    join.hidden = !multiplayer || !voiceState.enabled;
     join.textContent = joined
       ? "Quitter le chat vocal"
       : "Rejoindre le chat vocal";
     join.disabled = roomBusy;
-    mute.hidden = !multiplayer || !voice.enabled || !joined;
+    mute.hidden = !multiplayer || !voiceState.enabled || !joined;
     mute.textContent = mutedValue ? "Micro muet" : "Micro actif";
     mute.disabled = roomBusy || !joined;
-    status.textContent = voice.enabled
+    status.textContent = voiceState.enabled
       ? joined
         ? "En ligne"
         : "Ouvert"
       : "Fermé";
 
     membersList.replaceChildren(
-      ...((voice.members || []).length
-        ? (voice.members || []).map((memberId) => {
+      ...((voiceState.members || []).length
+        ? (voiceState.members || []).map((memberId) => {
             const item = document.createElement("li");
             item.className = "naval-voice-member";
             const label = document.createElement("span");
@@ -429,7 +447,7 @@
               memberId === playerId ? "Vous" : memberName || memberId;
             const badge = document.createElement("small");
             badge.textContent =
-              voice.muted && voice.muted[memberId] ? "Muet" : "Micro OK";
+              voiceState.muted && voiceState.muted[memberId] ? "Muet" : "Micro OK";
             item.append(label, badge);
             return item;
           })
@@ -437,7 +455,7 @@
             (() => {
               const empty = document.createElement("li");
               empty.className = "naval-voice-member empty";
-              empty.textContent = voice.enabled
+              empty.textContent = voiceState.enabled
                 ? "Aucun participant actif."
                 : "Le salon vocal est fermé.";
               return empty;
@@ -805,6 +823,7 @@
 
   function updateView() {
     if (!state) return;
+    voice.update(state.is_solo ? null : state.voice_chat);
     showPlay();
     if (state.status === "lobby") renderLobby();
     else renderBattle();
@@ -1039,8 +1058,14 @@
         hideError(playError);
       }
       updateView();
+      (state.voice_signals || []).forEach((message) =>
+        voice.handleSignal(message),
+      );
     } catch (error) {
-      if (error.status === 404) stopPolling();
+      if (error.status === 404) {
+        stopPolling();
+        voice.leave();
+      }
       pollFailed = true;
       showError(playError, error.message);
     }
@@ -1050,10 +1075,8 @@
     if (!state || state.is_solo || playerId !== state.host_player_id) return;
     try {
       state = await post("/api/battleship/room/voice/toggle", {
-        room_id: state.room_id,
-        player_id: playerId,
-        player_name: playerName,
-        enabled: !((state.voice_chat && state.voice_chat.enabled) || false),
+        ...roomPayload(),
+        enabled: !state.voice_chat?.enabled,
       });
       updateView();
     } catch (error) {
@@ -1063,26 +1086,22 @@
 
   async function joinVoiceChat() {
     if (!state || state.is_solo || !state.voice_chat?.enabled) return;
+    hideError(playError);
     try {
-      state = await post("/api/battleship/room/voice/join", {
-        room_id: state.room_id,
-        player_id: playerId,
-        player_name: playerName,
-      });
+      if (!(await voice.join())) return;
+      state = await post("/api/battleship/room/voice/join", roomPayload());
       updateView();
     } catch (error) {
+      voice.leave();
       showError(playError, error.message);
     }
   }
 
   async function leaveVoiceChat() {
     if (!state || state.is_solo) return;
+    voice.leave();
     try {
-      state = await post("/api/battleship/room/voice/leave", {
-        room_id: state.room_id,
-        player_id: playerId,
-        player_name: playerName,
-      });
+      state = await post("/api/battleship/room/voice/leave", roomPayload());
       updateView();
     } catch (error) {
       showError(playError, error.message);
@@ -1091,15 +1110,12 @@
 
   async function toggleVoiceMute() {
     if (!state || state.is_solo || !state.voice_chat?.enabled) return;
+    const nextMuted = !state.voice_chat.muted?.[playerId];
+    voice.setMuted(nextMuted);
     try {
-      const isMuted = !!(
-        state.voice_chat.muted && state.voice_chat.muted[playerId]
-      );
       state = await post("/api/battleship/room/voice/mute", {
-        room_id: state.room_id,
-        player_id: playerId,
-        player_name: playerName,
-        muted: !isMuted,
+        ...roomPayload(),
+        muted: nextMuted,
       });
       updateView();
     } catch (error) {

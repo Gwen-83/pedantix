@@ -54,21 +54,16 @@
   let pointerDown = false;
   let pendingPoints = [];
   let flushFrame = 0;
-  let voiceChatState = { enabled: false, members: [], muted: {} };
-  let voiceChatJoined = false;
-  let voiceChatLocalStream = null;
-  let voiceChatPeerConnections = {};
-  let voiceChatRemoteAudio = {};
-  const voiceChatIceServers = [
-    {
-      urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"],
-    },
-    {
-      urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-  ];
+  const voice = window.createVoiceChat({
+    playerId,
+    sendSignal: (targetId, signal) =>
+      sendQuietly({
+        type: "voice_chat_signal",
+        target_player_id: targetId,
+        signal,
+      }),
+    requestLeave: () => sendQuietly({ type: "voice_chat_leave" }),
+  });
 
   $("scribbl-player-name").textContent = playerName;
   $("scribbl-brush").addEventListener("input", (event) => {
@@ -108,6 +103,11 @@
     }
     socket.send(JSON.stringify(message));
     return true;
+  }
+
+  function sendQuietly(message) {
+    if (socket?.readyState === WebSocket.OPEN)
+      socket.send(JSON.stringify(message));
   }
 
   function setRoom(nextState, updateUrl = false) {
@@ -153,33 +153,15 @@
       }
       if (message.type === "state") {
         state = message.state;
-        voiceChatState = state?.voice_chat || {
-          enabled: false,
-          members: [],
-          muted: {},
-        };
-        voiceChatJoined = (voiceChatState.members || []).includes(playerId);
+        voice.update(state.voice_chat);
         render();
       } else if (message.type === "voice_chat_state") {
-        state = {
-          ...state,
-          voice_chat: message.voice_chat || {
-            enabled: false,
-            members: [],
-            muted: {},
-          },
-        };
-        voiceChatState = state.voice_chat;
-        voiceChatJoined = (voiceChatState.members || []).includes(playerId);
-        if (!voiceChatState.enabled && voiceChatLocalStream) {
-          stopVoiceLocalStream();
-        }
+        if (!state) return;
+        state = { ...state, voice_chat: message.voice_chat };
+        voice.update(state.voice_chat);
         updateVoiceChatUI();
-        if (voiceChatState.enabled && voiceChatJoined && voiceChatLocalStream) {
-          connectVoicePeers();
-        }
       } else if (message.type === "voice_chat_signal") {
-        handleVoiceChatSignal(message);
+        voice.handleSignal(message);
       } else if (message.type === "draw") {
         let previousPoint = null;
         if (message.start || !state.strokes.length) {
@@ -248,35 +230,35 @@
     const join = $("scribbl-voice-join");
     const mute = $("scribbl-voice-mute");
     const membersList = $("scribbl-voice-members");
-    const voice = state?.voice_chat || {
+    const voiceState = state?.voice_chat || {
       enabled: false,
       members: [],
       muted: {},
     };
     const multiplayer = !!state && state.player_count > 1;
-    const joined = (voice.members || []).includes(playerId);
-    const mutedValue = !!(voice.muted && voice.muted[playerId]);
+    const joined = (voiceState.members || []).includes(playerId);
+    const mutedValue = !!(voiceState.muted && voiceState.muted[playerId]);
 
     panel.hidden = !multiplayer;
     toggle.hidden = !multiplayer || playerId !== state.host_player_id;
-    toggle.textContent = voice.enabled
+    toggle.textContent = voiceState.enabled
       ? "Désactiver le chat vocal"
       : "Activer le chat vocal";
-    join.hidden = !multiplayer || !voice.enabled;
+    join.hidden = !multiplayer || !voiceState.enabled;
     join.textContent = joined
       ? "Quitter le chat vocal"
       : "Rejoindre le chat vocal";
-    mute.hidden = !multiplayer || !voice.enabled || !joined;
+    mute.hidden = !multiplayer || !voiceState.enabled || !joined;
     mute.textContent = mutedValue ? "Micro muet" : "Micro actif";
-    status.textContent = voice.enabled
+    status.textContent = voiceState.enabled
       ? joined
         ? "En ligne"
         : "Ouvert"
       : "Fermé";
 
     membersList.replaceChildren(
-      ...((voice.members || []).length
-        ? (voice.members || []).map((memberId) => {
+      ...((voiceState.members || []).length
+        ? (voiceState.members || []).map((memberId) => {
             const item = document.createElement("li");
             item.className = "scribbl-voice-member";
             const label = document.createElement("span");
@@ -287,7 +269,7 @@
               memberId === playerId ? "Vous" : memberName || memberId;
             const badge = document.createElement("small");
             badge.textContent =
-              voice.muted && voice.muted[memberId] ? "Muet" : "Micro OK";
+              voiceState.muted && voiceState.muted[memberId] ? "Muet" : "Micro OK";
             item.append(label, badge);
             return item;
           })
@@ -295,7 +277,7 @@
             (() => {
               const empty = document.createElement("li");
               empty.className = "scribbl-voice-member empty";
-              empty.textContent = voice.enabled
+              empty.textContent = voiceState.enabled
                 ? "Aucun participant actif."
                 : "Le salon vocal est fermé.";
               return empty;
@@ -953,6 +935,7 @@
   }
 
   async function returnHome(leave = true) {
+    voice.leave();
     deliberateClose = true;
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -979,186 +962,33 @@
     refreshDirectory();
   }
 
-  async function toggleVoiceChat() {
+  function toggleVoiceChat() {
     if (!state || playerId !== state.host_player_id) return;
-    const nextEnabled = !(state.voice_chat && state.voice_chat.enabled);
-    send({ type: "voice_chat_toggle", enabled: nextEnabled });
+    send({ type: "voice_chat_toggle", enabled: !state.voice_chat?.enabled });
   }
 
   async function joinVoiceChat() {
-    if (!state || !state.voice_chat?.enabled) return;
+    if (!state?.voice_chat?.enabled) return;
+    clearError("scribbl-game-error");
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showError(
-          "scribbl-game-error",
-          new Error("Le navigateur ne permet pas d’accéder au micro."),
-        );
-        return;
-      }
-      if (!voiceChatLocalStream) {
-        voiceChatLocalStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-      }
-      voiceChatJoined = true;
-      send({ type: "voice_chat_join", player_id: playerId });
-      updateVoiceChatUI();
-      connectVoicePeers();
+      if (!(await voice.join())) return;
     } catch (error) {
-      console.error("Erreur accès micro Scribbl :", error);
-      showError(
-        "scribbl-game-error",
-        new Error(
-          "Accès au micro refusé. Autorisez le navigateur pour utiliser le chat vocal.",
-        ),
-      );
+      showError("scribbl-game-error", error);
+      return;
     }
+    if (!send({ type: "voice_chat_join" })) voice.leave();
   }
 
   function leaveVoiceChat() {
-    stopVoiceLocalStream();
-    voiceChatJoined = false;
-    send({ type: "voice_chat_leave", player_id: playerId });
-    updateVoiceChatUI();
+    voice.leave();
+    send({ type: "voice_chat_leave" });
   }
 
-  async function toggleVoiceMute() {
-    if (!state || !state.voice_chat?.enabled || !voiceChatJoined) return;
-    const nextMuted = !(
-      state.voice_chat.muted && state.voice_chat.muted[playerId]
-    );
+  function toggleVoiceMute() {
+    if (!state?.voice_chat?.enabled) return;
+    const nextMuted = !state.voice_chat.muted?.[playerId];
+    voice.setMuted(nextMuted);
     send({ type: "voice_chat_mute_toggle", muted: nextMuted });
-  }
-
-  function stopVoiceLocalStream() {
-    if (voiceChatLocalStream) {
-      voiceChatLocalStream.getTracks().forEach((track) => track.stop());
-      voiceChatLocalStream = null;
-    }
-    Object.values(voiceChatPeerConnections).forEach((pc) => {
-      try {
-        pc.close();
-      } catch (error) {}
-    });
-    voiceChatPeerConnections = {};
-    Object.values(voiceChatRemoteAudio).forEach((audio) => {
-      try {
-        audio.remove();
-      } catch (error) {}
-    });
-    voiceChatRemoteAudio = {};
-  }
-
-  function sendVoiceSignal(targetId, signalType, payload = {}) {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(
-      JSON.stringify({
-        type: "voice_chat_signal",
-        player_id: playerId,
-        target_player_id: targetId,
-        signal_type: signalType,
-        ...payload,
-      }),
-    );
-  }
-
-  async function createVoicePeerConnection(targetId) {
-    if (
-      !voiceChatLocalStream ||
-      targetId === playerId ||
-      voiceChatPeerConnections[targetId]
-    )
-      return;
-    if (!window.RTCPeerConnection) {
-      showError(
-        "scribbl-game-error",
-        new Error("WebRTC n’est pas disponible dans ce navigateur."),
-      );
-      return;
-    }
-    const pc = new RTCPeerConnection({
-      iceServers: voiceChatIceServers,
-    });
-    voiceChatPeerConnections[targetId] = pc;
-    voiceChatLocalStream
-      .getAudioTracks()
-      .forEach((track) => pc.addTrack(track, voiceChatLocalStream));
-    pc.onicecandidate = (event) => {
-      if (event.candidate)
-        sendVoiceSignal(targetId, "ice_candidate", {
-          candidate: event.candidate,
-        });
-    };
-    pc.ontrack = (event) => {
-      if (!voiceChatRemoteAudio[targetId]) {
-        const audio = document.createElement("audio");
-        audio.autoplay = true;
-        audio.playsInline = true;
-        audio.srcObject = event.streams[0];
-        voiceChatRemoteAudio[targetId] = audio;
-        document.body.appendChild(audio);
-      }
-    };
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    sendVoiceSignal(targetId, "offer", { offer: pc.localDescription });
-  }
-
-  async function connectVoicePeers() {
-    if (!state?.voice_chat?.enabled || !voiceChatLocalStream) return;
-    const peers = (state.voice_chat.members || []).filter(
-      (memberId) => memberId && memberId !== playerId,
-    );
-    for (const peerId of peers) {
-      await createVoicePeerConnection(peerId);
-    }
-  }
-
-  async function handleVoiceChatSignal(msg) {
-    const senderId = msg.player_id || msg.source_player_id;
-    if (!senderId || senderId === playerId || !window.RTCPeerConnection) return;
-    let pc = voiceChatPeerConnections[senderId];
-    if (!pc) {
-      pc = new RTCPeerConnection({
-        iceServers: voiceChatIceServers,
-      });
-      voiceChatPeerConnections[senderId] = pc;
-      if (voiceChatLocalStream) {
-        voiceChatLocalStream
-          .getAudioTracks()
-          .forEach((track) => pc.addTrack(track, voiceChatLocalStream));
-      }
-      pc.onicecandidate = (event) => {
-        if (event.candidate)
-          sendVoiceSignal(senderId, "ice_candidate", {
-            candidate: event.candidate,
-          });
-      };
-      pc.ontrack = (event) => {
-        if (!voiceChatRemoteAudio[senderId]) {
-          const audio = document.createElement("audio");
-          audio.autoplay = true;
-          audio.playsInline = true;
-          audio.srcObject = event.streams[0];
-          voiceChatRemoteAudio[senderId] = audio;
-          document.body.appendChild(audio);
-        }
-      };
-    }
-    if (msg.signal_type === "offer" && msg.offer) {
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      sendVoiceSignal(senderId, "answer", { answer: pc.localDescription });
-    } else if (msg.signal_type === "answer" && msg.answer) {
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
-    } else if (msg.signal_type === "ice_candidate" && msg.candidate) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-      } catch (error) {
-        console.warn("ICE candidate ignoré Scribbl :", error);
-      }
-    }
   }
 
   $("scribbl-create").addEventListener("click", createRoom);
